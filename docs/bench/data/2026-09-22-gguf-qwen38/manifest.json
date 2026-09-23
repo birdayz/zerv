@@ -1,0 +1,147 @@
+{
+  "model": {
+    "path": "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "size": 16056478688,
+    "sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d"
+  },
+  "oracle": {
+    "path": "/usr/lib/libggml-base.so.0.24.0",
+    "sha256": "7d9065538f5df6342613b4fa92e661d5ad8fd811c2dbe16ff0e4b62a77777073",
+    "ggml_version": "0.24.0",
+    "ggml_commit": "456172ec-dirty"
+  },
+  "zig": {
+    "path": "/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig",
+    "sha256": "2317bbb91798556d9d0f38aabdac23db83f0979b25f767259ae474546724087c",
+    "version": "0.16.0"
+  },
+  "host": {
+    "system": "Linux",
+    "node": "benchmark-host",
+    "release": "7.2.6-arch2-1",
+    "version": "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000",
+    "machine": "x86_64",
+    "processor": ""
+  },
+  "python": "3.14.7 (main, Aug 10 2026, 07:46:56) [GCC 16.1.1 20260728]",
+  "allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23
+  ],
+  "effective_cpu": 2,
+  "warmups": 3,
+  "trials": 7,
+  "iterations": 10,
+  "rounds": 3,
+  "commands": [
+    [
+      "/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig",
+      "build",
+      "test"
+    ],
+    [
+      "/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig",
+      "build",
+      "test",
+      "inspect-build",
+      "gguf-bench-build",
+      "-Doptimize=ReleaseFast"
+    ],
+    [
+      "/home/USER/projects/zerv/zig-out/bin/zerv-inspect",
+      "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf"
+    ],
+    [
+      "/home/USER/projects/zerv/zig-out/bin/zerv-gguf-bench",
+      "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf"
+    ],
+    [
+      "/usr/bin/python3",
+      "/home/USER/projects/zerv/bench/run_gguf.py",
+      "--reference-worker",
+      "--model",
+      "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+      "--library",
+      "/usr/lib/libggml-base.so.0.24.0"
+    ],
+    [
+      "/usr/bin/python3",
+      "/home/USER/projects/zerv/bench/run_gguf.py",
+      "--reference-worker",
+      "--model",
+      "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+      "--library",
+      "/usr/lib/libggml-base.so.0.24.0"
+    ],
+    [
+      "/home/USER/projects/zerv/zig-out/bin/zerv-gguf-bench",
+      "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf"
+    ],
+    [
+      "/home/USER/projects/zerv/zig-out/bin/zerv-gguf-bench",
+      "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf"
+    ],
+    [
+      "/usr/bin/python3",
+      "/home/USER/projects/zerv/bench/run_gguf.py",
+      "--reference-worker",
+      "--model",
+      "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+      "--library",
+      "/usr/lib/libggml-base.so.0.24.0"
+    ],
+    [
+      "/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig",
+      "version"
+    ]
+  ],
+  "sources": {
+    "bench/gguf.zig": "416964722ba3b53c50e27795954c648c2f17ede752ab44f028f4198434e7c8d5",
+    "bench/run_gguf.py": "78f9f0d43d3f964ddc8f3b52532c8a354af7116c628d7a2da770fd53b2719f86",
+    "build.zig": "f2bf5422ab5ce62e4cc55ae27676b232c7ba1ad81328f6c17c7f0f72ba9da858",
+    "src/artifact/gguf.zig": "59ff8b537e841db7b2386352d59f8fdb0bee7614c9705328004ebf4150713b1e",
+    "src/artifact/mapped_file.zig": "7a5e0ee03bea08de0b9c060f62f55d0261c50d8b7f48e353cc0f225e92721d3b",
+    "src/artifact/root.zig": "cb93880cebe95b5e1e585286b2090faeddb5080b8a6effbed8b272af19e28397",
+    "src/quant.zig": "47c0f6fb2ae4f78f8a22ac72e773c25a518777075de435dc940ed3679cc715cf",
+    "src/root.zig": "5d80012c635615e9852cb4e49f4712d74a0e5d3e25a6bec1bc8a916549fbbfc0",
+    "tests/fixtures/gguf/aligned64.gguf": "0320df301fbd4018ef7b384c6b5fcc017fe882101bd048c7cb3c11653403610f",
+    "tests/fixtures/gguf/default.gguf": "eb0c9d81d3d5fef238d614268737dd40d40f162ebea29ea4b6d32ee846dc3724",
+    "tests/fixtures/gguf/manifest.json": "9d4f7427f26fe4bdf9a267e7119a33912d2bd1c583fc5bb43b543c5352a6d350",
+    "tests/fixtures/gguf/metadata.gguf": "845ed06c19ad9cb6c9cc9678854b08bc6d79b2f09216629fe40387aed586fc3b",
+    "tests/gguf.zig": "ee5768d4cd54c9bb4a56046b88d6e3bf8c15b3e8c5eb4b786e745961edeefbec",
+    "tests/reference/gguf_oracle.py": "3c3287822ea108828ed91b0b6474c7a7b178825be29f62e2a781fba74801262a",
+    "tests/root.zig": "6180dd5162411018c80865dfa796f54c7d24062f8e332934392d0e7f6652e6b0",
+    "tools/inspect.zig": "2e61b556bc170e3a41bac86839b331742c166b66a220506133db1d69f1070526"
+  },
+  "binaries": {
+    "zig-out/bin/zerv-inspect": "95de29737b59c08a50a823679fc967dead2ae2f4a82b233738897f862cc9cf26",
+    "zig-out/bin/zerv-gguf-bench": "f361311c6fe22c69cec154b3077ddeb2c959eb61db0b6dfa31edffc6f7ba6388"
+  },
+  "caveats": [
+    "Warm header/page cache; no weight reads or GPU upload timed.",
+    "Native borrows metadata and validates UTF-8 and complete payload bounds; reference copies metadata.",
+    "Native page_allocator vs reference allocator. Reference ctypes call/getter overhead included."
+  ]
+}

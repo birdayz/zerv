@@ -1,0 +1,31 @@
+#version 450
+// DIAGNOSTIC ONLY: reads every packed-weight uint32 once; not a matvec.
+#ifndef LANES
+#define LANES 256
+#endif
+layout(local_size_x=LANES) in;
+layout(set=0,binding=0,std430) readonly buffer W { uint weights[]; };
+layout(set=0,binding=2,std430) writeonly buffer Y { uint output_values[]; };
+layout(push_constant) uniform Params {
+    uint columns, rows, row_bytes, weight_offset, input_offset, output_offset, groups_x;
+} p;
+shared uint partials[LANES];
+void main() {
+    uint lane=gl_LocalInvocationID.x,row=gl_WorkGroupID.y*p.groups_x+gl_WorkGroupID.x;
+    if (row>=p.rows) return;
+    uint begin=(p.weight_offset+row*p.row_bytes)/4,words=p.row_bytes/4;
+    uvec4 value=uvec4(0);
+    for (uint c=lane*4;c<words;c+=LANES*4) {
+        if(c<words) value.x^=weights[begin+c];
+        if(c+1<words) value.y^=weights[begin+c+1];
+        if(c+2<words) value.z^=weights[begin+c+2];
+        if(c+3<words) value.w^=weights[begin+c+3];
+    }
+    partials[lane]=value.x^value.y^value.z^value.w;
+    barrier();
+    for(uint stride=LANES/2;stride>0;stride>>=1) {
+        if(lane<stride) partials[lane]^=partials[lane+stride];
+        barrier();
+    }
+    if(lane==0) output_values[p.output_offset+row]=partials[0];
+}

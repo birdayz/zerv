@@ -1,0 +1,3682 @@
+{
+  "generator_sha256": "375f46b82c78cced1bd8bfe664191e8142013e4b2f6f17f08ea33158a25446e2",
+  "python": "3.14.7 (main, Aug 10 2026, 07:46:56) [GCC 16.1.1 20260728]",
+  "packages": {
+    "Jinja2": {
+      "version": "3.1.6",
+      "files": {
+        "jinja2/__init__.py": "c717a93bd8bb0c7b2a910ae004476e2ed7e8cf6402b93ebf81b2f85d237585b5",
+        "jinja2/_identifier.py": "ff361cb4d2b346a964fe6bab4cd973ae3bb514524bed56bf223aaa77b8a2da55",
+        "jinja2/async_utils.py": "bcaf8f76cba8ace3275929c4913de25094489139d880ed93e8c9c6c43807239a",
+        "jinja2/bccache.py": "821d2ab3daee9675e8d0f857e634c9cb6507cc8f3016743ade8fefc3b9e1cd18",
+        "jinja2/compiler.py": "f51a42425e57f3c0479652623ec1cf876f791e1d2e029bf0149350baeb542de3",
+        "jinja2/constants.py": "18ca05c9d045fe476969128fa0ce5c97932f8aab9544b57266d7e9e7ed7a8e0d",
+        "jinja2/debug.py": "0a71ea0831ddf81546bed8bff19b13a259d7361037102b18fba9ffda9c14f07c",
+        "jinja2/defaults.py": "6e805c4b0efc87e969db461b697489b2a900236b8dfe60ff4ed0b27697aae705",
+        "jinja2/environment.py": "f6786b3fb0a1f8d6c65f4d30bf2af8cb2fae84d1ead8e09ceb48201ab9e2fdf9",
+        "jinja2/exceptions.py": "8a81de1eb5b009635a5d7d629c798755b96f73885a3bb017b230a9dc67d6bf1d",
+        "jinja2/ext.py": "e4f1797877e1f265c02315c71d1076c576d7a218bca44de71d23b16baeae4bb1",
+        "jinja2/filters.py": "3d0fc481df67f634a0b671906321782b98f69d8c21508ba584f9f28a691dafe9",
+        "jinja2/idtracking.py": "fa5979948a7bde930bdc4ad46222098fbb5d996c5c1ff2250efdf203f862658a",
+        "jinja2/lexer.py": "2d88988a8e9bafe4dea7d9cf72ea565ec3c4b6396ec37a75994fa534155151f9",
+        "jinja2/loaders.py": "c08ae7c63bdc6ea8795705b6f0d4a47e8b620eaf2a342c4839215b1948922c1e",
+        "jinja2/meta.py": "3930cf91a16f5361e0bf1fba6a4cfbd79e05f012166919af25c045bf0a291f0c",
+        "jinja2/nativetypes.py": "ec620600b54981dc8bf34a1925d4146947f04ade6ada549265b5edd1d35ffcce",
+        "jinja2/nodes.py": "9b50eecdcafaaa1648f0943a57226050d8a78c07f96d0ce28d29839ccb2f531f",
+        "jinja2/optimizer.py": "ac99c246543ba59b04126321b100e00bfa4ac831f13f94cf4bacd53c6b2072ef",
+        "jinja2/parser.py": "94b385cb7b0498773921a1074621f5b1056721dda6a14433872789653b5d637d",
+        "jinja2/runtime.py": "80393e1af76b8895ea82c19b1e0adc2933f4629eb33d7ce1ceb2290851f78c05",
+        "jinja2/sandbox.py": "330d9a8ad958d88f256bb15885c5f6606f41b5461c2e70f41a1ddddbd7035ab6",
+        "jinja2/tests.py": "54bb018551675a0f8fc52073d4c8519cd5a03f5a2f5e4de778ed452d031e0bd4",
+        "jinja2/utils.py": "ad1a77a3d7bb64a4b87f2ad645b10bc8b729b8655315c9e8a1a39ad6ac7f1489",
+        "jinja2/visitor.py": "11c9cbd4f2307ffe1154238cc6c44db91f005c76d2d6a7c074c384da780a273e"
+      }
+    },
+    "MarkupSafe": {
+      "version": "3.0.3",
+      "files": {
+        "markupsafe/__init__.py": "bb57cb70d0b1d0ff04ecb4facf73977fa8a99d29a09ba69e7e77b9cbe77ba38d",
+        "markupsafe/_native.py": "8522ecf099b3e5aa9acae7a780927791d4f93f0369056a4aae6412762a67742f",
+        "markupsafe/_speedups.cpython-314-x86_64-linux-gnu.so": "42f5ffea884b792945916750154d1f91f94b6a1e72f1c87367379af5e45696c9"
+      }
+    }
+  },
+  "config_sha256": "b11349aafa7cdc6a320767cf7ceb29ed82f7eda5d65e8e0819e76f0ce947bf27",
+  "official_template_sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041",
+  "publisher_template_sha256": "12827f24b742ea4e80cdc12dbcf9622227056b9f797252a3149263d4f9aaadce",
+  "cases": [
+    {
+      "name": "defaults",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {},
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "system-True-xhigh-None",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "reasoning_effort": "xhigh"
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "system-True-xhigh-",
+      "messages": [
+        {
+          "role": "system",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "reasoning_effort": "xhigh"
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "system-True-xhigh- You are helpful. ",
+      "messages": [
+        {
+          "role": "system",
+          "content": " You are helpful. "
+        },
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "reasoning_effort": "xhigh"
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\nYou are helpful.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\nYou are helpful.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "system-True-medium-None",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "reasoning_effort": "medium"
+      },
+      "official": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "system-True-medium-",
+      "messages": [
+        {
+          "role": "system",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "reasoning_effort": "medium"
+      },
+      "official": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "system-True-medium- You are helpful. ",
+      "messages": [
+        {
+          "role": "system",
+          "content": " You are helpful. "
+        },
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "reasoning_effort": "medium"
+      },
+      "official": {
+        "output": "<|im_start|>system\nYou are helpful.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nYou are helpful.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "system-True-low-None",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "reasoning_effort": "low"
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "system-True-low-",
+      "messages": [
+        {
+          "role": "system",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "reasoning_effort": "low"
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "system-True-low- You are helpful. ",
+      "messages": [
+        {
+          "role": "system",
+          "content": " You are helpful. "
+        },
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "reasoning_effort": "low"
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.\n\nYou are helpful.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.\n\nYou are helpful.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "system-False-xhigh-None",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "reasoning_effort": "xhigh"
+      },
+      "official": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "system-False-xhigh-",
+      "messages": [
+        {
+          "role": "system",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "reasoning_effort": "xhigh"
+      },
+      "official": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "system-False-xhigh- You are helpful. ",
+      "messages": [
+        {
+          "role": "system",
+          "content": " You are helpful. "
+        },
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "reasoning_effort": "xhigh"
+      },
+      "official": {
+        "output": "<|im_start|>system\nYou are helpful.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nYou are helpful.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "system-False-medium-None",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "reasoning_effort": "medium"
+      },
+      "official": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "system-False-medium-",
+      "messages": [
+        {
+          "role": "system",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "reasoning_effort": "medium"
+      },
+      "official": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "system-False-medium- You are helpful. ",
+      "messages": [
+        {
+          "role": "system",
+          "content": " You are helpful. "
+        },
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "reasoning_effort": "medium"
+      },
+      "official": {
+        "output": "<|im_start|>system\nYou are helpful.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nYou are helpful.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "system-False-low-None",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "reasoning_effort": "low"
+      },
+      "official": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "system-False-low-",
+      "messages": [
+        {
+          "role": "system",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "reasoning_effort": "low"
+      },
+      "official": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "system-False-low- You are helpful. ",
+      "messages": [
+        {
+          "role": "system",
+          "content": " You are helpful. "
+        },
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "reasoning_effort": "low"
+      },
+      "official": {
+        "output": "<|im_start|>system\nYou are helpful.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nYou are helpful.<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "history-True-True-True",
+      "messages": [
+        {
+          "role": "system",
+          "content": " S "
+        },
+        {
+          "role": "user",
+          "content": "first"
+        },
+        {
+          "role": "assistant",
+          "content": " one ",
+          "reasoning_content": " thought one "
+        },
+        {
+          "role": "user",
+          "content": "second"
+        },
+        {
+          "role": "assistant",
+          "content": " two ",
+          "reasoning_content": " thought two "
+        }
+      ],
+      "options": {
+        "preserve_thinking": true,
+        "enable_thinking": true,
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\n<think>\nthought one\n</think>\n\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\n<think>\nthought one\n</think>\n\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "history-True-True-False",
+      "messages": [
+        {
+          "role": "system",
+          "content": " S "
+        },
+        {
+          "role": "user",
+          "content": "first"
+        },
+        {
+          "role": "assistant",
+          "content": " one ",
+          "reasoning_content": " thought one "
+        },
+        {
+          "role": "user",
+          "content": "second"
+        },
+        {
+          "role": "assistant",
+          "content": " two ",
+          "reasoning_content": " thought two "
+        }
+      ],
+      "options": {
+        "preserve_thinking": true,
+        "enable_thinking": true,
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\n<think>\nthought one\n</think>\n\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\n<think>\nthought one\n</think>\n\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n"
+      }
+    },
+    {
+      "name": "history-True-False-True",
+      "messages": [
+        {
+          "role": "system",
+          "content": " S "
+        },
+        {
+          "role": "user",
+          "content": "first"
+        },
+        {
+          "role": "assistant",
+          "content": " one ",
+          "reasoning_content": " thought one "
+        },
+        {
+          "role": "user",
+          "content": "second"
+        },
+        {
+          "role": "assistant",
+          "content": " two ",
+          "reasoning_content": " thought two "
+        }
+      ],
+      "options": {
+        "preserve_thinking": true,
+        "enable_thinking": false,
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\n<think>\nthought one\n</think>\n\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\n<think>\nthought one\n</think>\n\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "history-True-False-False",
+      "messages": [
+        {
+          "role": "system",
+          "content": " S "
+        },
+        {
+          "role": "user",
+          "content": "first"
+        },
+        {
+          "role": "assistant",
+          "content": " one ",
+          "reasoning_content": " thought one "
+        },
+        {
+          "role": "user",
+          "content": "second"
+        },
+        {
+          "role": "assistant",
+          "content": " two ",
+          "reasoning_content": " thought two "
+        }
+      ],
+      "options": {
+        "preserve_thinking": true,
+        "enable_thinking": false,
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\n<think>\nthought one\n</think>\n\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\n<think>\nthought one\n</think>\n\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n"
+      }
+    },
+    {
+      "name": "history-False-True-True",
+      "messages": [
+        {
+          "role": "system",
+          "content": " S "
+        },
+        {
+          "role": "user",
+          "content": "first"
+        },
+        {
+          "role": "assistant",
+          "content": " one ",
+          "reasoning_content": " thought one "
+        },
+        {
+          "role": "user",
+          "content": "second"
+        },
+        {
+          "role": "assistant",
+          "content": " two ",
+          "reasoning_content": " thought two "
+        }
+      ],
+      "options": {
+        "preserve_thinking": false,
+        "enable_thinking": true,
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "history-False-True-False",
+      "messages": [
+        {
+          "role": "system",
+          "content": " S "
+        },
+        {
+          "role": "user",
+          "content": "first"
+        },
+        {
+          "role": "assistant",
+          "content": " one ",
+          "reasoning_content": " thought one "
+        },
+        {
+          "role": "user",
+          "content": "second"
+        },
+        {
+          "role": "assistant",
+          "content": " two ",
+          "reasoning_content": " thought two "
+        }
+      ],
+      "options": {
+        "preserve_thinking": false,
+        "enable_thinking": true,
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n"
+      }
+    },
+    {
+      "name": "history-False-False-True",
+      "messages": [
+        {
+          "role": "system",
+          "content": " S "
+        },
+        {
+          "role": "user",
+          "content": "first"
+        },
+        {
+          "role": "assistant",
+          "content": " one ",
+          "reasoning_content": " thought one "
+        },
+        {
+          "role": "user",
+          "content": "second"
+        },
+        {
+          "role": "assistant",
+          "content": " two ",
+          "reasoning_content": " thought two "
+        }
+      ],
+      "options": {
+        "preserve_thinking": false,
+        "enable_thinking": false,
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "history-False-False-False",
+      "messages": [
+        {
+          "role": "system",
+          "content": " S "
+        },
+        {
+          "role": "user",
+          "content": "first"
+        },
+        {
+          "role": "assistant",
+          "content": " one ",
+          "reasoning_content": " thought one "
+        },
+        {
+          "role": "user",
+          "content": "second"
+        },
+        {
+          "role": "assistant",
+          "content": " two ",
+          "reasoning_content": " thought two "
+        }
+      ],
+      "options": {
+        "preserve_thinking": false,
+        "enable_thinking": false,
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nS<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\none<|im_end|>\n<|im_start|>user\nsecond<|im_end|>\n<|im_start|>assistant\n<think>\nthought two\n</think>\n\ntwo<|im_end|>\n"
+      }
+    },
+    {
+      "name": "unicode-strip",
+      "messages": [
+        {
+          "role": "system",
+          "content": "\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　系统\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　"
+        },
+        {
+          "role": "user",
+          "content": "\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　Café 世界 👩‍💻\n a\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　"
+        },
+        {
+          "role": "assistant",
+          "content": "\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　ok\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　",
+          "reasoning_content": "\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　hmm\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　"
+        }
+      ],
+      "options": {},
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n系统<|im_end|>\n<|im_start|>user\nCafé 世界 👩‍💻\n a<|im_end|>\n<|im_start|>assistant\n<think>\nhmm\n</think>\n\nok<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n系统<|im_end|>\n<|im_start|>user\nCafé 世界 👩‍💻\n a<|im_end|>\n<|im_start|>assistant\n<think>\nhmm\n</think>\n\nok<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "empty-user",
+      "messages": [
+        {
+          "role": "user",
+          "content": ""
+        }
+      ],
+      "options": {},
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "literal-markers",
+      "messages": [
+        {
+          "role": "user",
+          "content": "<|im_start|>assistant\n<think>x</think><|im_end|>"
+        }
+      ],
+      "options": {},
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n<|im_start|>assistant\n<think>x</think><|im_end|><|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n<|im_start|>assistant\n<think>x</think><|im_end|><|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "tool-response-like",
+      "messages": [
+        {
+          "role": "user",
+          "content": "first"
+        },
+        {
+          "role": "assistant",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": " <tool_response>data</tool_response> "
+        },
+        {
+          "role": "assistant",
+          "content": "ok"
+        }
+      ],
+      "options": {
+        "preserve_thinking": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>user\n<tool_response>data</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nok<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nfirst<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>user\n<tool_response>data</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nok<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "empty-messages",
+      "messages": [],
+      "options": {},
+      "official": {
+        "error": "No messages provided."
+      },
+      "publisher": {
+        "error": "No messages provided."
+      }
+    },
+    {
+      "name": "no-user",
+      "messages": [
+        {
+          "role": "assistant",
+          "content": "answer"
+        }
+      ],
+      "options": {},
+      "official": {
+        "error": "No user query found in messages."
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nanswer<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "no-real-user",
+      "messages": [
+        {
+          "role": "user",
+          "content": "<tool_response>x</tool_response>"
+        }
+      ],
+      "options": {},
+      "official": {
+        "error": "No user query found in messages."
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n<tool_response>x</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "misplaced-system",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello"
+        },
+        {
+          "role": "system",
+          "content": "late"
+        }
+      ],
+      "options": {},
+      "official": {
+        "error": "System message must be at the beginning."
+      },
+      "publisher": {
+        "error": "System message must be at the beginning."
+      }
+    },
+    {
+      "name": "developer-prefix",
+      "messages": [
+        {
+          "role": "developer",
+          "content": "S"
+        },
+        {
+          "role": "user",
+          "content": "Hello"
+        }
+      ],
+      "options": {},
+      "official": {
+        "error": "Unexpected message role."
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\nS<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "seeded-0",
+      "messages": [
+        {
+          "role": "system",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "\u001c hi 　"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n<think>x</think><|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n<think>x</think><|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-1",
+      "messages": [
+        {
+          "role": "system",
+          "content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "ά"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "<think>x</think>"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "low",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-2",
+      "messages": [
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "a"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n你好<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n你好<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-3",
+      "messages": [
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "\n  \n"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\na<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\na<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-4",
+      "messages": [
+        {
+          "role": "system",
+          "content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "a"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>x</think><|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>x</think><|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-5",
+      "messages": [
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "\n  \n"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\nά<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nά<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\nά<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nά<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-6",
+      "messages": [
+        {
+          "role": "system",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "ά"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nhi<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\nά<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nhi<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\nά<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-7",
+      "messages": [
+        {
+          "role": "system",
+          "content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": ""
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "low",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\n你好<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\na<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\na<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\n你好<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\na<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\na<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-8",
+      "messages": [
+        {
+          "role": "system",
+          "content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "\u001c hi 　"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n你好<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n你好<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-9",
+      "messages": [
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "<think>x</think>"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\nhi<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\nhi<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\nhi<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\nhi<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-10",
+      "messages": [
+        {
+          "role": "system",
+          "content": "ά"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "\n  \n"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": false,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\nά<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\nά<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-11",
+      "messages": [
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": "ά"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "a"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "low",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n你好<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<think>x</think><|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n你好<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<think>x</think><|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-12",
+      "messages": [
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": ""
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n你好<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n你好<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-13",
+      "messages": [
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "\u001c hi 　"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": false,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "seeded-14",
+      "messages": [
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": ""
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n你好<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\na<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n你好<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\na<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-15",
+      "messages": [
+        {
+          "role": "system",
+          "content": "a"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": "ά"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "low",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.\n\na<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n你好<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.\n\na<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n你好<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-16",
+      "messages": [
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "<think>x</think>"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\na<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\na<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\nhi<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\na<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\na<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\nhi<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-17",
+      "messages": [
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "ά"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-18",
+      "messages": [
+        {
+          "role": "system",
+          "content": "a"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "ά"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "<think>x</think>"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "low",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\na<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\nά<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>x</think><|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\na<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\nά<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>x</think><|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-19",
+      "messages": [
+        {
+          "role": "system",
+          "content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": ""
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "low",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-20",
+      "messages": [
+        {
+          "role": "system",
+          "content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": "ά"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": "<think>x</think>"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\n你好<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n你好<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\nά<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\n你好<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n你好<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\nά<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-21",
+      "messages": [
+        {
+          "role": "system",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "\n  \n"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\n<think>x</think><|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\n<think>x</think><|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-22",
+      "messages": [
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "\n  \n"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-23",
+      "messages": [
+        {
+          "role": "system",
+          "content": "a"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": ""
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\na<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\na<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-24",
+      "messages": [
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": ""
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-25",
+      "messages": [
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "<think>x</think>"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "low",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>x</think><|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>x</think><|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>x</think><|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>x</think><|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-26",
+      "messages": [
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "a"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "low",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\na<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\nhi<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\na<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\nhi<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-27",
+      "messages": [
+        {
+          "role": "system",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "\u001c hi 　"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\n<think>x</think><|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>x</think><|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<think>x</think><|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\n<think>x</think><|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>x</think><|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<think>x</think><|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-28",
+      "messages": [
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "ά"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "ά"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "a"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>x</think><|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>x</think><|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-29",
+      "messages": [
+        {
+          "role": "system",
+          "content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "\n  \n"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "low",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-30",
+      "messages": [
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "<think>x</think>"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": false,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "seeded-31",
+      "messages": [
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "你好"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "low",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\nά<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\nά<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-32",
+      "messages": [
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": ""
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-33",
+      "messages": [
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": ""
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": false,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\na<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\na<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-34",
+      "messages": [
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": ""
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "seeded-35",
+      "messages": [
+        {
+          "role": "system",
+          "content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": ""
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "seeded-36",
+      "messages": [
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "a"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "low",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n你好<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n你好<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "seeded-37",
+      "messages": [
+        {
+          "role": "system",
+          "content": "a"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "\u001c hi 　"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\na<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\na<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\na<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\na<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-38",
+      "messages": [
+        {
+          "role": "system",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "ά"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "ά"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "low",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\nhi<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\nά<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\nhi<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\nhi<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\nά<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\nhi<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-39",
+      "messages": [
+        {
+          "role": "system",
+          "content": "ά"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "ά"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nά<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\n你好<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\nά<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\na<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nά<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\n你好<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\nά<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\na<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-40",
+      "messages": [
+        {
+          "role": "system",
+          "content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "ά"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\n你好<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n你好<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\n你好<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n你好<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-41",
+      "messages": [
+        {
+          "role": "system",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "\n  \n"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\nhi<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\nά<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nhi<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\nά<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-42",
+      "messages": [
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "a"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>x</think><|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\nά<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>x</think><|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\nά<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-43",
+      "messages": [
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "<think>x</think>"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-44",
+      "messages": [
+        {
+          "role": "system",
+          "content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "<think>x</think>"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\n你好<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n<think>x</think><|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\n你好<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n<think>x</think><|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-45",
+      "messages": [
+        {
+          "role": "system",
+          "content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": "ά"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": ""
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "low",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n你好<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\n<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n你好<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n你好<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\n<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n你好<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-46",
+      "messages": [
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "a"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\nά<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\nά<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-47",
+      "messages": [
+        {
+          "role": "system",
+          "content": "a"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "\u001c hi 　"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\na<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\na<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\na<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\na<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-48",
+      "messages": [
+        {
+          "role": "system",
+          "content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": ""
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": ""
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\n<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\n<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-49",
+      "messages": [
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "你好"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\nά<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\nά<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "seeded-50",
+      "messages": [
+        {
+          "role": "system",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "\u001c hi 　"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-51",
+      "messages": [
+        {
+          "role": "system",
+          "content": "a"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "a"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": false,
+        "reasoning_effort": "low",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.\n\na<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.\n\na<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-52",
+      "messages": [
+        {
+          "role": "system",
+          "content": "a"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "a"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\na<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\na<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\na<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\na<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-53",
+      "messages": [
+        {
+          "role": "system",
+          "content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": ""
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": false,
+        "reasoning_effort": "low",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\n你好<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\n你好<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-54",
+      "messages": [
+        {
+          "role": "system",
+          "content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "你好"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n你好<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n你好<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "seeded-55",
+      "messages": [
+        {
+          "role": "system",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "\n  \n"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": false,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-56",
+      "messages": [
+        {
+          "role": "system",
+          "content": "ά"
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "ά"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "low",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\nά<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nά<|im_end|>\n<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-57",
+      "messages": [
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "<think>x</think>",
+          "reasoning_content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "你好"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": ""
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n你好<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\nhi<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n你好<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<think>x</think><|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n你好\n</think>\n\nhi<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "seeded-58",
+      "messages": [
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "ά"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "\u001c hi 　"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "ά"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": false,
+        "reasoning_effort": "low",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\nά<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\nά<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.<|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\nά<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\nά<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "seeded-59",
+      "messages": [
+        {
+          "role": "system",
+          "content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "ά"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "ά"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "xhigh",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\n你好<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\nhi<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\n你好<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\nhi<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\nά\n</think>\n\n<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+      }
+    },
+    {
+      "name": "seeded-60",
+      "messages": [
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "你好",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "a"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "\u001c hi 　"
+        }
+      ],
+      "options": {
+        "enable_thinking": false,
+        "preserve_thinking": true,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n你好<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\nhi<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n你好<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\nhi<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\na\n</think>\n\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<think>\nhi\n</think>\n\n<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-61",
+      "messages": [
+        {
+          "role": "system",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": "<think>x</think>"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "<think>x</think>"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\nά<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>user\n<think>x</think><|im_end|>\n<|im_start|>assistant\n<think>\n<think>x</think>\n</think>\n\nά<|im_end|>\n"
+      }
+    },
+    {
+      "name": "seeded-62",
+      "messages": [
+        {
+          "role": "system",
+          "content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "\n  \n",
+          "reasoning_content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "a",
+          "reasoning_content": "<think>x</think>"
+        },
+        {
+          "role": "user",
+          "content": ""
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_content": "ά"
+        },
+        {
+          "role": "user",
+          "content": "ά"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "\n  \n"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": false,
+        "reasoning_effort": "medium",
+        "add_generation_prompt": true
+      },
+      "official": {
+        "output": "<|im_start|>system\n你好<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\n你好<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\na<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\n<|im_end|>\n<|im_start|>user\nά<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n"
+      }
+    },
+    {
+      "name": "seeded-63",
+      "messages": [
+        {
+          "role": "system",
+          "content": "ά"
+        },
+        {
+          "role": "user",
+          "content": "\u001c hi 　"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "你好"
+        },
+        {
+          "role": "user",
+          "content": "\n  \n"
+        },
+        {
+          "role": "assistant",
+          "content": "\u001c hi 　",
+          "reasoning_content": "\n  \n"
+        },
+        {
+          "role": "user",
+          "content": "你好"
+        },
+        {
+          "role": "assistant",
+          "content": "ά",
+          "reasoning_content": "\n  \n"
+        }
+      ],
+      "options": {
+        "enable_thinking": true,
+        "preserve_thinking": false,
+        "reasoning_effort": "low",
+        "add_generation_prompt": false
+      },
+      "official": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.\n\nά<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nά<|im_end|>\n"
+      },
+      "publisher": {
+        "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.\n\nά<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\n<|im_end|>\n<|im_start|>assistant\nhi<|im_end|>\n<|im_start|>user\n你好<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nά<|im_end|>\n"
+      }
+    }
+  ]
+}

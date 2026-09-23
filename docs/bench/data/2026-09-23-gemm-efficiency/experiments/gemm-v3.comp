@@ -1,0 +1,152 @@
+#version 450
+// EXPERIMENT (block 13h): Q4_0 GEMM, same arithmetic and order as src/model/gemm.comp
+// (a = fma(d, float(q), -8d); part = fma chain over each 32-k block in k order;
+// total += part per block), with a 16-k LDS tile (16 KiB per workgroup instead of 32,
+// for occupancy), aligned block loads prefetched one tile ahead, and X loaded one kb
+// ahead in a non-unrolled kb loop. Quant only (K multiple of 32). V3_BK = 16 or 32.
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#define TM 4
+#ifndef V3_XW
+#define V3_XW 8
+#endif
+#define XW V3_XW
+#ifndef V3_WAVES
+#define V3_WAVES 4
+#endif
+#define WAVES V3_WAVES
+#define BM 256
+#define BN (WAVES*XW)
+#ifndef V3_BK
+#define V3_BK 16
+#endif
+#define BK V3_BK
+layout(local_size_x=64*WAVES) in;
+layout(set=0,binding=0,std430) readonly buffer A { uint aw[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=2,std430) readonly buffer Io { uint io[]; };
+layout(set=0,binding=3,std430) readonly restrict buffer ActX { vec4 xin4[]; };
+layout(set=0,binding=3,std430) readonly restrict buffer ActX2 { vec2 xin2[]; };
+layout(push_constant) uniform P {
+    uint a_base, a_rs, a_cs, a_bs, a_group;
+    uint x_base, x_rs, x_bs;
+    uint y_base, y_rs, y_bs;
+    uint m, k;
+    uint flags;
+    uint k_chunk;
+} p;
+#define IO_COUNT 2
+shared vec4 As[BK][BM/4];
+void put_a(uint kk, uint mm, float v) { As[kk][mm>>2][mm&3]=v; }
+
+struct Raw { uint w0, w1, w2, w3, w4; };
+Raw load_block(uint b) {
+    uint wb=b>>2u;
+    Raw r; r.w0=aw[wb]; r.w1=aw[wb+1u]; r.w2=aw[wb+2u]; r.w3=aw[wb+3u]; r.w4=aw[wb+4u];
+    return r;
+}
+
+void main() {
+    uint tid=gl_LocalInvocationID.x, z=gl_WorkGroupID.z;
+    uint n=io[IO_COUNT];
+    uint M=p.m, K=p.k;
+    uint m0=gl_WorkGroupID.x*BM, t0=gl_WorkGroupID.y*BN;
+    if (m0>=M || t0>=n) return;
+    uint batch=p.k_chunk!=0u ? 0u : z;
+    uint k_begin=p.k_chunk!=0u ? z*p.k_chunk : 0u;
+    uint k_end=p.k_chunk!=0u ? min(K,k_begin+p.k_chunk) : K;
+    uint abase=p.a_base+(batch/p.a_group)*p.a_bs;
+    uint xbase=p.x_base+batch*p.x_bs;
+    uint lane=tid%64u, trow=t0+XW*subgroupBroadcastFirst(tid/64u);
+    // Loader: BM rows over 64*WAVES threads (WAVES 4: a whole block per thread;
+    // WAVES 8: two threads per row, low and high nibbles).
+    uint lrow=m0+tid/(WAVES/4u);
+    bool live=lrow<M;
+    uint rb=abase+min(lrow,M-1u)*p.a_rs;
+    uint xrow[XW];
+    [[unroll]] for (uint j=0;j<XW;j++) xrow[j]=(xbase+min(trow+j,n-1u)*p.x_rs)/4u;
+    float total[TM][XW], part[TM][XW];
+    [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<XW;j++) { total[i][j]=0.0; part[i][j]=0.0; }
+    Raw raw=load_block(rb+(k_begin/32u)*18u);
+    for (uint k0=k_begin;k0<k_end;k0+=BK) {
+        uint b=rb+(k0/32u)*18u;
+        bool odd=(b&2u)!=0u;
+        float d=live ? unpackHalf2x16(odd ? raw.w0>>16u : raw.w0).x : 0.0;
+        float c=-8.0*d;
+        uint qw[4]=uint[4](odd ? raw.w1 : (raw.w0>>16u)|(raw.w1<<16u), odd ? raw.w2 : (raw.w1>>16u)|(raw.w2<<16u),
+                           odd ? raw.w3 : (raw.w2>>16u)|(raw.w3<<16u), odd ? raw.w4 : (raw.w3>>16u)|(raw.w4<<16u));
+#if BK==16
+        // k0 % 32 == 0: low nibbles (k = byte index); == 16: high nibbles.
+        uint sh=(k0%32u)!=0u ? 4u : 0u;
+        [[unroll]] for (uint w=0;w<4;w++) [[unroll]] for (uint e=0;e<4;e++)
+            put_a(w*4u+e,tid,fma(d,float((qw[w]>>(8u*e+sh))&15u),c));
+#elif WAVES==16
+        {
+            // Four threads per row: quarter q holds k 8q..8q+7 = nibbles (q/2) of
+            // payload bytes 8(q%2)..8(q%2)+7.
+            uint q=tid%4u, lr=tid/4u, sh=(q/2u)*4u;
+            [[unroll]] for (uint w=0;w<2;w++) [[unroll]] for (uint e=0;e<4;e++)
+                put_a(q*8u+w*4u+e,lr,fma(d,float((qw[(q%2u)*2u+w]>>(8u*e+sh))&15u),c));
+        }
+#elif WAVES==8
+        {
+            uint half_k=(tid%2u)*16u, sh=(tid%2u)*4u, lr=tid/2u;
+            [[unroll]] for (uint w=0;w<4;w++) [[unroll]] for (uint e=0;e<4;e++)
+                put_a(half_k+w*4u+e,lr,fma(d,float((qw[w]>>(8u*e+sh))&15u),c));
+        }
+#else
+        [[unroll]] for (uint w=0;w<4;w++) [[unroll]] for (uint e=0;e<4;e++) {
+            put_a(w*4u+e,tid,fma(d,float((qw[w]>>(8u*e))&15u),c));
+            put_a(w*4u+e+16u,tid,fma(d,float((qw[w]>>(8u*e+4u))&15u),c));
+        }
+#endif
+        barrier();
+        // Next tile's block (the same block for the second half of a 32-k block).
+        uint kn=min(k0+BK,k_end-BK);
+        raw=load_block(rb+(kn/32u)*18u);
+#if V3_X2
+        // X two k at a time (XW rows x vec2), the next pair loaded first.
+        vec2 xv[XW];
+        [[unroll]] for (uint j=0;j<XW;j++) xv[j]=xin2[xrow[j]*2u+k0/2u];
+        [[dont_unroll]] for (uint kp=0;kp<BK/2;kp++) {
+            vec2 xn[XW];
+            uint nb=k0/2u+min(kp+1u,BK/2u-1u);
+            [[unroll]] for (uint j=0;j<XW;j++) xn[j]=xin2[xrow[j]*2u+nb];
+            [[unroll]] for (uint kq=0;kq<2;kq++) {
+                vec4 a=As[kp*2u+kq][lane];
+                [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<XW;j++)
+                    part[i][j]=fma(a[i],xv[j][kq],part[i][j]);
+            }
+            [[unroll]] for (uint j=0;j<XW;j++) xv[j]=xn[j];
+        }
+#else
+        vec4 xv[XW];
+        [[unroll]] for (uint j=0;j<XW;j++) xv[j]=xin4[xrow[j]+k0/4u];
+        [[dont_unroll]] for (uint kb=0;kb<BK/4;kb++) {
+            vec4 xn[XW];
+            uint nb=k0/4u+min(kb+1u,BK/4u-1u);
+            [[unroll]] for (uint j=0;j<XW;j++) xn[j]=xin4[xrow[j]+nb];
+            [[unroll]] for (uint kq=0;kq<4;kq++) {
+                vec4 a=As[kb*4u+kq][lane];
+                [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<XW;j++)
+                    part[i][j]=fma(a[i],xv[j][kq],part[i][j]);
+            }
+            [[unroll]] for (uint j=0;j<XW;j++) xv[j]=xn[j];
+        }
+#endif
+        if ((k0+BK)%32u==0u) {
+            [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<XW;j++) { total[i][j]+=part[i][j]; part[i][j]=0.0; }
+        }
+        barrier();
+    }
+    uint ybase=p.y_base+z*p.y_bs;
+    [[unroll]] for (uint j=0;j<XW;j++) {
+        uint t=trow+j;
+        if (t>=n) continue;
+        [[unroll]] for (uint i=0;i<TM;i++) {
+            uint mm=m0+TM*lane+i;
+            if (mm<M) act[ybase+t*p.y_rs+mm]=total[i][j];
+        }
+    }
+}

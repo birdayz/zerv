@@ -1,0 +1,219 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : require
+// Tiled FP32 GEMM for batched prefill: Y[z][t][m] = sum_k X[z][t][k] * A[z/group][m][k].
+// A: quantized weight rows (k-contiguous, exact decode) or FP32 with arbitrary strides.
+// X, Y: FP32 in the activation arena. Row count n (tokens) and optionally M or K come
+// from the io block at run time. Rows t >= n are neither read meaningfully nor written.
+// FORMAT: 0 F32 (A_MCONTIG selects the coalesced loader), 2 Q4_0, 3 Q4_1, 13 Q5_K, 14 Q6_K.
+// 256 threads as TX (along M) x 256/TX (along N), each owning a TM x TN output block.
+// Per output element the accumulation order depends only on BK and the K range (split),
+// never on the tile shape: part = sum over one 32-wide K tile in k order, total += part.
+#ifndef TM
+#define TM 4
+#endif
+#ifndef TN
+#define TN 4
+#endif
+#ifndef TX
+#define TX 16
+#endif
+#define TY (256/TX)
+#define BM (TX*TM)
+#define BN (TY*TN)
+#define BK 32
+#define VPT (BM*BK/256) // A values loaded per thread per K tile
+layout(local_size_x=256) in;
+layout(set=0,binding=0,std430) readonly buffer A { uint aw[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=2,std430) readonly buffer Io { uint io[]; };
+layout(push_constant) uniform P {
+    uint a_base;  // quant: byte offset of row 0; F32: word offset
+    uint a_rs;    // quant: row bytes; F32: word stride between m
+    uint a_cs;    // F32: word stride between k
+    uint a_bs;    // stride per A batch (bytes for quant, words for F32)
+    uint a_group; // A batch = z / a_group
+    uint x_base, x_rs, x_bs; // words (k stride 1)
+    uint y_base, y_rs, y_bs; // words (m stride 1)
+    uint m, k;
+    uint flags;   // 1: M = keys, 2: K = keys (keys = io[P0] + io[COUNT])
+    uint k_chunk; // >0: split-K; z = split index, partials at y_base + z*y_bs (batch 0)
+} p;
+#define IO_COUNT 2
+#define IO_P0 3
+
+shared vec4 As[BK][BM/4];
+shared vec4 Xs[BK][BN/4];
+
+uint word_at(uint b) {
+    uint lo=aw[b>>2];
+    if ((b&2)==0) return lo;
+    return (lo>>16)|(aw[(b>>2)+1]<<16);
+}
+float half_at(uint b) { return unpackHalf2x16(aw[b>>2]>>(8*(b&2))).x; }
+void put_a(uint kk, uint mm, float v) { As[kk][mm>>2][mm&3]=v; }
+
+void main() {
+    uint tid=gl_LocalInvocationID.x, z=gl_WorkGroupID.z;
+    uint n=io[IO_COUNT], keys=io[IO_P0]+io[IO_COUNT];
+    uint M=(p.flags&1u)!=0u ? keys : p.m;
+    uint K=(p.flags&2u)!=0u ? keys : p.k;
+    uint m0=gl_WorkGroupID.x*BM, t0=gl_WorkGroupID.y*BN;
+    if (m0>=M || t0>=n) return; // uniform per workgroup
+    uint batch=p.k_chunk!=0u ? 0u : z;
+    uint k_begin=p.k_chunk!=0u ? z*p.k_chunk : 0u;
+    uint k_end=p.k_chunk!=0u ? min(K,k_begin+p.k_chunk) : K;
+    uint abase=p.a_base+(batch/p.a_group)*p.a_bs;
+    uint xbase=p.x_base+batch*p.x_bs;
+    uint tm=tid%TX, tn=tid/TX;
+    float total[TM][TN], part[TM][TN];
+    [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++) total[i][j]=0.0;
+    for (uint k0=k_begin;k0<k_end;k0+=BK) {
+        // ---- A tile: BM rows x BK k ----
+#if FORMAT==0
+        [[unroll]] for (uint r=0;r<VPT;r++) {
+            uint e=tid+256u*r;
+#if A_MCONTIG
+            uint mm=e%BM, kk=e/BM;
+#else
+            uint mm=e/BK, kk=e%BK;
+#endif
+            float v=0.0;
+            if (m0+mm<M && k0+kk<k_end) v=uintBitsToFloat(aw[abase+(m0+mm)*p.a_rs+(k0+kk)*p.a_cs]);
+            put_a(kk,mm,v);
+        }
+#elif ABLATE_NOGLOBAL
+        { uint mm=tid/(BK/VPT), part_k=(tid%(BK/VPT))*VPT; [[unroll]] for (uint e=0;e<VPT;e++) put_a(part_k+e,mm,float(tid+e+k0)); }
+#else
+        {
+            // VPT consecutive values of one row per thread; (BK/VPT) threads per row.
+            uint mm=tid/(BK/VPT), part_k=(tid%(BK/VPT))*VPT;
+            uint row=m0+mm;
+            bool live=row<M;
+            uint rb=abase+min(row,M-1u)*p.a_rs;
+#if FORMAT==2 || FORMAT==3
+            uint b=rb+(k0/32u)*BLOCK_BYTES;
+            float d=live ? half_at(b) : 0.0;
+#if FORMAT==2
+            float c=-8.0*d;
+#else
+            float c=live ? half_at(b+2u) : 0.0;
+#endif
+            // Values part_k..part_k+VPT-1: low nibbles of bytes [part_k/2 ...] for k<16,
+            // high nibbles for k>=16. Each thread covers VPT/2 bytes -> VPT values split
+            // across the low (k=j) and high (k=j+16) halves.
+            [[unroll]] for (uint w=0;w<VPT/8;w++) {
+                uint byte0=(part_k/2u)+w*4u;
+                uint q=live ? word_at(b+PAYLOAD_OFFSET+byte0) : 0u;
+                [[unroll]] for (uint e=0;e<4;e++) {
+                    float lo=float((q>>(8u*e))&15u), hi=float((q>>(8u*e+4u))&15u);
+                    put_a(byte0+e,mm,fma(d,lo,c));
+                    put_a(byte0+e+16u,mm,fma(d,hi,c));
+                }
+            }
+#elif FORMAT==13
+            uint sb=k0/256u, g=(k0%256u)/32u;
+            uint b=rb+sb*176u;
+            float dd=0.0, dm=0.0;
+            if (live) {
+                vec2 globals=unpackHalf2x16(word_at(b));
+                uint sa=word_at(b+4u), sbw=word_at(b+8u), sc=word_at(b+12u);
+                uint shift=(g%4u)*8u;
+                uint scale=(sa>>shift)&63u, minimum=(sbw>>shift)&63u;
+                if (g>=4u) {
+                    scale=((sc>>shift)&15u)|(((sa>>(shift+6u))&3u)<<4u);
+                    minimum=((sc>>(shift+4u))&15u)|(((sbw>>(shift+6u))&3u)<<4u);
+                }
+                dd=globals.x*float(scale); dm=globals.y*float(minimum);
+            }
+            [[unroll]] for (uint w=0;w<VPT/4;w++) {
+                uint lane=part_k+w*4u;
+                uint qs=live ? word_at(b+48u+(g/2u)*32u+lane) : 0u;
+                uint qh=live ? word_at(b+16u+lane) : 0u;
+                [[unroll]] for (uint e=0;e<4;e++) {
+                    uint q=((qs>>(8u*e+4u*(g%2u)))&15u)|(((qh>>(8u*e+g))&1u)<<4u);
+                    put_a(lane+e,mm,fma(dd,float(q),-dm));
+                }
+            }
+#else
+            uint sb=k0/256u, g=(k0%256u)/32u, h=g/4u, gg=g%4u;
+            uint b=rb+sb*210u;
+            float d=live ? half_at(b+208u) : 0.0;
+            [[unroll]] for (uint w=0;w<VPT/4;w++) {
+                uint lane=part_k+w*4u;
+                uint ql=live ? word_at(b+h*64u+(gg%2u)*32u+lane) : 0u;
+                uint qh=live ? word_at(b+128u+h*32u+lane) : 0u;
+                uint sw=live ? word_at(b+192u+h*8u+gg*2u) : 0u; // two signed scales (lanes <16, >=16)
+                [[unroll]] for (uint e=0;e<4;e++) {
+                    uint l=lane+e;
+                    int s=int(((sw>>(8u*(l/16u)))&255u)^128u)-128;
+                    float scale=d*float(s);
+                    uint q=((ql>>(8u*e+4u*(gg/2u)))&15u)|(((qh>>(8u*e+2u*gg))&3u)<<4u);
+                    put_a(l,mm,fma(scale,float(q),-32.0*scale));
+                }
+            }
+#endif
+        }
+#endif
+        // ---- X tile: BN rows x BK k (k-contiguous rows) ----
+        [[unroll]] for (uint r=0;r<BN*BK/256;r++) {
+            uint e=tid+256u*r, tt=e/BK, kk=e%BK;
+            float v=0.0;
+#if ABLATE_NOGLOBAL
+            v=float(e+k0);
+#else
+            if (t0+tt<n && k0+kk<k_end) v=act[xbase+(t0+tt)*p.x_rs+k0+kk];
+#endif
+            Xs[kk][tt>>2][tt&3]=v;
+        }
+        barrier();
+        [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++) part[i][j]=0.0;
+#if ABLATE_LDSONCE
+        vec4 xs0[TN/4], as0[TM/4];
+        [[unroll]] for (uint j4=0;j4<TN/4;j4++) xs0[j4]=Xs[0][tn*(TN/4)+j4];
+        [[unroll]] for (uint i4=0;i4<TM/4;i4++) as0[i4]=As[0][tm*(TM/4)+i4];
+#endif
+        [[unroll]] for (uint kk=0;kk<BK;kk++) {
+            vec4 xs[TN/4];
+#if ABLATE_LDSONCE
+            [[unroll]] for (uint j4=0;j4<TN/4;j4++) xs[j4]=xs0[j4]+float(kk);
+#else
+#if SWIZZLE
+            [[unroll]] for (uint j4=0;j4<TN/4;j4++) xs[j4]=Xs[kk][tn+TY*j4];
+#else
+            [[unroll]] for (uint j4=0;j4<TN/4;j4++) xs[j4]=Xs[kk][tn*(TN/4)+j4];
+#endif
+#endif
+            [[unroll]] for (uint i4=0;i4<TM/4;i4++) {
+#if ABLATE_LDSONCE
+                vec4 a=as0[i4];
+#elif SWIZZLE
+                vec4 a=As[kk][tm+TX*i4];
+#else
+                vec4 a=As[kk][tm*(TM/4)+i4];
+#endif
+                [[unroll]] for (uint j4=0;j4<TN/4;j4++)
+                    [[unroll]] for (uint i=0;i<4;i++) [[unroll]] for (uint j=0;j<4;j++)
+                        part[i4*4+i][j4*4+j]=fma(a[i],xs[j4][j],part[i4*4+i][j4*4+j]);
+            }
+        }
+        [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++) total[i][j]+=part[i][j];
+        barrier();
+    }
+    uint ybase=p.y_base+z*p.y_bs; // batch or split index
+    [[unroll]] for (uint j=0;j<TN;j++) {
+#if SWIZZLE
+        uint t=t0+4u*(tn+TY*(j/4u))+j%4u;
+#else
+        uint t=t0+tn*TN+j;
+#endif
+        if (t>=n) continue;
+        [[unroll]] for (uint i=0;i<TM;i++) {
+#if SWIZZLE
+            uint mm=m0+4u*(tm+TX*(i/4u))+i%4u;
+#else
+            uint mm=m0+tm*TM+i;
+#endif
+            if (mm<M) act[ybase+t*p.y_rs+mm]=total[i][j];
+        }
+    }
+}

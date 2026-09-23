@@ -1,0 +1,212 @@
+{
+  "status": "passed",
+  "started_at": "2026-09-22T17:19:37.740968+00:00",
+  "argv": [
+    "bench/profile_reference_matvec.py",
+    "--output",
+    "docs/bench/data/2026-09-22-matvec-reference-profile"
+  ],
+  "reference_sha256": "528a2464e67154ce96b081d014a4856f44b071a128a5b1c3f650fb5779f255db",
+  "note": "GGML_VK_PERF_LOGGER inserts timestamp writes and extra barriers; its per-op GPU interval is diagnostic, not submit-to-completion time",
+  "checks": [
+    {
+      "case": "q6_k-5120-248320",
+      "command": [
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/gpu-matvec-oracle",
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/q6_k-5120-248320.case",
+        "/home/USER/projects/zerv/third_party/matvec-push/2026-09-22-matvec-reference-profile-q6_k-5120-248320.output",
+        "64"
+      ],
+      "records": 452,
+      "metrics": {
+        "max_abs": 2.8155045583844185e-07,
+        "max_relative": 0.015214128198951134,
+        "max_error_over_sumabs": 9.967267087947631e-09,
+        "normalized_l2": 8.09048100732827e-08,
+        "nonfinite": 0
+      },
+      "output_sha256": "9f0f302d5bcd46f3496c7f0a5ddaa4c4e4abdf03a41aea06963f073bc39f7aac"
+    },
+    {
+      "case": "q4_0-5120-6144",
+      "command": [
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/gpu-matvec-oracle",
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/q4_0-5120-6144.case",
+        "/home/USER/projects/zerv/third_party/matvec-push/2026-09-22-matvec-reference-profile-q4_0-5120-6144.output",
+        "64"
+      ],
+      "records": 452,
+      "metrics": {
+        "max_abs": 3.203749656677246e-07,
+        "max_relative": 0.005980677810151817,
+        "max_error_over_sumabs": 7.619161543653557e-09,
+        "normalized_l2": 8.524644916432604e-08,
+        "nonfinite": 0
+      },
+      "output_sha256": "3d896491bcc897f3ad6dca3e070600f4564c98c88be76376d4db5c2dd986221d"
+    },
+    {
+      "case": "q4_0-5120-10240",
+      "command": [
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/gpu-matvec-oracle",
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/q4_0-5120-10240.case",
+        "/home/USER/projects/zerv/third_party/matvec-push/2026-09-22-matvec-reference-profile-q4_0-5120-10240.output",
+        "64"
+      ],
+      "records": 452,
+      "metrics": {
+        "max_abs": 3.3527612686157227e-07,
+        "max_relative": 0.0005913660555884093,
+        "max_error_over_sumabs": 8.29397147419166e-09,
+        "normalized_l2": 8.483087973538682e-08,
+        "nonfinite": 0
+      },
+      "output_sha256": "2c95798f6523f68015babe50c15bfd6bd9cf63407e68e259bde27ec623ea2d78"
+    },
+    {
+      "case": "q4_1-17408-5120",
+      "command": [
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/gpu-matvec-oracle",
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/q4_1-17408-5120.case",
+        "/home/USER/projects/zerv/third_party/matvec-push/2026-09-22-matvec-reference-profile-q4_1-17408-5120.output",
+        "64"
+      ],
+      "records": 452,
+      "metrics": {
+        "max_abs": 5.029141902923584e-07,
+        "max_relative": 0.0007678013063749763,
+        "max_error_over_sumabs": 5.9285293845576135e-09,
+        "normalized_l2": 1.244008609564967e-07,
+        "nonfinite": 0
+      },
+      "output_sha256": "99112e098c870016e839b1ab6a2fb67bd65b66ccf47c8aa2de6066ebdb7accf8"
+    },
+    {
+      "case": "q4_0-5120-17408",
+      "command": [
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/gpu-matvec-oracle",
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/q4_0-5120-17408.case",
+        "/home/USER/projects/zerv/third_party/matvec-push/2026-09-22-matvec-reference-profile-q4_0-5120-17408.output",
+        "64"
+      ],
+      "records": 452,
+      "metrics": {
+        "max_abs": 1.8440186977386475e-07,
+        "max_relative": 0.0008986953422789675,
+        "max_error_over_sumabs": 9.164953305626342e-09,
+        "normalized_l2": 8.719482676273907e-08,
+        "nonfinite": 0
+      },
+      "output_sha256": "d82efa8d3223c6c0d630edf62941b1e21e22f7ede805f83eee07d67c69ef7a06"
+    },
+    {
+      "case": "f32-5120-48",
+      "command": [
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/gpu-matvec-oracle",
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/f32-5120-48.case",
+        "/home/USER/projects/zerv/third_party/matvec-push/2026-09-22-matvec-reference-profile-f32-5120-48.output",
+        "64"
+      ],
+      "records": 452,
+      "metrics": {
+        "max_abs": 1.78581103682518e-07,
+        "max_relative": 1.7895975535435951e-06,
+        "max_error_over_sumabs": 4.627011973989329e-09,
+        "normalized_l2": 8.326198040458889e-08,
+        "nonfinite": 0
+      },
+      "output_sha256": "a9edba91d71f00e9592b5cd1a171c5aaff1d2c673a2977550d6e8f998cf2c713"
+    },
+    {
+      "case": "q5_k-6144-5120",
+      "command": [
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/gpu-matvec-oracle",
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/q5_k-6144-5120.case",
+        "/home/USER/projects/zerv/third_party/matvec-push/2026-09-22-matvec-reference-profile-q5_k-6144-5120.output",
+        "64"
+      ],
+      "records": 452,
+      "metrics": {
+        "max_abs": 2.0763836801052094e-06,
+        "max_relative": 9.872222125805044e-05,
+        "max_error_over_sumabs": 9.807991670430229e-09,
+        "normalized_l2": 1.3600658102275668e-07,
+        "nonfinite": 0
+      },
+      "output_sha256": "399f526bfc42203384f4b6ddae6ab24c8e00b5866072bc8843def1b6fdc65ef0"
+    },
+    {
+      "case": "q4_0-5120-1024",
+      "command": [
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/gpu-matvec-oracle",
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/q4_0-5120-1024.case",
+        "/home/USER/projects/zerv/third_party/matvec-push/2026-09-22-matvec-reference-profile-q4_0-5120-1024.output",
+        "64"
+      ],
+      "records": 452,
+      "metrics": {
+        "max_abs": 2.2165477275848389e-07,
+        "max_relative": 2.0399143235984087e-05,
+        "max_error_over_sumabs": 6.956143274919144e-09,
+        "normalized_l2": 8.611861239343459e-08,
+        "nonfinite": 0
+      },
+      "output_sha256": "eceac4c3d506d4ebb4c748a4eac4b11a92a2b993ef564e4e5da110bd10b5d22e"
+    },
+    {
+      "case": "q4_0-6144-5120",
+      "command": [
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/gpu-matvec-oracle",
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/q4_0-6144-5120.case",
+        "/home/USER/projects/zerv/third_party/matvec-push/2026-09-22-matvec-reference-profile-q4_0-6144-5120.output",
+        "64"
+      ],
+      "records": 452,
+      "metrics": {
+        "max_abs": 4.917383193969727e-07,
+        "max_relative": 0.00023648565999885834,
+        "max_error_over_sumabs": 7.227695114535794e-09,
+        "normalized_l2": 8.554349572305534e-08,
+        "nonfinite": 0
+      },
+      "output_sha256": "a5829e0e346e2e6b6168536fe73b8340cf7d71acb1abec6330d2408c6b8767c3"
+    },
+    {
+      "case": "q4_0-5120-12288",
+      "command": [
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/gpu-matvec-oracle",
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/q4_0-5120-12288.case",
+        "/home/USER/projects/zerv/third_party/matvec-push/2026-09-22-matvec-reference-profile-q4_0-5120-12288.output",
+        "64"
+      ],
+      "records": 452,
+      "metrics": {
+        "max_abs": 3.0919909477233887e-07,
+        "max_relative": 0.0009773830141120389,
+        "max_error_over_sumabs": 7.819832229336064e-09,
+        "normalized_l2": 8.716048419456883e-08,
+        "nonfinite": 0
+      },
+      "output_sha256": "0e701ca5531ff6517f8c043b993abf6021f560c3dfb8ddece079b316bf2d5116"
+    },
+    {
+      "case": "q4_0-17408-5120",
+      "command": [
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/gpu-matvec-oracle",
+        "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-matvec-final-repeat/q4_0-17408-5120.case",
+        "/home/USER/projects/zerv/third_party/matvec-push/2026-09-22-matvec-reference-profile-q4_0-17408-5120.output",
+        "64"
+      ],
+      "records": 452,
+      "metrics": {
+        "max_abs": 4.1909515857696533e-07,
+        "max_relative": 0.00086358768869391,
+        "max_error_over_sumabs": 5.361216593527451e-09,
+        "normalized_l2": 1.2125236999203932e-07,
+        "nonfinite": 0
+      },
+      "output_sha256": "5782c0b4391affe500d70284c8eb14afdb36cb627483ed72d1387f64e6ba834a"
+    }
+  ],
+  "finished_at": "2026-09-22T17:19:44.836201+00:00"
+}

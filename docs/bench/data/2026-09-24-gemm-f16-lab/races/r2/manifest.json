@@ -1,0 +1,58 @@
+{
+ "started_at": "2026-09-23T16:33:30.403499+00:00",
+ "argv": [
+  "bench/race_gemm_f16.py",
+  "--output",
+  "third_party/gemm-lab/races/r2",
+  "--variant",
+  "shipped=src/model/shaders/gemm_f16_{fmt}.spv@128x128",
+  "--variant",
+  "cfx=third_party/gemm-lab/v2/cfx-{fmt}.spv@128x256@wave=32@xf16",
+  "--variant",
+  "k64=third_party/gemm-lab/v2/k64-{fmt}.spv@128x256@wave=32@xf16",
+  "--only",
+  "blk.0.ffn_gate.weight,blk.8.ffn_down.weight,blk.0.attn_qkv.weight,blk.0.attn_gate.weight,blk.3.attn_q.weight,blk.3.attn_output.weight",
+  "--rounds",
+  "3",
+  "--warmup-ms",
+  "3000",
+  "--reference-dump",
+  "third_party/gemm-lab/runs/baseline-r1/dump"
+ ],
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "tool_sha256": "916548c2165055d6a82c315e33a235172aec2a8e9f880b0a890e0f10bd75bd61",
+ "variants": [
+  {
+   "name": "shipped",
+   "pattern": "src/model/shaders/gemm_f16_{fmt}.spv",
+   "grid": "128x128",
+   "wave": null,
+   "x_f16": false,
+   "spv": {
+    "q4_0": "a09d090c3984870ba600ca82609d4489c4945176a2bcb2e898ec3867d2aa8189"
+   }
+  },
+  {
+   "name": "cfx",
+   "pattern": "third_party/gemm-lab/v2/cfx-{fmt}.spv",
+   "grid": "128x256",
+   "wave": 32,
+   "x_f16": true,
+   "spv": {
+    "q4_0": "bba2606517671ae67d2ecfca050d1486939c025b9f04a1aeb46e6e3555dc640c"
+   }
+  },
+  {
+   "name": "k64",
+   "pattern": "third_party/gemm-lab/v2/k64-{fmt}.spv",
+   "grid": "128x256",
+   "wave": 32,
+   "x_f16": true,
+   "spv": {
+    "q4_0": "cd746a02503a4e7e4fb433b7367f7fb73c91e1f0931c26eab83b56bf9d271b3e"
+   }
+  }
+ ],
+ "power_cap_w": 339.0,
+ "performance_level": "auto"
+}

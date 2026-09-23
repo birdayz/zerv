@@ -1,0 +1,48 @@
+$ objdump -d zig-out/bin/zerv-quant-bench | grep -E 'vcvtdq2ps|vcvtph2ps|vpmov(sx|zx)bd|vmulps' | head -40
+ 101d67d:	c4 e2 7d 31 d1       	vpmovzxbd %xmm1,%ymm2
+ 101d68b:	c4 e2 7d 31 c9       	vpmovzxbd %xmm1,%ymm1
+ 101d690:	c4 e2 7d 31 e0       	vpmovzxbd %xmm0,%ymm4
+ 101d69a:	c4 e2 7d 31 c0       	vpmovzxbd %xmm0,%ymm0
+ 101d69f:	c4 e2 79 13 db       	vcvtph2ps %xmm3,%xmm3
+ 101d6ac:	c5 fc 5b d2          	vcvtdq2ps %ymm2,%ymm2
+ 101d6b4:	c5 fc 5b c9          	vcvtdq2ps %ymm1,%ymm1
+ 101d6bc:	c5 fc 5b e4          	vcvtdq2ps %ymm4,%ymm4
+ 101d6c0:	c5 fc 5b c0          	vcvtdq2ps %ymm0,%ymm0
+ 101d6c9:	c5 e4 59 d2          	vmulps %ymm2,%ymm3,%ymm2
+ 101d6cd:	c5 e4 59 c9          	vmulps %ymm1,%ymm3,%ymm1
+ 101d6d1:	c5 e4 59 c0          	vmulps %ymm0,%ymm3,%ymm0
+ 101d6df:	c5 e4 59 cc          	vmulps %ymm4,%ymm3,%ymm1
+ 101d78a:	c4 e2 7d 31 d1       	vpmovzxbd %xmm1,%ymm2
+ 101d798:	c4 e2 7d 31 c9       	vpmovzxbd %xmm1,%ymm1
+ 101d79d:	c4 e2 7d 31 e0       	vpmovzxbd %xmm0,%ymm4
+ 101d7a7:	c4 e2 7d 31 c0       	vpmovzxbd %xmm0,%ymm0
+ 101d7ac:	c4 e2 79 13 db       	vcvtph2ps %xmm3,%xmm3
+ 101d7b9:	c5 fc 5b d2          	vcvtdq2ps %ymm2,%ymm2
+ 101d7c1:	c5 fc 5b c9          	vcvtdq2ps %ymm1,%ymm1
+ 101d7c9:	c5 fc 5b e4          	vcvtdq2ps %ymm4,%ymm4
+ 101d7cd:	c5 fc 5b c0          	vcvtdq2ps %ymm0,%ymm0
+ 101d7d6:	c5 e4 59 d2          	vmulps %ymm2,%ymm3,%ymm2
+ 101d7da:	c5 e4 59 c9          	vmulps %ymm1,%ymm3,%ymm1
+ 101d7de:	c5 e4 59 c0          	vmulps %ymm0,%ymm3,%ymm0
+ 101d7ec:	c5 e4 59 cc          	vmulps %ymm4,%ymm3,%ymm1
+ 101d88e:	c4 e2 7d 31 d1       	vpmovzxbd %xmm1,%ymm2
+ 101d89c:	c4 e2 7d 31 c9       	vpmovzxbd %xmm1,%ymm1
+ 101d8a1:	c4 e2 7d 31 e0       	vpmovzxbd %xmm0,%ymm4
+ 101d8ab:	c4 e2 7d 31 c0       	vpmovzxbd %xmm0,%ymm0
+ 101d8b0:	c4 e2 79 13 db       	vcvtph2ps %xmm3,%xmm3
+ 101d8bd:	c5 fc 5b d2          	vcvtdq2ps %ymm2,%ymm2
+ 101d8c5:	c5 fc 5b c9          	vcvtdq2ps %ymm1,%ymm1
+ 101d8cd:	c5 fc 5b e4          	vcvtdq2ps %ymm4,%ymm4
+ 101d8d1:	c5 fc 5b c0          	vcvtdq2ps %ymm0,%ymm0
+ 101d8da:	c5 e4 59 d2          	vmulps %ymm2,%ymm3,%ymm2
+ 101d8de:	c5 e4 59 c9          	vmulps %ymm1,%ymm3,%ymm1
+ 101d8e2:	c5 e4 59 c0          	vmulps %ymm0,%ymm3,%ymm0
+ 101d8f0:	c5 e4 59 cc          	vmulps %ymm4,%ymm3,%ymm1
+ 101d9d0:	c4 e2 7d 31 d1       	vpmovzxbd %xmm1,%ymm2
+
+$ file zig-out/bin/zerv-quant-bench
+zig-out/bin/zerv-quant-bench: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, with debug_info, not stripped
+
+$ readelf -d zig-out/bin/zerv-quant-bench
+
+There is no dynamic section in this file.

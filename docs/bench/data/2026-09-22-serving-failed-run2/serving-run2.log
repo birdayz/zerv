@@ -1,0 +1,23 @@
+zerv short-nothink 0 ttft=513.3ms total=0.79s tokens={'prompt_tokens': 23, 'completion_tokens': 13, 'total_tokens': 36} decode=47.74613741269606
+zerv decode-think 0 ttft=1815.1ms total=7.86s tokens={'prompt_tokens': 81, 'completion_tokens': 256, 'total_tokens': 337} decode=42.216626733059606
+zerv medium-prompt 0 ttft=20893.3ms total=24.55s tokens={'prompt_tokens': 836, 'completion_tokens': 128, 'total_tokens': 964} decode=34.76786034308921
+zerv long-prompt 0 ttft=109311.5ms total=109.63s tokens={'prompt_tokens': 3223, 'completion_tokens': 8, 'total_tokens': 3231} decode=25.34760308725567
+zerv short-nothink 1 ttft=513.3ms total=0.78s tokens={'prompt_tokens': 23, 'completion_tokens': 13, 'total_tokens': 36} decode=48.43630943280392
+zerv decode-think 1 ttft=1815.5ms total=7.83s tokens={'prompt_tokens': 81, 'completion_tokens': 256, 'total_tokens': 337} decode=42.37662858939618
+zerv medium-prompt 1 ttft=20890.2ms total=24.56s tokens={'prompt_tokens': 836, 'completion_tokens': 128, 'total_tokens': 964} decode=34.624349553703524
+zerv long-prompt 1 ttft=109412.3ms total=109.73s tokens={'prompt_tokens': 3223, 'completion_tokens': 8, 'total_tokens': 3231} decode=25.342133831764066
+zerv short-nothink 2 ttft=513.3ms total=0.78s tokens={'prompt_tokens': 23, 'completion_tokens': 13, 'total_tokens': 36} decode=48.40259516124446
+zerv decode-think 2 ttft=1815.2ms total=7.84s tokens={'prompt_tokens': 81, 'completion_tokens': 256, 'total_tokens': 337} decode=42.32417940529354
+zerv medium-prompt 2 ttft=20940.9ms total=24.60s tokens={'prompt_tokens': 836, 'completion_tokens': 128, 'total_tokens': 964} decode=34.74055279300169
+zerv long-prompt 2 ttft=109388.9ms total=109.71s tokens={'prompt_tokens': 3223, 'completion_tokens': 8, 'total_tokens': 3231} decode=25.336189703654025
+Traceback (most recent call last):
+  File "/home/USER/projects/zerv/bench/run_serving.py", line 191, in <module>
+    main()
+    ~~~~^^
+  File "/home/USER/projects/zerv/bench/run_serving.py", line 151, in main
+    stream_request(a.port, dict(model="qwen3.8-27b", messages=case["messages"], stream=True, max_tokens=8, temperature=0, seed=workload["seed"], **case["options"]))
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/USER/projects/zerv/bench/run_serving.py", line 58, in stream_request
+    if resp.status != 200: raise RuntimeError(f"HTTP {resp.status}: {resp.read()[:500]}")
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: HTTP 500: b'{"error":{"code":500,"message":"\\n------------\\nWhile executing CallExpression at line 49, column 28 in source:\\n...\', \'low\') %}\xe2\x86\xb5        {{- raise_exception(\'Unexpected reasoning effort \' ~ reason...\\n                                           ^\\nError: Jinja Exception: Unexpected reasoning effort high. Supported types are xhigh (default), medium, and low.","type":"server_error"}}'

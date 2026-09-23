@@ -1,0 +1,326 @@
+#version 450
+// Block 16b lab: f16 WMMA prefill GEMM v2 (docs/design/speed.md). Same arithmetic and
+// the same per-output sequence of 16-k WMMA steps (k order) as src/model/gemm_f16.comp,
+// so results must be bitwise identical to it; only data movement changes:
+//   - two LDS stages; the next k-step's raw weight words and X values are loaded into
+//     registers before the current step's WMMAs, then dequantized/converted into the
+//     other stage after them; one barrier per k-step (instead of two).
+// FORMAT: 2 Q4_0, 3 Q4_1, 13 Q5_K (BLOCK_BYTES as for gemm_f16.comp).
+// Geometry (defines): WAVE (subgroup size the pipeline runs with), WAVES_M x WAVES_N
+// subgroups over a BM (M) x BN (rows) tile; default = the shipped 4 x wave64, 128 x 128.
+// Host contract as gemm_f16.comp with M % BM == 0 and plan rows % BN == 0.
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_cooperative_matrix : require
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_KHR_shader_subgroup_basic : require
+#ifndef WAVE
+#define WAVE 64
+#endif
+#ifndef WAVES_M
+#define WAVES_M 2
+#endif
+#ifndef WAVES_N
+#define WAVES_N 2
+#endif
+#ifndef BM
+#define BM 128
+#endif
+#ifndef BN
+#define BN 128
+#endif
+#define THREADS (WAVE*WAVES_M*WAVES_N)
+#define WM (BM/WAVES_M)
+#define WN (BN/WAVES_N)
+// BK: k per LDS stage (32 or 64); HQ = 16-k row parts per stage (one thread each).
+#ifndef BK
+#define BK 32
+#endif
+#define HQ (BK/16)
+#if BK != 32 && !defined(XDIRECT)
+#error BK != 32 needs XDIRECT (the X staging path assumes 32)
+#endif
+// A row parts per k-step (BM*HQ); when fewer than THREADS, only the first BM*HQ threads
+// (whole waves) fetch and dequantize.
+#if BM*HQ >= THREADS
+#define A_PER (BM*HQ/THREADS)
+#define A_ACTIVE true
+#else
+#define A_PER 1
+#define A_ACTIVE (tid<BM*HQ)
+#endif
+#define X_PER (BN*4/THREADS)
+#define TM (WM/16)
+#define TN (WN/16)
+#ifndef APAD
+#define APAD 8
+#endif
+#define AS (BK+APAD)
+layout(local_size_x=THREADS) in;
+layout(set=0,binding=0,std430) readonly buffer A { uint aw[]; };
+layout(set=0,binding=0,std430) readonly buffer A4 { uvec4 aw4[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=2,std430) readonly buffer Io { uint io[]; };
+layout(set=0,binding=3,std430) readonly restrict buffer ActX { vec4 xin4[]; };
+// XDIRECT: X is f16, row-major, x_base/x_rs in halves; B fragments come straight from it.
+layout(set=0,binding=3,std430) readonly restrict buffer ActX16 { uvec4 x16[]; };
+layout(push_constant) uniform P {
+    uint a_base, a_rs, a_cs, a_bs, a_group;
+    uint x_base, x_rs, x_bs;
+    uint y_base, y_rs, y_bs;
+    uint m, k;
+    uint flags;
+    uint k_chunk;
+} p;
+#define IO_COUNT 2
+
+#ifdef LDS128
+// 16-byte LDS elements: fragment loads and tile stores become ds_*_b128 (AS % 8 == 0).
+shared uvec4 As[2][BM*AS/8];
+shared uvec4 Bs[2][BN*AS/8];
+#else
+shared float16_t As[2][BM*AS];
+shared float16_t Bs[2][BN*AS];
+#endif
+
+// Raw weight words of one thread's k-step share: row e / 2, half h = e % 2.
+#if FORMAT==2 || FORMAT==3
+struct Raw { uint w[6]; bool odd; };
+#else
+struct Raw { uvec4 hdr, qh, qs; };
+#endif
+
+Raw fetch_a(uint row, uint h, uint k0) {
+    uint rb=p.a_base+(gl_WorkGroupID.x*BM+row)*p.a_rs;
+    Raw r;
+#if FORMAT==2 || FORMAT==3
+    uint b=rb+(k0/32u)*BLOCK_BYTES;
+    uint wb=b>>2u; r.odd=(b&2u)!=0u;
+    r.w[0]=aw[wb]; r.w[1]=aw[wb+1u]; r.w[2]=aw[wb+2u]; r.w[3]=aw[wb+3u]; r.w[4]=aw[wb+4u];
+#if FORMAT==3
+    r.w[5]=aw[wb+(r.odd ? 5u : 4u)];
+#else
+    r.w[5]=0u;
+#endif
+#else
+    uint sb=k0/256u, g=(k0%256u)/32u;
+    uint b=rb+sb*176u;
+    r.hdr=aw4[b>>4u];
+    r.qh=aw4[(b+16u+16u*h)>>4u];
+    r.qs=aw4[(b+48u+(g/2u)*32u+16u*h)>>4u];
+#endif
+    return r;
+}
+
+// Identical dequantization to gemm_f16.comp's load_a, from the fetched words.
+void store_a(uint stage, uint row, uint h, uint part, uint k0, Raw r) {
+    uint o=row*AS+part*16u;
+#if FORMAT==2
+    uint w0=r.w[0], w1=r.w[1], w2=r.w[2], w3=r.w[3], w4=r.w[4]; bool odd=r.odd;
+    float d=unpackHalf2x16(odd ? w0>>16u : w0).x;
+    uint qw[4]=uint[4](odd ? w1 : (w0>>16u)|(w1<<16u), odd ? w2 : (w1>>16u)|(w2<<16u),
+                       odd ? w3 : (w2>>16u)|(w3<<16u), odd ? w4 : (w3>>16u)|(w4<<16u));
+#ifdef FASTDQ
+    // Two nibbles per 32-bit word as f16 bit patterns 0x6400|q = 1024 + q (exact); then
+    // (1024 + q) - 1032 = q - 8 exactly, and one RNE f16 multiply by d: the same value
+    // as the f32 product (exact) rounded once to f16.
+    f16vec2 dd=f16vec2(float16_t(d));
+#ifdef LDS128
+    uint packed[8];
+#endif
+    [[unroll]] for (uint w=0;w<4;w++) {
+        uint x=(qw[w]>>(4u*h))&0x0F0F0F0Fu;
+        uint p01=(x&0xFFu)|((x<<8u)&0xFF0000u), p23=((x>>16u)&0xFFu)|((x>>8u)&0xFF0000u);
+        f16vec2 v01=(unpackFloat2x16(p01|0x64006400u)-f16vec2(float16_t(1032.0)))*dd;
+        f16vec2 v23=(unpackFloat2x16(p23|0x64006400u)-f16vec2(float16_t(1032.0)))*dd;
+#ifdef LDS128
+        packed[2u*w]=packFloat2x16(v01); packed[2u*w+1u]=packFloat2x16(v23);
+#else
+        As[stage][o+w*4u]=v01.x; As[stage][o+w*4u+1u]=v01.y; As[stage][o+w*4u+2u]=v23.x; As[stage][o+w*4u+3u]=v23.y;
+#endif
+    }
+#ifdef LDS128
+    As[stage][o/8u]=uvec4(packed[0],packed[1],packed[2],packed[3]);
+    As[stage][o/8u+1u]=uvec4(packed[4],packed[5],packed[6],packed[7]);
+#endif
+#else
+    [[unroll]] for (uint w=0;w<4;w++) [[unroll]] for (uint c=0;c<4;c++)
+        As[stage][o+w*4u+c]=float16_t((float((qw[w]>>(8u*c+4u*h))&15u)-8.0)*d);
+#endif
+#elif FORMAT==3
+    uint w0=r.w[0], w1=r.w[1], w2=r.w[2], w3=r.w[3], w4=r.w[4], w5=r.w[5]; bool odd=r.odd;
+    float d=unpackHalf2x16(odd ? w0>>16u : w0).x;
+    float mn=unpackHalf2x16(odd ? w1 : w0>>16u).x;
+    uint qw[4]=uint[4](odd ? (w1>>16u)|(w2<<16u) : w1, odd ? (w2>>16u)|(w3<<16u) : w2,
+                       odd ? (w3>>16u)|(w4<<16u) : w3, odd ? (w4>>16u)|(w5<<16u) : w4);
+    [[unroll]] for (uint w=0;w<4;w++) [[unroll]] for (uint c=0;c<4;c++)
+        As[stage][o+w*4u+c]=float16_t(fma(d,float((qw[w]>>(8u*c+4u*h))&15u),mn));
+#else
+    uint g=(k0%256u)/32u;
+    vec2 globals=unpackHalf2x16(r.hdr.x);
+    uint sa=r.hdr.y, sbw=r.hdr.z, sc=r.hdr.w;
+    uint shift=(g%4u)*8u;
+    uint scale=(sa>>shift)&63u, minimum=(sbw>>shift)&63u;
+    if (g>=4u) {
+        scale=((sc>>shift)&15u)|(((sa>>(shift+6u))&3u)<<4u);
+        minimum=((sc>>(shift+4u))&15u)|(((sbw>>(shift+6u))&3u)<<4u);
+    }
+    float dd=globals.x*float(scale), dm=globals.y*float(minimum);
+    uint qsw[4]=uint[4](r.qs.x,r.qs.y,r.qs.z,r.qs.w);
+    uint qhw[4]=uint[4](r.qh.x,r.qh.y,r.qh.z,r.qh.w);
+    [[unroll]] for (uint w=0;w<4;w++) [[unroll]] for (uint c=0;c<4;c++) {
+        uint q=((qsw[w]>>(8u*c+4u*(g%2u)))&15u)|(((qhw[w]>>(8u*c+g))&1u)<<4u);
+        As[stage][o+w*4u+c]=float16_t(fma(dd,float(q),-dm));
+    }
+#endif
+}
+
+// X: BN rows x 32 k per step = X_PER passes of 8 values per thread.
+void fetch_x(uint t0, uint n, uint k0, uint tid, out vec4 x[2*X_PER]) {
+    [[unroll]] for (uint pass=0u;pass<X_PER;pass++) {
+        uint e=tid+THREADS*pass;
+        uint tok=e/4u, qk=(e%4u)*8u;
+        uint src=(p.x_base+min(t0+tok,n-1u)*p.x_rs+k0+qk)/4u;
+        x[2u*pass]=xin4[src]; x[2u*pass+1u]=xin4[src+1u];
+    }
+}
+
+void store_x(uint stage, uint tid, vec4 x[2*X_PER]) {
+    [[unroll]] for (uint pass=0u;pass<X_PER;pass++) {
+        uint e=tid+THREADS*pass;
+        uint tok=e/4u, qk=(e%4u)*8u;
+        uint o=tok*AS+qk;
+        vec4 x0=x[2u*pass], x1=x[2u*pass+1u];
+#ifdef LDS128
+        Bs[stage][o/8u]=uvec4(packFloat2x16(f16vec2(x0.xy)), packFloat2x16(f16vec2(x0.zw)), packFloat2x16(f16vec2(x1.xy)), packFloat2x16(f16vec2(x1.zw)));
+#else
+        Bs[stage][o]=float16_t(x0.x); Bs[stage][o+1u]=float16_t(x0.y); Bs[stage][o+2u]=float16_t(x0.z); Bs[stage][o+3u]=float16_t(x0.w);
+        Bs[stage][o+4u]=float16_t(x1.x); Bs[stage][o+5u]=float16_t(x1.y); Bs[stage][o+6u]=float16_t(x1.z); Bs[stage][o+7u]=float16_t(x1.w);
+#endif
+    }
+}
+
+void main() {
+    uint tid=gl_LocalInvocationID.x;
+    uint n=io[IO_COUNT];
+    uint m0=gl_WorkGroupID.x*BM, t0=gl_WorkGroupID.y*BN;
+    if (t0>=n) return; // uniform per workgroup
+    uint wave=gl_SubgroupID, wm=wave%WAVES_M, wn=wave/WAVES_M;
+    coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> acc[TM][TN];
+    [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++)
+        acc[i][j]=coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(0.0);
+
+    // Prologue: stage 0 holds k-step 0.
+#ifndef XDIRECT
+    vec4 xr[2*X_PER];
+#endif
+    Raw ar[A_PER];
+    if (A_ACTIVE) [[unroll]] for (uint i=0u;i<A_PER;i++) { uint e=tid+THREADS*i; ar[i]=fetch_a(e/HQ, e%2u, ((e%HQ)/2u)*32u); }
+#ifndef XDIRECT
+    fetch_x(t0, n, 0u, tid, xr);
+#endif
+    if (A_ACTIVE) [[unroll]] for (uint i=0u;i<A_PER;i++) { uint e=tid+THREADS*i; store_a(0u, e/HQ, e%2u, e%HQ, ((e%HQ)/2u)*32u, ar[i]); }
+#ifndef XDIRECT
+    store_x(0u, tid, xr);
+#else
+    uint lr=gl_SubgroupInvocationID%16u;
+    // Token row of this lane's B column for fragment j (rows >= n read row n-1).
+    uint xrow[TN];
+    [[unroll]] for (uint j=0;j<TN;j++) xrow[j]=(p.x_base+min(t0+wn*WN+j*16u+lr,n-1u)*p.x_rs)/8u;
+#ifdef XHOIST
+    // Use X's descriptor before the loop (buffer length: a row start never lies past the
+    // last full k row), so the driver keeps it in SGPRs instead of reloading it (SMEM +
+    // lgkmcnt(0)) in every k-step. A no-op for any valid dispatch.
+    uint xlim=uint(x16.length())-p.k/8u;
+    [[unroll]] for (uint j=0;j<TN;j++) xrow[j]=min(xrow[j],xlim);
+#endif
+#endif
+    barrier();
+    uint steps=p.k/BK;
+    for (uint s=0u;s<steps;s++) {
+        uint cur=s&1u;
+        bool more=s+1u<steps;
+        uint kn=(s+1u)*BK;
+        // Issue the next step's global loads before this step's math.
+        if (more) {
+            if (A_ACTIVE) [[unroll]] for (uint i=0u;i<A_PER;i++) { uint e=tid+THREADS*i; ar[i]=fetch_a(e/HQ, e%2u, kn+((e%HQ)/2u)*32u); }
+#ifndef XDIRECT
+            fetch_x(t0, n, kn, tid, xr);
+#endif
+        }
+        [[unroll]] for (uint q=0u;q<HQ;q++) {
+            coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> fa[TM];
+            coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB> fb[TN];
+#ifdef ABL_NO_LDSLOAD
+            [[unroll]] for (uint i=0;i<TM;i++) fa[i]=coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA>(float16_t(float(io[3]+s+q+i)));
+            [[unroll]] for (uint j=0;j<TN;j++) fb[j]=coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB>(float16_t(float(io[3]+s+q+j)));
+#else
+#ifdef XDIRECT
+#ifdef ABL_NO_ALOAD
+            [[unroll]] for (uint i=0;i<TM;i++) fa[i]=coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA>(float16_t(float(io[3]+s+q+i)));
+#else
+            [[unroll]] for (uint i=0;i<TM;i++) coopMatLoad(fa[i], As[cur], (wm*WM+i*16u)*AS+q*16u, AS, gl_CooperativeMatrixLayoutRowMajor);
+#endif
+            [[unroll]] for (uint j=0;j<TN;j++) {
+                uint e=xrow[j]+(s*BK+q*16u)/8u;
+#ifdef ABL_NO_BLOAD
+                uvec4 u0=uvec4(io[3]+e), u1=u0;
+#else
+                uvec4 u0=x16[e], u1=x16[e+1u];
+#endif
+                uint u[8]=uint[8](u0.x,u0.y,u0.z,u0.w,u1.x,u1.y,u1.z,u1.w);
+                [[unroll]] for (uint c=0;c<8;c++) { f16vec2 v=unpackFloat2x16(u[c]); fb[j][2*c]=v.x; fb[j][2*c+1]=v.y; }
+#ifdef PROBE_B_HI
+                // Probe: does WMMA read B from lanes 16-31? (garbage there; compare bitwise)
+                if (gl_SubgroupInvocationID>=16u) [[unroll]] for (uint c=0;c<16;c++) fb[j][c]=float16_t(float(c)+3.0);
+#endif
+            }
+#ifdef PROBE_A_HI
+            [[unroll]] for (uint i=0;i<TM;i++) if (gl_SubgroupInvocationID>=16u) [[unroll]] for (uint c=0;c<16;c++) fa[i][c]=float16_t(float(c)+5.0);
+#endif
+#elif defined(LDS128) && defined(MANUAL_FRAG)
+            // RDNA3 WMMA operand layout (AMD GPUOpen "WMMA on RDNA 3"): lane l holds row
+            // (A) / column (B) l % 16 as 16 consecutive k values, lanes 16-31 replicate
+            // lanes 0-15. Element i of the invocation's components = k index i (verified
+            // bitwise against coopMatLoad on the real weights).
+            uint lr=gl_SubgroupInvocationID%16u;
+            [[unroll]] for (uint i=0;i<TM;i++) {
+                uint e=((wm*WM+i*16u+lr)*AS+q*16u)/8u;
+                uvec4 u0=As[cur][e], u1=As[cur][e+1u];
+                uint u[8]=uint[8](u0.x,u0.y,u0.z,u0.w,u1.x,u1.y,u1.z,u1.w);
+                [[unroll]] for (uint c=0;c<8;c++) { f16vec2 v=unpackFloat2x16(u[c]); fa[i][2*c]=v.x; fa[i][2*c+1]=v.y; }
+            }
+            [[unroll]] for (uint j=0;j<TN;j++) {
+                uint e=((wn*WN+j*16u+lr)*AS+q*16u)/8u;
+                uvec4 u0=Bs[cur][e], u1=Bs[cur][e+1u];
+                uint u[8]=uint[8](u0.x,u0.y,u0.z,u0.w,u1.x,u1.y,u1.z,u1.w);
+                [[unroll]] for (uint c=0;c<8;c++) { f16vec2 v=unpackFloat2x16(u[c]); fb[j][2*c]=v.x; fb[j][2*c+1]=v.y; }
+            }
+#elif defined(LDS128)
+            [[unroll]] for (uint i=0;i<TM;i++) coopMatLoad(fa[i], As[cur], ((wm*WM+i*16u)*AS+q*16u)/8u, AS/8u, gl_CooperativeMatrixLayoutRowMajor);
+            [[unroll]] for (uint j=0;j<TN;j++) coopMatLoad(fb[j], Bs[cur], ((wn*WN+j*16u)*AS+q*16u)/8u, AS/8u, gl_CooperativeMatrixLayoutColumnMajor);
+#else
+            [[unroll]] for (uint i=0;i<TM;i++) coopMatLoad(fa[i], As[cur], (wm*WM+i*16u)*AS+q*16u, AS, gl_CooperativeMatrixLayoutRowMajor);
+            [[unroll]] for (uint j=0;j<TN;j++) coopMatLoad(fb[j], Bs[cur], (wn*WN+j*16u)*AS+q*16u, AS, gl_CooperativeMatrixLayoutColumnMajor);
+#endif
+#endif
+            [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++) acc[i][j]=coopMatMulAdd(fa[i], fb[j], acc[i][j]);
+        }
+        // The other stage was last read in step s-1, before the previous barrier.
+        if (more) {
+#ifdef ABL_NO_DEQUANT
+            [[unroll]] for (uint i=0u;i<A_PER;i++) { uint e=tid+THREADS*i; uint o=(e/HQ)*AS+(e%HQ)*16u; float16_t v=float16_t(float(io[3]+kn+uint(ar[i].w[0]&io[3]))); [[unroll]] for (uint c=0u;c<16u;c++) As[cur^1u][o+c]=v; }
+#else
+            if (A_ACTIVE) [[unroll]] for (uint i=0u;i<A_PER;i++) { uint e=tid+THREADS*i; store_a(cur^1u, e/HQ, e%2u, e%HQ, kn+((e%HQ)/2u)*32u, ar[i]); }
+#endif
+#ifndef XDIRECT
+            store_x(cur^1u, tid, xr);
+#endif
+        }
+#ifndef ABL_NO_BARRIER
+        barrier();
+#endif
+    }
+    [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++)
+        coopMatStore(acc[i][j], act, p.y_base+(t0+wn*WN+j*16u)*p.y_rs+m0+wm*WM+i*16u, p.y_rs, gl_CooperativeMatrixLayoutColumnMajor);
+}

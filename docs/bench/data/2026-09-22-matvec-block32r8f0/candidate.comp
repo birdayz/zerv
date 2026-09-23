@@ -1,0 +1,155 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : enable
+#ifndef LANES
+#define LANES 64
+#endif
+#ifndef ROWS
+#define ROWS 4
+#endif
+#ifndef ACC_FMA
+#define ACC_FMA 0
+#endif
+layout(local_size_x=LANES*ROWS) in;
+layout(set=0,binding=0,std430) readonly buffer W { uint weights[]; };
+layout(set=0,binding=1,std430) readonly buffer X { float input_values[]; };
+layout(set=0,binding=2,std430) writeonly buffer Y { float output_values[]; };
+layout(push_constant) uniform Params {
+ uint columns, rows, row_bytes, weight_offset, input_offset, output_offset, groups_x;
+} p;
+shared float partials[LANES*ROWS];
+uint byte_at(uint b) { return (weights[b>>2] >> (8*(b&3))) & 255; }
+float half_at(uint b) { return unpackHalf2x16(weights[b>>2] >> (8*(b&2))).x; }
+int signed_byte(uint b) { return int(b ^ 128)-128; }
+float accum(float s, float w, float x) {
+#if ACC_FMA
+ return fma(w,x,s);
+#else
+ precise float product=w*x;
+ precise float added=s+product;
+ return added;
+#endif
+}
+void main() {
+ uint tid=gl_LocalInvocationID.x, lane=tid%LANES;
+ uint row=(gl_WorkGroupID.y*p.groups_x+gl_WorkGroupID.x)*ROWS+tid/LANES;
+ float s0=0.0,s1=0.0,s2=0.0,s3=0.0;
+ if(row<p.rows) {
+ uint row_start=p.weight_offset+row*p.row_bytes;
+#if FORMAT==0
+ for(uint c=lane*4;c<p.columns;c+=LANES*4) {
+  if(c<p.columns) s0=accum(s0,uintBitsToFloat(weights[(row_start>>2)+c]),input_values[p.input_offset+c]);
+  if(c+1<p.columns) s1=accum(s1,uintBitsToFloat(weights[(row_start>>2)+c+1]),input_values[p.input_offset+c+1]);
+  if(c+2<p.columns) s2=accum(s2,uintBitsToFloat(weights[(row_start>>2)+c+2]),input_values[p.input_offset+c+2]);
+  if(c+3<p.columns) s3=accum(s3,uintBitsToFloat(weights[(row_start>>2)+c+3]),input_values[p.input_offset+c+3]);
+ }
+#elif FORMAT==2 || FORMAT==3
+ // Sixteen cooperating lanes decode both nibbles once per packed byte.
+ for(uint block=lane/16;block<p.columns/32;block+=LANES/16) {
+  uint b=row_start+block*BLOCK_BYTES, j=lane%16;
+  uint q=byte_at(b+PAYLOAD_OFFSET+j);
+  float d=half_at(b);
+#if FORMAT==2
+  precise float w0=d*float(int(q&15)-8), w1=d*float(int(q>>4)-8);
+#else
+  float minimum=half_at(b+2);
+  precise float prod0=d*float(q&15), prod1=d*float(q>>4);
+  precise float w0=prod0+minimum, w1=prod1+minimum;
+#endif
+  s0=accum(s0,w0,input_values[p.input_offset+block*32+j]);
+  s1=accum(s1,w1,input_values[p.input_offset+block*32+j+16]);
+ }
+#elif FORMAT==13 || FORMAT==14
+ for(uint block=lane/32;block<p.columns/256;block+=LANES/32) {
+  uint b=row_start+block*BLOCK_BYTES, j=lane%32;
+#if FORMAT==13
+  float d=half_at(b), minimum=half_at(b+2);
+  uint high=byte_at(b+16+j);
+  uint q0=(byte_at(b+48+j)>>0)&15; q0|=((high>>0)&1)<<4;
+  uint sc0=byte_at(b+4)&63, mn0=byte_at(b+8)&63;
+  precise float scale0=d*float(sc0), bias0=minimum*float(mn0);
+  precise float product0=scale0*float(q0), w0=product0-bias0;
+  s0=accum(s0,w0,input_values[p.input_offset+block*256+0+j]);
+  uint q1=(byte_at(b+48+j)>>4)&15; q1|=((high>>1)&1)<<4;
+  uint sc1=byte_at(b+5)&63, mn1=byte_at(b+9)&63;
+  precise float scale1=d*float(sc1), bias1=minimum*float(mn1);
+  precise float product1=scale1*float(q1), w1=product1-bias1;
+  s1=accum(s1,w1,input_values[p.input_offset+block*256+32+j]);
+  uint q2=(byte_at(b+80+j)>>0)&15; q2|=((high>>2)&1)<<4;
+  uint sc2=byte_at(b+6)&63, mn2=byte_at(b+10)&63;
+  precise float scale2=d*float(sc2), bias2=minimum*float(mn2);
+  precise float product2=scale2*float(q2), w2=product2-bias2;
+  s2=accum(s2,w2,input_values[p.input_offset+block*256+64+j]);
+  uint q3=(byte_at(b+80+j)>>4)&15; q3|=((high>>3)&1)<<4;
+  uint sc3=byte_at(b+7)&63, mn3=byte_at(b+11)&63;
+  precise float scale3=d*float(sc3), bias3=minimum*float(mn3);
+  precise float product3=scale3*float(q3), w3=product3-bias3;
+  s3=accum(s3,w3,input_values[p.input_offset+block*256+96+j]);
+  uint q4=(byte_at(b+112+j)>>0)&15; q4|=((high>>4)&1)<<4;
+  uint sc4=(byte_at(b+12)&15)|((byte_at(b+4)>>6)<<4), mn4=(byte_at(b+12)>>4)|((byte_at(b+8)>>6)<<4);
+  precise float scale4=d*float(sc4), bias4=minimum*float(mn4);
+  precise float product4=scale4*float(q4), w4=product4-bias4;
+  s0=accum(s0,w4,input_values[p.input_offset+block*256+128+j]);
+  uint q5=(byte_at(b+112+j)>>4)&15; q5|=((high>>5)&1)<<4;
+  uint sc5=(byte_at(b+13)&15)|((byte_at(b+5)>>6)<<4), mn5=(byte_at(b+13)>>4)|((byte_at(b+9)>>6)<<4);
+  precise float scale5=d*float(sc5), bias5=minimum*float(mn5);
+  precise float product5=scale5*float(q5), w5=product5-bias5;
+  s1=accum(s1,w5,input_values[p.input_offset+block*256+160+j]);
+  uint q6=(byte_at(b+144+j)>>0)&15; q6|=((high>>6)&1)<<4;
+  uint sc6=(byte_at(b+14)&15)|((byte_at(b+6)>>6)<<4), mn6=(byte_at(b+14)>>4)|((byte_at(b+10)>>6)<<4);
+  precise float scale6=d*float(sc6), bias6=minimum*float(mn6);
+  precise float product6=scale6*float(q6), w6=product6-bias6;
+  s2=accum(s2,w6,input_values[p.input_offset+block*256+192+j]);
+  uint q7=(byte_at(b+144+j)>>4)&15; q7|=((high>>7)&1)<<4;
+  uint sc7=(byte_at(b+15)&15)|((byte_at(b+7)>>6)<<4), mn7=(byte_at(b+15)>>4)|((byte_at(b+11)>>6)<<4);
+  precise float scale7=d*float(sc7), bias7=minimum*float(mn7);
+  precise float product7=scale7*float(q7), w7=product7-bias7;
+  s3=accum(s3,w7,input_values[p.input_offset+block*256+224+j]);
+#else
+  float d=half_at(b+208);
+  uint lo0=byte_at(b+j),lo1=byte_at(b+32+j),lo2=byte_at(b+64+j),lo3=byte_at(b+96+j);
+  uint hi0=byte_at(b+128+j),hi1=byte_at(b+160+j);
+  int q0=int(((lo0>>0)&15)|(((hi0>>0)&3)<<4))-32;
+  precise float scale0=d*float(signed_byte(byte_at(b+192+j/16)));
+  precise float w0=scale0*float(q0);
+  s0=accum(s0,w0,input_values[p.input_offset+block*256+0+j]);
+  int q1=int(((lo1>>0)&15)|(((hi0>>2)&3)<<4))-32;
+  precise float scale1=d*float(signed_byte(byte_at(b+194+j/16)));
+  precise float w1=scale1*float(q1);
+  s1=accum(s1,w1,input_values[p.input_offset+block*256+32+j]);
+  int q2=int(((lo0>>4)&15)|(((hi0>>4)&3)<<4))-32;
+  precise float scale2=d*float(signed_byte(byte_at(b+196+j/16)));
+  precise float w2=scale2*float(q2);
+  s2=accum(s2,w2,input_values[p.input_offset+block*256+64+j]);
+  int q3=int(((lo1>>4)&15)|(((hi0>>6)&3)<<4))-32;
+  precise float scale3=d*float(signed_byte(byte_at(b+198+j/16)));
+  precise float w3=scale3*float(q3);
+  s3=accum(s3,w3,input_values[p.input_offset+block*256+96+j]);
+  int q4=int(((lo2>>0)&15)|(((hi1>>0)&3)<<4))-32;
+  precise float scale4=d*float(signed_byte(byte_at(b+200+j/16)));
+  precise float w4=scale4*float(q4);
+  s0=accum(s0,w4,input_values[p.input_offset+block*256+128+j]);
+  int q5=int(((lo3>>0)&15)|(((hi1>>2)&3)<<4))-32;
+  precise float scale5=d*float(signed_byte(byte_at(b+202+j/16)));
+  precise float w5=scale5*float(q5);
+  s1=accum(s1,w5,input_values[p.input_offset+block*256+160+j]);
+  int q6=int(((lo2>>4)&15)|(((hi1>>4)&3)<<4))-32;
+  precise float scale6=d*float(signed_byte(byte_at(b+204+j/16)));
+  precise float w6=scale6*float(q6);
+  s2=accum(s2,w6,input_values[p.input_offset+block*256+192+j]);
+  int q7=int(((lo3>>4)&15)|(((hi1>>6)&3)<<4))-32;
+  precise float scale7=d*float(signed_byte(byte_at(b+206+j/16)));
+  precise float w7=scale7*float(q7);
+  s3=accum(s3,w7,input_values[p.input_offset+block*256+224+j]);
+#endif
+ }
+#endif
+ }
+ precise float sum=(s0+s1)+(s2+s3);
+ partials[tid]=sum;
+ barrier();
+ for(uint stride=LANES/2;stride>0;stride>>=1) {
+  if(lane<stride) { precise float v=partials[tid]+partials[tid+stride]; partials[tid]=v; }
+  barrier();
+ }
+ if(lane==0 && row<p.rows) output_values[p.output_offset+row]=partials[tid];
+}

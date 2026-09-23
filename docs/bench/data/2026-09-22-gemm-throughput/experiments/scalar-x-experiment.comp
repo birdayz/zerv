@@ -1,0 +1,145 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_shader_subgroup_basic : require
+// EXPERIMENT (research only): wave-uniform X rows via scalar loads, A via LDS (one vec4 per
+// lane per k). 256 threads = 4 wave64; tile 256 (M) x 64 (rows); lane owns 4 M rows,
+// wave owns 16 X rows. Same per-element order: part over one 32-wide K tile, total += part.
+// Q4_0 only (FORMAT 2). Assumes subgroup size 64.
+#ifndef TMW
+#define TMW 4
+#endif
+#ifndef TNW
+#define TNW 16
+#endif
+#ifndef KV
+#define KV 4
+#endif
+#define BM (64*TMW)
+#define BN (4*TNW)
+#define BK 32
+#if TMW==8
+#define AT vec4
+#define ASTRIDE 2
+#elif TMW==4
+#define AT vec4
+#elif TMW==2
+#define AT vec2
+#else
+#define AT float
+#endif
+layout(local_size_x=256) in;
+layout(set=0,binding=0,std430) readonly buffer A { uint aw[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=2,std430) readonly buffer Io { uint io[]; };
+#if KV==4
+#define XT vec4
+#elif KV==2
+#define XT vec2
+#else
+#define XT float
+#endif
+layout(set=0,binding=3,std430) readonly restrict buffer ActX { XT xin[]; };
+layout(push_constant) uniform P {
+    uint a_base, a_rs, a_cs, a_bs, a_group;
+    uint x_base, x_rs, x_bs;
+    uint y_base, y_rs, y_bs;
+    uint m, k, flags, k_chunk;
+} p;
+#define IO_COUNT 2
+#if TMW==8
+shared AT As[BK][128];
+#else
+shared AT As[BK][64];
+#endif
+uint word_at(uint b) {
+    uint lo=aw[b>>2];
+    if ((b&2)==0) return lo;
+    return (lo>>16)|(aw[(b>>2)+1]<<16);
+}
+float half_at(uint b) { return unpackHalf2x16(aw[b>>2]>>(8*(b&2))).x; }
+void main() {
+    uint tid=gl_LocalInvocationID.x, z=gl_WorkGroupID.z;
+    uint lane=gl_SubgroupInvocationID, wave=gl_SubgroupID;
+    uint n=io[IO_COUNT];
+    uint M=p.m, K=p.k;
+    uint m0=gl_WorkGroupID.x*BM, t0=gl_WorkGroupID.y*BN;
+    if (m0>=M || t0>=n) return;
+    uint k_begin=p.k_chunk!=0u ? z*p.k_chunk : 0u;
+    uint k_end=p.k_chunk!=0u ? min(K,k_begin+p.k_chunk) : K;
+    uint abase=p.a_base;
+    uint trow=t0+wave*TNW; // first X row of this wave (uniform)
+    float total[TMW][TNW], part[TMW][TNW];
+    [[unroll]] for (uint i=0;i<TMW;i++) [[unroll]] for (uint j=0;j<TNW;j++) total[i][j]=0.0;
+    for (uint k0=k_begin;k0<k_end;k0+=BK) {
+        // A tile: BM rows x one Q4_0 block. BM <= 256: (256/BM) threads per row;
+        // BM > 256: each thread dequantizes BM/256 whole rows.
+#if BM > 256
+        [[unroll]] for (uint rr=0;rr<BM/256;rr++) {
+            uint per=1u, r=tid+256u*rr, part_b=0u;
+#else
+        {
+            uint per=256u/BM, r=tid/per, part_b=(tid%per)*(16u/per); // byte offset in payload
+#endif
+            uint row=m0+r;
+            bool live=row<M;
+            uint b=abase+min(row,M-1u)*p.a_rs+(k0/32u)*18u;
+            float d=live ? half_at(b) : 0.0;
+            float c=-8.0*d;
+            [[unroll]] for (uint w=0;w<4u/per;w++) {
+                uint byte0=part_b+w*4u;
+                uint q=live ? word_at(b+2u+byte0) : 0u;
+                [[unroll]] for (uint e=0;e<4;e++) {
+                    float lo=float((q>>(8u*e))&15u), hi=float((q>>(8u*e+4u))&15u);
+#if TMW==1
+                    As[byte0+e][r]=fma(d,lo,c);
+                    As[byte0+e+16u][r]=fma(d,hi,c);
+#elif TMW==8
+                    As[byte0+e][((r/8u)*2u+(r%8u)/4u)][r%4u]=fma(d,lo,c);
+                    As[byte0+e+16u][((r/8u)*2u+(r%8u)/4u)][r%4u]=fma(d,hi,c);
+#else
+                    As[byte0+e][r/TMW][r%TMW]=fma(d,lo,c);
+                    As[byte0+e+16u][r/TMW][r%TMW]=fma(d,hi,c);
+#endif
+                }
+            }
+        }
+        barrier();
+        [[unroll]] for (uint i=0;i<TMW;i++) [[unroll]] for (uint j=0;j<TNW;j++) part[i][j]=0.0;
+        [[unroll]] for (uint kb=0;kb<BK/KV;kb++) {
+            XT xv[TNW];
+            [[unroll]] for (uint j=0;j<TNW;j++) xv[j]=xin[(p.x_base+(trow+j)*p.x_rs+k0)/KV+kb];
+            [[unroll]] for (uint kq=0;kq<KV;kq++) {
+#if TMW==8
+                vec4 a0=As[kb*KV+kq][lane*2u], a1=As[kb*KV+kq][lane*2u+1u];
+#else
+                AT a=As[kb*KV+kq][lane];
+#endif
+                [[unroll]] for (uint i=0;i<TMW;i++) [[unroll]] for (uint j=0;j<TNW;j++) {
+#if KV==1
+                    float xj=xv[j];
+#else
+                    float xj=xv[j][kq];
+#endif
+#if TMW==1
+                    part[i][j]=fma(a,xj,part[i][j]);
+#elif TMW==8
+                    part[i][j]=fma(i<4u ? a0[i] : a1[i-4u],xj,part[i][j]);
+#else
+                    part[i][j]=fma(a[i],xj,part[i][j]);
+#endif
+                }
+            }
+        }
+        [[unroll]] for (uint i=0;i<TMW;i++) [[unroll]] for (uint j=0;j<TNW;j++) total[i][j]+=part[i][j];
+        barrier();
+    }
+    uint ybase=p.y_base+z*p.y_bs;
+    [[unroll]] for (uint j=0;j<TNW;j++) {
+        uint t=trow+j;
+        if (t>=n) continue;
+        [[unroll]] for (uint i=0;i<TMW;i++) {
+            uint mm=m0+TMW*lane+i;
+            if (mm<M) act[ybase+t*p.y_rs+mm]=total[i][j];
+        }
+    }
+}

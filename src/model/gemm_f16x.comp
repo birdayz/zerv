@@ -1,0 +1,130 @@
+#version 450
+// f16 prefill GEMM on f16 X, wave32 (block 16b; docs/specs/prefill.md "f16 GEMM, wave32
+// kernel with f16 X"). Same arithmetic as gemm_f16.comp, bit for bit:
+//   Y[t][m] = sum_k f16(W[m][k]) * X16[t][k], f16 x f16 -> f32 WMMA (16x16x16), k order,
+// where X16 is the producer's f16 (RNE) copy of X. Only data movement differs.
+// FORMAT: 2 Q4_0 (the only format so far). Bindings as gemm.comp (A, act, io, act); the
+// fourth binding is read as the f16 X copy: x_base / x_rs are in halves.
+// Tile 128 (M) x 256 (rows); 256 threads = 8 subgroups of exactly 32 (required subgroup
+// size, full subgroups), 2 (M) x 4 (rows), each 64 x 64. BK = 64 per LDS stage, two stages.
+// Host-validated: M % 128 == 0, plan rows % 256 == 0, K % 64 == 0, k_chunk == 0,
+// flags == 0, x_base % 8 == 0, x_rs % 8 == 0. Rows t >= n read row n-1; their results
+// are stored into the plan's unused rows (never read).
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_cooperative_matrix : require
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_KHR_shader_subgroup_basic : require
+#if FORMAT != 2
+#error gemm_f16x: only Q4_0 (FORMAT 2) so far
+#endif
+#define BM 128
+#define BN 256
+#define WAVES_M 2
+#define WM 64
+#define WN 64
+#define TM (WM/16)
+#define TN (WN/16)
+#define BK 64
+#define PARTS (BK/16)              // 16-k row parts per stage
+#define A_PER (BM*PARTS/256)       // row parts dequantized per thread per stage
+#define AS (BK+8)                  // LDS row stride (halves)
+layout(local_size_x=256) in;
+layout(set=0,binding=0,std430) readonly buffer A { uint aw[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=2,std430) readonly buffer Io { uint io[]; };
+layout(set=0,binding=3,std430) readonly restrict buffer ActX16 { uvec4 x16[]; };
+layout(push_constant) uniform P {
+    uint a_base, a_rs, a_cs, a_bs, a_group;
+    uint x_base, x_rs, x_bs;
+    uint y_base, y_rs, y_bs;
+    uint m, k;
+    uint flags;
+    uint k_chunk;
+} p;
+#define IO_COUNT 2
+
+shared float16_t As[2][BM*AS];
+
+// The five words holding one Q4_0 block (18 bytes at a 2-byte-aligned address).
+struct Raw { uint w[5]; bool odd; };
+
+Raw fetch_a(uint row, uint k0) {
+    uint b=p.a_base+(gl_WorkGroupID.x*BM+row)*p.a_rs+(k0/32u)*18u;
+    uint wb=b>>2u;
+    Raw r;
+    r.odd=(b&2u)!=0u;
+    [[unroll]] for (uint i=0u;i<5u;i++) r.w[i]=aw[wb+i];
+    return r;
+}
+
+// Half h (k 16h..16h+15) of the block, as f16(d*(q-8)) into LDS row `row`, part `part`.
+// Byte j of the payload holds k = j (low nibble) and k = j + 16 (high nibble).
+// Nibble pairs become the f16 bit patterns 0x6400|q = 1024 + q (exact); minus 1032 gives
+// q - 8 exactly, and one RNE f16 multiply by d rounds the exact product once: the same
+// value as rounding the exact f32 product d*(q-8) to f16 (gemm_f16.comp).
+void store_a(uint stage, uint row, uint part, uint h, Raw r) {
+    uint o=row*AS+part*16u;
+    uint w0=r.w[0], w1=r.w[1], w2=r.w[2], w3=r.w[3], w4=r.w[4];
+    bool odd=r.odd;
+    f16vec2 d=f16vec2(float16_t(unpackHalf2x16(odd ? w0>>16u : w0).x));
+    uint qw[4]=uint[4](odd ? w1 : (w0>>16u)|(w1<<16u), odd ? w2 : (w1>>16u)|(w2<<16u),
+                       odd ? w3 : (w2>>16u)|(w3<<16u), odd ? w4 : (w3>>16u)|(w4<<16u));
+    [[unroll]] for (uint w=0;w<4;w++) {
+        uint x=(qw[w]>>(4u*h))&0x0F0F0F0Fu;
+        uint p01=(x&0xFFu)|((x<<8u)&0xFF0000u), p23=((x>>16u)&0xFFu)|((x>>8u)&0xFF0000u);
+        f16vec2 v01=(unpackFloat2x16(p01|0x64006400u)-f16vec2(float16_t(1032.0)))*d;
+        f16vec2 v23=(unpackFloat2x16(p23|0x64006400u)-f16vec2(float16_t(1032.0)))*d;
+        As[stage][o+w*4u]=v01.x; As[stage][o+w*4u+1u]=v01.y;
+        As[stage][o+w*4u+2u]=v23.x; As[stage][o+w*4u+3u]=v23.y;
+    }
+}
+
+void main() {
+    uint tid=gl_LocalInvocationID.x;
+    uint n=io[IO_COUNT];
+    uint m0=gl_WorkGroupID.x*BM, t0=gl_WorkGroupID.y*BN;
+    if (t0>=n) return; // uniform per workgroup
+    uint wave=gl_SubgroupID, wm=wave%WAVES_M, wn=wave/WAVES_M;
+    uint lr=gl_SubgroupInvocationID%16u;
+    coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> acc[TM][TN];
+    [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++)
+        acc[i][j]=coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(0.0);
+
+    // Thread share of A per stage: row part e = tid + 256 i -> row e / PARTS, part e % PARTS
+    // (block (e % PARTS) / 2, half e % 2).
+    Raw ar[A_PER];
+    [[unroll]] for (uint i=0u;i<A_PER;i++) { uint e=tid+256u*i; ar[i]=fetch_a(e/PARTS, ((e%PARTS)/2u)*32u); }
+    [[unroll]] for (uint i=0u;i<A_PER;i++) { uint e=tid+256u*i; store_a(0u, e/PARTS, e%PARTS, e%2u, ar[i]); }
+    // B fragment rows: lane l holds token row t0 + wn*WN + 16j + (l % 16) (rows >= n read
+    // row n - 1), 16 consecutive k per fragment. Using the descriptor's length here keeps
+    // it in scalar registers for the loop (the clamp is a no-op for validated dispatches).
+    uint xlim=uint(x16.length())-p.k/8u;
+    uint xrow[TN];
+    [[unroll]] for (uint j=0;j<TN;j++) xrow[j]=min((p.x_base+min(t0+wn*WN+j*16u+lr,n-1u)*p.x_rs)/8u, xlim);
+    barrier();
+    uint steps=p.k/BK;
+    for (uint s=0u;s<steps;s++) {
+        uint cur=s&1u;
+        bool more=s+1u<steps;
+        uint kn=(s+1u)*BK;
+        if (more) [[unroll]] for (uint i=0u;i<A_PER;i++) { uint e=tid+256u*i; ar[i]=fetch_a(e/PARTS, kn+((e%PARTS)/2u)*32u); }
+        [[unroll]] for (uint q=0u;q<PARTS;q++) {
+            coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> fa[TM];
+            coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB> fb[TN];
+            [[unroll]] for (uint i=0;i<TM;i++) coopMatLoad(fa[i], As[cur], (wm*WM+i*16u)*AS+q*16u, AS, gl_CooperativeMatrixLayoutRowMajor);
+            [[unroll]] for (uint j=0;j<TN;j++) {
+                uint e=xrow[j]+(s*BK+q*16u)/8u;
+                uvec4 u0=x16[e], u1=x16[e+1u];
+                uint u[8]=uint[8](u0.x,u0.y,u0.z,u0.w,u1.x,u1.y,u1.z,u1.w);
+                [[unroll]] for (uint c=0;c<8;c++) { f16vec2 v=unpackFloat2x16(u[c]); fb[j][2*c]=v.x; fb[j][2*c+1]=v.y; }
+            }
+            [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++) acc[i][j]=coopMatMulAdd(fa[i], fb[j], acc[i][j]);
+        }
+        // The other stage was last read in step s-1, before the previous barrier.
+        if (more) [[unroll]] for (uint i=0u;i<A_PER;i++) { uint e=tid+256u*i; store_a(cur^1u, e/PARTS, e%PARTS, e%2u, ar[i]); }
+        barrier();
+    }
+    [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++)
+        coopMatStore(acc[i][j], act, p.y_base+(t0+wn*WN+j*16u)*p.y_rs+m0+wm*WM+i*16u, p.y_rs, gl_CooperativeMatrixLayoutColumnMajor);
+}

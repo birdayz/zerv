@@ -1,0 +1,21 @@
+session ~/projects/zerv/docs/bench/data/2026-09-24-prefix-cache/recording/session-b-bruh.jsonl
+  12k in · 12k cached · 136 out · 3.5s · ttft 311ms · 42 tok/s
+● bash find ~/projects/zerv/src -name '*.zig' -print0 | xargs -0 wc -l | tail -n 1; echo '---'; find ~/proj…
+  ⎿ [computer: local]
+      7138 total
+    ---
+    … 4 more lines
+
+**Total: 7,138 lines** across all `.zig` files in `~/projects/zerv/src`.
+
+Three largest:
+
+| File | Lines |
+|---|---|
+| `src/model/runtime.zig` | 968 |
+| `src/gpu/vk.zig` | 710 |
+| `src/serve/api.zig` | 459 |
+
+  13k in · 12k cached · 136 out · 3.8s · ttft 562ms · 42 tok/s
+2 steps · 227 new + 25k cached · 272 out
+bruh -p openai-compat -m qwen3.8-27b --storage sqlite-jsonl --resume /home/USER/projects/zerv/docs/bench/data/2026-09-24-prefix-cache/recording/session-b-bruh.jsonl

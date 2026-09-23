@@ -1,0 +1,38 @@
+{
+  "commands": [
+    [
+      "/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig",
+      "build",
+      "tokenizer-bench-build",
+      "-Doptimize=ReleaseFast",
+      "-Dcpu=native"
+    ],
+    [
+      "taskset",
+      "-c",
+      "2",
+      "/home/USER/projects/zerv/third_party/tokenizer-profile/2026-09-22-baseline/zig-out/bin/zerv-tokenizer-bench",
+      "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+      "/home/USER/projects/zerv/tests/fixtures/tokenizer/manifest.json",
+      "--bench"
+    ]
+  ],
+  "original_bpe_sha256": "baae8b0d069f4579198fadea6242d6b3020cb0d5b253ff4df4aa61044d0bbc1d",
+  "stages": [
+    "total",
+    "validation",
+    "added",
+    "nfc",
+    "split",
+    "bpe"
+  ],
+  "length_bins": [
+    "1",
+    "2-4",
+    "5-8",
+    "9-16",
+    "17-32",
+    ">32"
+  ],
+  "caveat": "Instrumented stage-clock overhead, especially per split/piece; not a speed comparison. Total includes all clock probes; stage times include closing timer cost. Full checker still runs."
+}

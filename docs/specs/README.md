@@ -1,0 +1,53 @@
+# Functional specifications
+
+This directory is the source of truth for **what zerv must do**. Research, design
+alternatives, and measurements live elsewhere under `docs/` and are linked here.
+
+- [Requirements](requirements.md): user requirements and project boundaries.
+- [Serving and configuration](serving.md): proposed first usable behavior contract.
+- [Verification](verification.md): mandatory research readiness, reference fixtures,
+  differential testing, and acceptance behavior.
+- [GPU driver](gpu-driver.md): verified native Vulkan allocation/transfer/dispatch, bounded ownership and repeated raw-driver comparisons.
+- [GPU matvec](gpu-matvec.md): verified resident packed-weight/FP32 projections, independent CPU/GPU goldens and repeated full-shape timings; losses retained.
+- [Native model forward](model.md), [generation session](session.md): verified contracts.
+- [Batched FP32 prefill](prefill.md): verified chunked prefill contract (block 13a); small-row plans (13d).
+- [Split-K decode attention](decode-attention.md): verified three-pass decode attention (block 13b).
+- [Matvec ≥1.30× push](matvec-push.md): bit-identity contract for exact-FMA decode, timestamp/read-probe diagnostics.
+- [Matvec optimization DFS](matvec-optimization.md): fixed numerical gates, packed/aligned paths, F32 scheduling, baseline reconstruction and paired comparison protocol.
+- [Quant decoding](quantization.md): implemented, independently verified CPU component.
+- [Q6_K extension](q6_k.md): verified trailing-half/signed-subscale decoder and bounded output-weight slice measurements.
+- [Q5_K extension](q5_k.md): verified 256-value packed-subscale decoder and matched real-model timings.
+- [Q4_1 extension](q4_1.md): bit-exact native decoder and matched real-model measurements.
+- [Quant component benchmark](quant-benchmark.md): implemented repeatable comparison harness.
+- [GGUF loading](gguf.md): implemented bounded zero-copy parsing and Linux file mapping.
+- [GGUF benchmark](gguf-benchmark.md): implemented independent full-container gate and parse/free comparison.
+- [Official chat template](chat-template.md): implemented allocation-free text-only rendering with Jinja goldens and benchmark.
+- [Tool calling](tool-calling.md): implemented `tools`/`tool_choice`/tool messages, Qwen3-Coder call parser and between-call constraint; llama-server parity and bruh end-to-end verified.
+- [Unicode-9 NFC](normalization.md): implemented allocation-free normalization with independent normative/exhaustive goldens.
+- [NFC benchmark](normalization-benchmark.md): measured native/HF comparison; no equivalent llama-server NFC operation.
+- [Qwen text splitting](tokenizer-split.md): implemented borrowed-slice iterator with exhaustive property/golden checks and HF component timings; splitter only.
+- [Complete Qwen tokenizer](tokenizer.md): implemented owned BPE/added-token tables, bounded encoding/raw decoding and actual-GGUF adapter; independent HF/raw-piece and actual llama-server comparisons.
+- [Matched tokenizer benchmark](tokenizer-matched-benchmark.md): direct libllama comparison, allocation control, paired baseline and correctness-gated short-piece/byte-pair optimization.
+- [External reference bring-up](reference-bringup.md): completed compatibility smoke experiment, not native serving.
+
+User requirements are settled constraints. Serving/API details are **draft** until
+feature research resolves the open questions and a concrete schema/test suite is
+recorded. Native quant decoding, container loading, text-only prompt rendering and
+Unicode-9 NFC and complete Qwen tokenization/raw decoding are implemented, as is native
+Vulkan memory/transfers/compute dispatch and packed-weight matvec; there is no native model
+execution or serving yet.
+Follow the [one-active-block queue](../../TODO.md) rather than starting packages in parallel.
+
+Before a feature is ready for code, its specification must contain:
+
+1. Inputs, outputs, exact semantics, supported capabilities, and explicit exclusions.
+2. Limits, ownership/lifetimes, state transitions, failure and cancellation behavior.
+3. Links to completed research: source revisions, equations/layouts, edge cases,
+   hardware constraints, considered alternatives, resolved ambiguities.
+4. An independent correctness oracle and executable comparison/fixture-generation
+   plan whenever a reference implementation exists.
+5. Acceptance criteria, numerical tolerances where applicable, negative tests,
+   and the performance experiment that will judge the implementation.
+
+A reference-validation harness is itself functionality: specify and research it
+before coding it. Do not invent untested commands in docs and label them working.

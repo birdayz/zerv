@@ -1,0 +1,22 @@
+gpu-test
++- run test
+   +- compile test Debug native 1 errors
+tests/matvec_gpu.zig:109:51: error: embed of file outside package path: '../src/matvec/shaders/f32_small.spv'
+                const small align(4) = @embedFile("../src/matvec/shaders/f32_small.spv").*;
+                                                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+referenced by:
+    test.F32 local-size fallback retains independent results and benchmark replacement errors retain ownership: tests/matvec_gpu.zig:111:76
+    test_0: tests/gpu.zig:8:17
+error: 1 compilation errors
+failed command: /home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig test -fllvm -flld -lvulkan -ODebug --dep zerv -Mroot=/home/USER/projects/zerv/tests/gpu.zig -ODebug -Mzerv=/home/USER/projects/zerv/src/root.zig -lc --cache-dir .zig-cache --global-cache-dir /home/USER/.cache/zig --name test --zig-lib-dir .tools/zig-x86_64-linux-0.16.0/lib/ --listen=-
+
+Build Summary: 3/6 steps succeeded (1 failed); 42/42 tests passed
+test success
++- run test 42 pass (42 total) 17s MaxRSS:49M
+   +- compile test Debug native success 30s MaxRSS:922M
+gpu-test transitive failure
++- run test transitive failure
+   +- compile test Debug native 1 errors
+
+error: the following build command failed with exit code 1:
+.zig-cache/o/d4ce0ab6af2acf182f82ec7f86167a04/build /home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig .tools/zig-x86_64-linux-0.16.0/lib /home/USER/projects/zerv .zig-cache /home/USER/.cache/zig --seed 0x47f89108 -Z5c0f28a508e09331 test gpu-test --summary all

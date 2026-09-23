@@ -1,0 +1,161 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : require
+// Four-byte packed traversal. FP32 decoded weights and dot products stay strict.
+#ifndef LANES
+#define LANES 64
+#endif
+#ifndef U
+#define U 4
+#endif
+#if FORMAT==0
+#undef LANES
+#define LANES 256
+#endif
+#ifndef ALIGNED_WORDS
+#if defined(ALIGN_Q41_Q5) && (FORMAT==3 || FORMAT==13)
+#define ALIGNED_WORDS 1
+#else
+#define ALIGNED_WORDS 0
+#endif
+#endif
+layout(local_size_x=LANES) in;
+layout(set=0,binding=0,std430) readonly buffer W { uint weights[]; };
+layout(set=0,binding=1,std430) readonly buffer X { float input_values[]; };
+layout(set=0,binding=2,std430) writeonly buffer Y { float output_values[]; };
+layout(push_constant) uniform Params {
+    uint columns, rows, row_bytes, weight_offset, input_offset, output_offset, groups_x;
+} p;
+shared float partials[LANES];
+
+// A packed row may start on either half of a uint32. Extract four logical
+// bytes from their containing words; the buffer's required 4-byte padding
+// keeps the containing-word reads in bounds, including the last packed row.
+uint word_at(uint b) {
+#if ALIGNED_WORDS
+    // Host selects this module only for Q4_1/Q5_K with a 4-byte-aligned view.
+    return weights[b>>2];
+#else
+    uint lo=weights[b>>2];
+    if ((b&2)==0) return lo;
+    return (lo>>16)|(weights[(b>>2)+1]<<16);
+#endif
+}
+float half_at(uint b) { return unpackHalf2x16(weights[b>>2]>>(8*(b&2))).x; }
+vec4 input4(uint c) { return vec4(input_values[c],input_values[c+1],input_values[c+2],input_values[c+3]); }
+vec4 coeff4(uint w, uint mask, uint bias) {
+    return vec4(ivec4(uvec4(w,w>>8,w>>16,w>>24)&mask)-int(bias));
+}
+// Unsigned bytes of a word as exact FP32 values (0..255).
+vec4 ubytes(uint w) { return vec4(float(w&255u),float((w>>8)&255u),float((w>>16)&255u),float(w>>24)); }
+// NOT bit-identical: one rounding per multiply-accumulate (within existing gates only).
+vec4 accum(vec4 sum, vec4 w, vec4 x) { return fma(w,x,sum); }
+void main() {
+    uint lane=gl_LocalInvocationID.x;
+    uint row=gl_WorkGroupID.y*p.groups_x+gl_WorkGroupID.x;
+    if (row>=p.rows) return; // Uniform across the entire workgroup, including barriers.
+    uint row_start=p.weight_offset+row*p.row_bytes;
+    vec4 a=vec4(0),z=vec4(0);
+#if FORMAT==0
+    for (uint c=lane*4;c<p.columns;c+=LANES*4) {
+        vec4 w=vec4(0),x=vec4(0);
+        [[unroll]] for (uint i=0;i<4;i++) {
+            if (c+i<p.columns) {
+                w[i]=uintBitsToFloat(weights[(row_start>>2)+c+i]);
+                x[i]=input_values[p.input_offset+c+i];
+            }
+        }
+        a=accum(a,w,x);
+    }
+#elif FORMAT==2 || FORMAT==3
+    // Four lanes per 32-value block. U blocks per trip have all loads issued
+    // before use; accumulation order is unchanged (ascending blocks per lane).
+    uint nblocks=p.columns/32,step=LANES/4,block=lane/4,j=(lane%4)*4;
+    for (;block+(U-1)*step<nblocks;block+=U*step) {
+        uint q[U]; float d[U],mn[U]; vec4 x0[U],x1[U];
+        [[unroll]] for (uint u=0;u<U;u++) {
+            uint b=row_start+(block+u*step)*BLOCK_BYTES;
+            q[u]=word_at(b+PAYLOAD_OFFSET+j);
+            d[u]=half_at(b);
+#if FORMAT==3
+            mn[u]=half_at(b+2);
+#endif
+            x0[u]=input4(p.input_offset+(block+u*step)*32+j);
+            x1[u]=input4(p.input_offset+(block+u*step)*32+j+16);
+        }
+        [[unroll]] for (uint u=0;u<U;u++) {
+            vec4 lo=ubytes(q[u]&0x0f0f0f0fu),hi=ubytes((q[u]>>4)&0x0f0f0f0fu);
+#if FORMAT==2
+            // d*(q-8) is exact; only an exact zero's sign can differ, and a
+            // zero product never changes a +0-initialized FP32 accumulator.
+            float nd=-8.0*d[u];
+            vec4 w0=fma(vec4(d[u]),lo,vec4(nd)),w1=fma(vec4(d[u]),hi,vec4(nd));
+#else
+            // d*q exact, so one-rounding fma equals the strict product-then-add.
+            vec4 w0=fma(vec4(d[u]),lo,vec4(mn[u])),w1=fma(vec4(d[u]),hi,vec4(mn[u]));
+#endif
+            a=accum(a,w0,x0[u]);
+            z=accum(z,w1,x1[u]);
+        }
+    }
+    for (;block<nblocks;block+=step) {
+        uint b=row_start+block*BLOCK_BYTES;
+        uint q=word_at(b+PAYLOAD_OFFSET+j);
+        float d=half_at(b);
+        vec4 lo=ubytes(q&0x0f0f0f0fu),hi=ubytes((q>>4)&0x0f0f0f0fu);
+#if FORMAT==2
+        float nd=-8.0*d;
+        vec4 w0=fma(vec4(d),lo,vec4(nd)),w1=fma(vec4(d),hi,vec4(nd));
+#else
+        float minimum=half_at(b+2);
+        vec4 w0=fma(vec4(d),lo,vec4(minimum)),w1=fma(vec4(d),hi,vec4(minimum));
+#endif
+        a=accum(a,w0,input4(p.input_offset+block*32+j));
+        z=accum(z,w1,input4(p.input_offset+block*32+j+16));
+    }
+#elif FORMAT==13 || FORMAT==14
+    // Eight lanes per 256-value block; four adjacent columns in each of eight groups.
+    for (uint block=lane/8;block<p.columns/256;block+=LANES/8) {
+        uint b=row_start+block*BLOCK_BYTES,j=(lane%8)*4;
+#if FORMAT==13
+        vec2 globals=unpackHalf2x16(word_at(b));
+        uint sa=word_at(b+4),sb=word_at(b+8),sc=word_at(b+12);
+        uint high=word_at(b+16+j);
+        [[unroll]] for (uint g=0;g<8;g++) {
+            uint shift=(g%4)*8;
+            uint scale=(sa>>shift)&63,minimum=(sb>>shift)&63;
+            if (g>=4) {
+                scale=((sc>>shift)&15)|(((sa>>(shift+6))&3)<<4);
+                minimum=((sc>>(shift+4))&15)|(((sb>>(shift+6))&3)<<4);
+            }
+            uint q=((word_at(b+48+(g/2)*32+j)>>(4*(g%2)))&0x0f0f0f0f)|(((high>>g)&0x01010101)<<4);
+            precise float d=globals.x*float(scale),bias=globals.y*float(minimum);
+            vec4 w=fma(vec4(d),ubytes(q),vec4(-bias));
+            if (g%2==0) a=accum(a,w,input4(p.input_offset+block*256+g*32+j));
+            else z=accum(z,w,input4(p.input_offset+block*256+g*32+j));
+        }
+#else
+        float d=half_at(b+208);
+        uvec4 low=uvec4(word_at(b+j),word_at(b+32+j),word_at(b+64+j),word_at(b+96+j));
+        uvec2 high=uvec2(word_at(b+128+j),word_at(b+160+j));
+        uvec4 scales=uvec4(word_at(b+192),word_at(b+196),word_at(b+200),word_at(b+204));
+        [[unroll]] for (uint g=0;g<8;g++) {
+            uint q=((low[(g/4)*2+g%2]>>(4*((g%4)/2)))&0x0f0f0f0f)|(((high[g/4]>>(2*(g%4)))&0x03030303)<<4);
+            uint s=(scales[g/2]>>(16*(g%2)+8*(j/16)))&255;
+            precise float scale=d*float(int(s^128)-128);
+            vec4 w=fma(vec4(scale),ubytes(q),vec4(-32.0*scale));
+            if (g%2==0) a=accum(a,w,input4(p.input_offset+block*256+g*32+j));
+            else z=accum(z,w,input4(p.input_offset+block*256+g*32+j));
+        }
+#endif
+    }
+#endif
+    precise vec4 v=a+z;
+    precise float sum=(v.x+v.y)+(v.z+v.w);
+    partials[lane]=sum;
+    barrier();
+    for (uint stride=LANES/2;stride>0;stride>>=1) {
+        if (lane<stride) { precise float value=partials[lane]+partials[lane+stride]; partials[lane]=value; }
+        barrier();
+    }
+    if (lane==0) output_values[p.output_offset+row]=partials[0];
+}

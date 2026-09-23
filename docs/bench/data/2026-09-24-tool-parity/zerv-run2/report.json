@@ -1,0 +1,975 @@
+{
+ "started_at": "2026-09-23T13:24:02.190765+00:00",
+ "argv": [
+  "tools/check_tool_parity.py",
+  "--engines",
+  "zerv",
+  "--zerv-binary",
+  "third_party/tool-parity/zerv-282ff781",
+  "--reference-raw",
+  "docs/bench/data/2026-09-24-tool-parity/llama-reference/raw.json",
+  "--output",
+  "docs/bench/data/2026-09-24-tool-parity/zerv-run2"
+ ],
+ "workload_sha256": "cdb5b83ff64aafbd9a2abbdc7d39a9f5e539d1ea319598199d3a166b84c3bded",
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "zerv_sha256": "282ff781e8ad36c596e0c85185419e68bace4cb7c9110a3d6fb573daf90c0f01",
+ "llama_server_sha256": "0f401589a34aabc75a2371cb39d92d717212e27d9a0c6e2bf30a8d643bf77d85",
+ "llama_version": "version: 0.4.1-dev (build 10964, commit b29c606e28)\nbuilt with GNU 16.2.1 for Linux x86_64",
+ "engines": {
+  "zerv": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/tool-parity/zerv-282ff781",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18093",
+    "--context",
+    "8192"
+   ],
+   "env": {}
+  }
+ },
+ "cases": [
+  {
+   "case": "bruh-date",
+   "mode": "json",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": "The user is asking to display the current date using bash. This is a simple task. Let's run the `date` command.\n",
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "bash",
+      "arguments": {
+       "command": "date"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 1154,
+     "completion_tokens": 56
+    }
+   },
+   "test": {
+    "reasoning": "The user is asking to display the current date using bash. This is a simple task. Let's run the `date` command.\n",
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "bash",
+      "arguments": {
+       "command": "date"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 1154,
+     "completion_tokens": 56
+    }
+   }
+  },
+  {
+   "case": "bruh-date",
+   "mode": "sse",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": "The user is asking to display the current date using bash. This is a simple task. Let's run the `date` command.\n",
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "bash",
+      "arguments": {
+       "command": "date"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 1154,
+     "completion_tokens": 56
+    }
+   },
+   "test": {
+    "reasoning": "The user is asking to display the current date using bash. This is a simple task. Let's run the `date` command.\n",
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "bash",
+      "arguments": {
+       "command": "date"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 1154,
+     "completion_tokens": 56
+    }
+   }
+  },
+  {
+   "case": "bruh-date-nothink",
+   "mode": "json",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "bash",
+      "arguments": {
+       "command": "date"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 1118,
+     "completion_tokens": 26
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "bash",
+      "arguments": {
+       "command": "date"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 1118,
+     "completion_tokens": 26
+    }
+   }
+  },
+  {
+   "case": "bruh-date-nothink",
+   "mode": "sse",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "bash",
+      "arguments": {
+       "command": "date"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 1118,
+     "completion_tokens": 26
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "bash",
+      "arguments": {
+       "command": "date"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 1118,
+     "completion_tokens": 26
+    }
+   }
+  },
+  {
+   "case": "weather-typed",
+   "mode": "json",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Paris",
+       "unit": "fahrenheit",
+       "days": 3,
+       "include_hourly": true
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 368,
+     "completion_tokens": 65
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Paris",
+       "unit": "fahrenheit",
+       "days": 3,
+       "include_hourly": true
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 368,
+     "completion_tokens": 65
+    }
+   }
+  },
+  {
+   "case": "weather-typed",
+   "mode": "sse",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Paris",
+       "unit": "fahrenheit",
+       "days": 3,
+       "include_hourly": true
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 368,
+     "completion_tokens": 65
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Paris",
+       "unit": "fahrenheit",
+       "days": 3,
+       "include_hourly": true
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 368,
+     "completion_tokens": 65
+    }
+   }
+  },
+  {
+   "case": "write-file-multiline",
+   "mode": "json",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "write_file",
+      "arguments": {
+       "path": "hello.py",
+       "content": "print(\"hello world\")\nfor i in range(1, 4):\n    print(i)\n"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 728,
+     "completion_tokens": 59
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "write_file",
+      "arguments": {
+       "path": "hello.py",
+       "content": "print(\"hello world\")\nfor i in range(1, 4):\n    print(i)\n"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 728,
+     "completion_tokens": 59
+    }
+   }
+  },
+  {
+   "case": "write-file-multiline",
+   "mode": "sse",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "write_file",
+      "arguments": {
+       "path": "hello.py",
+       "content": "print(\"hello world\")\nfor i in range(1, 4):\n    print(i)\n"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 728,
+     "completion_tokens": 59
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "write_file",
+      "arguments": {
+       "path": "hello.py",
+       "content": "print(\"hello world\")\nfor i in range(1, 4):\n    print(i)\n"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 728,
+     "completion_tokens": 59
+    }
+   }
+  },
+  {
+   "case": "parallel-default",
+   "mode": "json",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Paris"
+      }
+     },
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Tokyo"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 357,
+     "completion_tokens": 53
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Paris"
+      }
+     },
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Tokyo"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 357,
+     "completion_tokens": 53
+    }
+   }
+  },
+  {
+   "case": "parallel-default",
+   "mode": "sse",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Paris"
+      }
+     },
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Tokyo"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 357,
+     "completion_tokens": 53
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Paris"
+      }
+     },
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Tokyo"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 357,
+     "completion_tokens": 53
+    }
+   }
+  },
+  {
+   "case": "parallel-false",
+   "mode": "json",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Paris"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 357,
+     "completion_tokens": 27
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Paris"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 357,
+     "completion_tokens": 27
+    }
+   }
+  },
+  {
+   "case": "parallel-false",
+   "mode": "sse",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Paris"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 357,
+     "completion_tokens": 27
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Paris"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 357,
+     "completion_tokens": 27
+    }
+   }
+  },
+  {
+   "case": "tool-result-final",
+   "mode": "json",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "Thu Sep 24 14:00:00 CEST 2026",
+    "tool_calls": null,
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 1182,
+     "completion_tokens": 22
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "Thu Sep 24 14:00:00 CEST 2026",
+    "tool_calls": null,
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 1182,
+     "completion_tokens": 22
+    }
+   }
+  },
+  {
+   "case": "tool-result-final",
+   "mode": "sse",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "Thu Sep 24 14:00:00 CEST 2026",
+    "tool_calls": null,
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 1182,
+     "completion_tokens": 22
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "Thu Sep 24 14:00:00 CEST 2026",
+    "tool_calls": null,
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 1182,
+     "completion_tokens": 22
+    }
+   }
+  },
+  {
+   "case": "tool-choice-none",
+   "mode": "json",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "<tool_call>\n<function=get_weather>\n<parameter=city>\nParis\n</parameter>\n</function>\n</tool_call>",
+    "tool_calls": null,
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 355,
+     "completion_tokens": 26
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "<tool_call>\n<function=get_weather>\n<parameter=city>\nParis\n</parameter>\n</function>\n</tool_call>",
+    "tool_calls": null,
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 355,
+     "completion_tokens": 26
+    }
+   }
+  },
+  {
+   "case": "tool-choice-none",
+   "mode": "sse",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "<tool_call>\n<function=get_weather>\n<parameter=city>\nParis\n</parameter>\n</function>\n</tool_call>",
+    "tool_calls": null,
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 355,
+     "completion_tokens": 26
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "<tool_call>\n<function=get_weather>\n<parameter=city>\nParis\n</parameter>\n</function>\n</tool_call>",
+    "tool_calls": null,
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 355,
+     "completion_tokens": 26
+    }
+   }
+  },
+  {
+   "case": "length-cut",
+   "mode": "json",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "write_file",
+      "arguments": {
+       "__unparsed__": "{\"path\":\"hello.py\""
+      }
+     }
+    ],
+    "finish": "length",
+    "usage": {
+     "prompt_tokens": 728,
+     "completion_tokens": 24
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "write_file",
+      "arguments": {
+       "__unparsed__": "{\"path\":\"hello.py\""
+      }
+     }
+    ],
+    "finish": "length",
+    "usage": {
+     "prompt_tokens": 728,
+     "completion_tokens": 24
+    }
+   }
+  },
+  {
+   "case": "length-cut",
+   "mode": "sse",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "write_file",
+      "arguments": {
+       "__unparsed__": "{\"path\":\"hello.py\""
+      }
+     }
+    ],
+    "finish": "length",
+    "usage": {
+     "prompt_tokens": 728,
+     "completion_tokens": 24
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "write_file",
+      "arguments": {
+       "__unparsed__": "{\"path\":\"hello.py\""
+      }
+     }
+    ],
+    "finish": "length",
+    "usage": {
+     "prompt_tokens": 728,
+     "completion_tokens": 24
+    }
+   }
+  },
+  {
+   "case": "search-array",
+   "mode": "json",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "search",
+      "arguments": {
+       "queries": [
+        "zig allocators",
+        "vulkan compute"
+       ],
+       "limit": 5
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 317,
+     "completion_tokens": 46
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "search",
+      "arguments": {
+       "queries": [
+        "zig allocators",
+        "vulkan compute"
+       ],
+       "limit": 5
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 317,
+     "completion_tokens": 46
+    }
+   }
+  },
+  {
+   "case": "search-array",
+   "mode": "sse",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "search",
+      "arguments": {
+       "queries": [
+        "zig allocators",
+        "vulkan compute"
+       ],
+       "limit": 5
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 317,
+     "completion_tokens": 46
+    }
+   },
+   "test": {
+    "reasoning": null,
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "search",
+      "arguments": {
+       "queries": [
+        "zig allocators",
+        "vulkan compute"
+       ],
+       "limit": 5
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 317,
+     "completion_tokens": 46
+    }
+   }
+  },
+  {
+   "case": "weather-think-low",
+   "mode": "json",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": "The user wants to compare the current weather in Rome and Oslo. I need to get the weather for both cities. Since these are independent calls, I can make them both in parallel.\n",
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Rome",
+       "unit": "celsius"
+      }
+     },
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Oslo",
+       "unit": "celsius"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 383,
+     "completion_tokens": 120
+    }
+   },
+   "test": {
+    "reasoning": "The user wants to compare the current weather in Rome and Oslo. I need to get the weather for both cities. Since these are independent calls, I can make them both in parallel.\n",
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Rome",
+       "unit": "celsius"
+      }
+     },
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Oslo",
+       "unit": "celsius"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 383,
+     "completion_tokens": 120
+    }
+   }
+  },
+  {
+   "case": "weather-think-low",
+   "mode": "sse",
+   "verdict": "equal",
+   "reference": {
+    "reasoning": "The user wants to compare the current weather in Rome and Oslo. I need to get the weather for both cities. Since these are independent calls, I can make them both in parallel.\n",
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Rome",
+       "unit": "celsius"
+      }
+     },
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Oslo",
+       "unit": "celsius"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 383,
+     "completion_tokens": 120
+    }
+   },
+   "test": {
+    "reasoning": "The user wants to compare the current weather in Rome and Oslo. I need to get the weather for both cities. Since these are independent calls, I can make them both in parallel.\n",
+    "content": "",
+    "tool_calls": [
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Rome",
+       "unit": "celsius"
+      }
+     },
+     {
+      "type": "function",
+      "name": "get_weather",
+      "arguments": {
+       "city": "Oslo",
+       "unit": "celsius"
+      }
+     }
+    ],
+    "finish": "tool_calls",
+    "usage": {
+     "prompt_tokens": 383,
+     "completion_tokens": 120
+    }
+   }
+  }
+ ],
+ "reference_raw": {
+  "path": "docs/bench/data/2026-09-24-tool-parity/llama-reference/raw.json",
+  "sha256": "deb5418ec74d9b52c922ab9a524eee409fc05ae47185fb8a422f71736abe1264",
+  "engine": "llama-fp32-full"
+ },
+ "finished_at": "2026-09-23T13:24:56.673691+00:00"
+}

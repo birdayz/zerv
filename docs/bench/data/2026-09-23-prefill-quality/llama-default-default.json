@@ -1,0 +1,73 @@
+{
+ "engine": "llama.cpp b29c606e28 (libllama pinned)",
+ "config": "default",
+ "env": {},
+ "kv": "f16",
+ "batch": 2048,
+ "ubatch": 512,
+ "flash": true,
+ "tool_sha256": "8d718562392a6ee515f3403dafebebba7f09802d4fc4132a116eab7d6e2a3523",
+ "cases": {
+  "short-nothink": {
+   "tokens": 48,
+   "hidden_l_out_63": {
+    "count": 48,
+    "mean": 0.04190565488893052,
+    "median": 0.03237790154805537,
+    "p90": 0.08256138933397712,
+    "max": 0.11388258092840733
+   },
+   "logits": {
+    "count": 48,
+    "mean": 0.032031123317332405,
+    "median": 0.025049750215781645,
+    "p90": 0.053930176743996215,
+    "max": 0.1153405927546013
+   },
+   "logit_positions": 48,
+   "argmax_agree": 48,
+   "argmax_decided": 48,
+   "near_ties": 0,
+   "capture": {
+    "tokens": 48,
+    "n_vocab": 248320,
+    "n_batch": 2048,
+    "n_ubatch": 512,
+    "flash": 1,
+    "kv": "f16"
+   }
+  },
+  "long-think": {
+   "tokens": 221,
+   "hidden_l_out_63": {
+    "count": 221,
+    "mean": 0.03910690139306011,
+    "median": 0.03251276927205323,
+    "p90": 0.06911090073788885,
+    "max": 0.13621793074266136
+   },
+   "logits": {
+    "count": 221,
+    "mean": 0.029365856030941096,
+    "median": 0.02280085423483353,
+    "p90": 0.05299496189595785,
+    "max": 0.09319424472675478
+   },
+   "logit_positions": 221,
+   "argmax_agree": 208,
+   "argmax_decided": 221,
+   "near_ties": 0,
+   "capture": {
+    "tokens": 221,
+    "n_vocab": 248320,
+    "n_batch": 2048,
+    "n_ubatch": 512,
+    "flash": 1,
+    "kv": "f16"
+   }
+  }
+ },
+ "fixture": "tests/fixtures/model/qwen38-oracle.json",
+ "fixture_sha256": "ca02ef09dc43b4d5be93aedd5c49e5b1323fc1e4283bfca92aa5fd90f635e98e",
+ "oracle_dir": "third_party/model-oracle/2026-09-23-default-regen"
+}

@@ -1,0 +1,46 @@
+{
+ "engine": "llama.cpp b29c606e28 (libllama pinned)",
+ "config": "nocoopmat",
+ "env": {
+  "GGML_VK_DISABLE_COOPMAT": "1"
+ },
+ "kv": "f16",
+ "batch": 2048,
+ "ubatch": 512,
+ "flash": true,
+ "tool_sha256": "8d718562392a6ee515f3403dafebebba7f09802d4fc4132a116eab7d6e2a3523",
+ "cases": {
+  "long-prefill": {
+   "tokens": 562,
+   "hidden_l_out_63": {
+    "count": 562,
+    "mean": 0.025642766537362395,
+    "median": 0.01566583577807086,
+    "p90": 0.03275548964307155,
+    "max": 1.3130545632401351
+   },
+   "logits": {
+    "count": 562,
+    "mean": 0.01888920912280853,
+    "median": 0.01181535536480208,
+    "p90": 0.02221102314949067,
+    "max": 0.9856392816450307
+   },
+   "logit_positions": 562,
+   "argmax_agree": 552,
+   "argmax_decided": 562,
+   "near_ties": 0,
+   "capture": {
+    "tokens": 562,
+    "n_vocab": 248320,
+    "n_batch": 2048,
+    "n_ubatch": 512,
+    "flash": 1,
+    "kv": "f16"
+   }
+  }
+ },
+ "fixture": "tests/fixtures/model/qwen38-oracle-long.json",
+ "fixture_sha256": "78c6f7cbffb3aba47cb5315129aab3578f1bb7e21c29e17d7d760de72edac27c",
+ "oracle_dir": "third_party/model-oracle/2026-09-23-long"
+}

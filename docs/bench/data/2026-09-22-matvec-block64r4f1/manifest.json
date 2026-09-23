@@ -1,0 +1,420 @@
+{
+  "status": "passed",
+  "started_at": "2026-09-22T15:51:49.038149+00:00",
+  "argv": [
+    "bench/tune_matvec.py",
+    "--source",
+    "docs/bench/data/2026-09-22-matvec-dfs/source/block.comp",
+    "--rows",
+    "4",
+    "--define",
+    "LANES=64",
+    "--define",
+    "ROWS=4",
+    "--define",
+    "ACC_FMA=1",
+    "--output",
+    "docs/bench/data/2026-09-22-matvec-block64r4f1"
+  ],
+  "rows": 4,
+  "defines": [
+    "LANES=64",
+    "ROWS=4",
+    "ACC_FMA=1"
+  ],
+  "cpu": 10,
+  "gpu_before": {
+    "/sys/class/drm/card1/device": {
+      "vendor": "0x1002",
+      "device": "0x744c",
+      "gpu_busy_percent": "4",
+      "mem_info_vram_total": "25753026560",
+      "mem_info_vram_used": "1045909504",
+      "mem_info_gtt_used": "101449728",
+      "hwmon/hwmon3/temp1_input": "49000"
+    }
+  },
+  "commands": [
+    [
+      "glslc",
+      "--target-env=vulkan1.1",
+      "-O",
+      "-fshader-stage=compute",
+      "-DFORMAT=0",
+      "-DBLOCK_BYTES=4",
+      "-DPAYLOAD_OFFSET=2",
+      "-DLANES=64",
+      "-DROWS=4",
+      "-DACC_FMA=1",
+      "/home/USER/projects/zerv/docs/bench/data/2026-09-22-matvec-block64r4f1/candidate.comp",
+      "-o",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/f32.spv"
+    ],
+    [
+      "spirv-val",
+      "--target-env",
+      "vulkan1.1",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/f32.spv"
+    ],
+    [
+      "glslc",
+      "--target-env=vulkan1.1",
+      "-O",
+      "-fshader-stage=compute",
+      "-DFORMAT=2",
+      "-DBLOCK_BYTES=18",
+      "-DPAYLOAD_OFFSET=2",
+      "-DLANES=64",
+      "-DROWS=4",
+      "-DACC_FMA=1",
+      "/home/USER/projects/zerv/docs/bench/data/2026-09-22-matvec-block64r4f1/candidate.comp",
+      "-o",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0.spv"
+    ],
+    [
+      "spirv-val",
+      "--target-env",
+      "vulkan1.1",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0.spv"
+    ],
+    [
+      "glslc",
+      "--target-env=vulkan1.1",
+      "-O",
+      "-fshader-stage=compute",
+      "-DFORMAT=3",
+      "-DBLOCK_BYTES=20",
+      "-DPAYLOAD_OFFSET=4",
+      "-DLANES=64",
+      "-DROWS=4",
+      "-DACC_FMA=1",
+      "/home/USER/projects/zerv/docs/bench/data/2026-09-22-matvec-block64r4f1/candidate.comp",
+      "-o",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_1.spv"
+    ],
+    [
+      "spirv-val",
+      "--target-env",
+      "vulkan1.1",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_1.spv"
+    ],
+    [
+      "glslc",
+      "--target-env=vulkan1.1",
+      "-O",
+      "-fshader-stage=compute",
+      "-DFORMAT=13",
+      "-DBLOCK_BYTES=176",
+      "-DPAYLOAD_OFFSET=2",
+      "-DLANES=64",
+      "-DROWS=4",
+      "-DACC_FMA=1",
+      "/home/USER/projects/zerv/docs/bench/data/2026-09-22-matvec-block64r4f1/candidate.comp",
+      "-o",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q5_k.spv"
+    ],
+    [
+      "spirv-val",
+      "--target-env",
+      "vulkan1.1",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q5_k.spv"
+    ],
+    [
+      "glslc",
+      "--target-env=vulkan1.1",
+      "-O",
+      "-fshader-stage=compute",
+      "-DFORMAT=14",
+      "-DBLOCK_BYTES=210",
+      "-DPAYLOAD_OFFSET=2",
+      "-DLANES=64",
+      "-DROWS=4",
+      "-DACC_FMA=1",
+      "/home/USER/projects/zerv/docs/bench/data/2026-09-22-matvec-block64r4f1/candidate.comp",
+      "-o",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q6_k.spv"
+    ],
+    [
+      "spirv-val",
+      "--target-env",
+      "vulkan1.1",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q6_k.spv"
+    ],
+    [
+      "/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig",
+      "build",
+      "gpu-matvec-bench-build",
+      "-Doptimize=ReleaseFast",
+      "-Dcpu=native"
+    ],
+    [
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/native",
+      "--fixtures",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1",
+      "4"
+    ],
+    [
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/native",
+      "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q6_k-5120-248320.case",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q6_k-5120-248320.output",
+      "10",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q6_k.spv",
+      "4"
+    ],
+    [
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/native",
+      "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_0-5120-6144.case",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0-5120-6144.output",
+      "64",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0.spv",
+      "4"
+    ],
+    [
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/native",
+      "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_0-5120-10240.case",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0-5120-10240.output",
+      "64",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0.spv",
+      "4"
+    ],
+    [
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/native",
+      "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_1-17408-5120.case",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_1-17408-5120.output",
+      "64",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_1.spv",
+      "4"
+    ],
+    [
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/native",
+      "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_0-5120-17408.case",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0-5120-17408.output",
+      "64",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0.spv",
+      "4"
+    ],
+    [
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/native",
+      "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/f32-5120-48.case",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/f32-5120-48.output",
+      "256",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/f32.spv",
+      "4"
+    ],
+    [
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/native",
+      "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q5_k-6144-5120.case",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q5_k-6144-5120.output",
+      "64",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q5_k.spv",
+      "4"
+    ],
+    [
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/native",
+      "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_0-5120-1024.case",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0-5120-1024.output",
+      "64",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0.spv",
+      "4"
+    ],
+    [
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/native",
+      "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_0-6144-5120.case",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0-6144-5120.output",
+      "64",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0.spv",
+      "4"
+    ],
+    [
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/native",
+      "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_0-5120-12288.case",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0-5120-12288.output",
+      "64",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0.spv",
+      "4"
+    ],
+    [
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/native",
+      "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_0-17408-5120.case",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0-17408-5120.output",
+      "64",
+      "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0.spv",
+      "4"
+    ]
+  ],
+  "checks": [
+    {
+      "case": "q6_k-5120-248320",
+      "input_sha256": "1ff62d58d3fc021333b1c156292bf64d8052eeaa5bcd254fb6e1af96efcd67d7",
+      "output_sha256": "8781d234a8da7ffa6c109ee6b3d77e245cc92c6513d40ae0d4b6e96ce5f07ead",
+      "metrics": {
+        "max_abs": 3.756140358746052e-07,
+        "max_relative": 0.07910543998371058,
+        "max_error_over_sumabs": 1.198181521436198e-08,
+        "normalized_l2": 1.125336900284734e-07,
+        "nonfinite": 0
+      }
+    },
+    {
+      "case": "q4_0-5120-6144",
+      "input_sha256": "719efe8de41e3a3795aef4cc8ec9884f1d401be844922e852709d08b21bf0f06",
+      "output_sha256": "5d6de3ba68adb062b6d019a2c46a086b0075845eb70bf348db1e2143c2e2a91a",
+      "metrics": {
+        "max_abs": 3.0919909477233887e-07,
+        "max_relative": 0.006299643933168995,
+        "max_error_over_sumabs": 8.301805210585384e-09,
+        "normalized_l2": 9.854028555981447e-08,
+        "nonfinite": 0
+      }
+    },
+    {
+      "case": "q4_0-5120-10240",
+      "input_sha256": "414093e45b1037b8251833c51b0eee4ada37e419abf452274414b3b22cd1412b",
+      "output_sha256": "c884de71606ae810a292714ce274fe9907c78ba9a28b3c84e4715e5d637dd854",
+      "metrics": {
+        "max_abs": 5.587935447692871e-07,
+        "max_relative": 0.0003285366975491162,
+        "max_error_over_sumabs": 1.0539214412622093e-08,
+        "normalized_l2": 9.8412438522581e-08,
+        "nonfinite": 0
+      }
+    },
+    {
+      "case": "q4_1-17408-5120",
+      "input_sha256": "33a5dec2e3597a0c2a8209fd8fccfe30ac28c76d75236e004d140784dd364624",
+      "output_sha256": "8bfb4efbc76eeb7a11fc3434359186315689b13c9adaeed242e121adce8acac0",
+      "metrics": {
+        "max_abs": 1.259148120880127e-06,
+        "max_relative": 0.0010126075200017804,
+        "max_error_over_sumabs": 8.653946726883905e-09,
+        "normalized_l2": 1.8094458792575597e-07,
+        "nonfinite": 0
+      }
+    },
+    {
+      "case": "q4_0-5120-17408",
+      "input_sha256": "cc7d413165a0ffff1ddf9c340ec3f6aef299677f12a441bc704d74d45dc8093b",
+      "output_sha256": "f3a41c73852091f69db8fdfb7a868f8f0797d6b54b2bbd7fa0577124be417874",
+      "metrics": {
+        "max_abs": 2.0675361156463623e-07,
+        "max_relative": 0.0013678756476683937,
+        "max_error_over_sumabs": 1.0242919317551411e-08,
+        "normalized_l2": 9.981043225408804e-08,
+        "nonfinite": 0
+      }
+    },
+    {
+      "case": "f32-5120-48",
+      "input_sha256": "e6d4cfb521d33ae689918320a3522db1369f90588390394ec70eec99b2fe33f0",
+      "output_sha256": "9228ff8a79a1e58adb17090a387540c7788faa6be212b0bfb3c5c729893ba1b0",
+      "metrics": {
+        "max_abs": 1.8870923668146133e-07,
+        "max_relative": 1.3494416135681846e-06,
+        "max_error_over_sumabs": 4.806657038186027e-09,
+        "normalized_l2": 7.937754813677005e-08,
+        "nonfinite": 0
+      }
+    },
+    {
+      "case": "q5_k-6144-5120",
+      "input_sha256": "518164b7877c1acc842e67044bf381449f19068e81a0cf5f1a3b410c2d2095d7",
+      "output_sha256": "87b0daac4e335a16fd0938928a1e5ebf4d3115dc1f8990bf1f0109258127427c",
+      "metrics": {
+        "max_abs": 1.2614764273166656e-06,
+        "max_relative": 7.61954607265988e-05,
+        "max_error_over_sumabs": 8.707970222007224e-09,
+        "normalized_l2": 1.1835406357720521e-07,
+        "nonfinite": 0
+      }
+    },
+    {
+      "case": "q4_0-5120-1024",
+      "input_sha256": "f31ce79d2b059ac0bf33bc2dad8ab7defe006c6ef8abbc19edf72bfa9b160128",
+      "output_sha256": "730896367bb81397c2af4516ee4f0a1151b75c606d41324eb3295703b471d769",
+      "metrics": {
+        "max_abs": 2.644956111907959e-07,
+        "max_relative": 3.3998572059973484e-05,
+        "max_error_over_sumabs": 7.632959891684702e-09,
+        "normalized_l2": 9.802913823323944e-08,
+        "nonfinite": 0
+      }
+    },
+    {
+      "case": "q4_0-6144-5120",
+      "input_sha256": "ff7fbf07977c79f760b695e7f1f46b9fe21d0842d900a1720d95d8282df23d04",
+      "output_sha256": "becf7185c629195e2896f68fe408720ad07ac161e9c7f150bdbabb791c6fe1a3",
+      "metrics": {
+        "max_abs": 1.4156103134155273e-06,
+        "max_relative": 0.0004132005893955577,
+        "max_error_over_sumabs": 8.015340355237449e-09,
+        "normalized_l2": 1.0169662929983118e-07,
+        "nonfinite": 0
+      }
+    },
+    {
+      "case": "q4_0-5120-12288",
+      "input_sha256": "e62c5d80ed56d6c551c1e4776c3478f8ae91f5355e032466c918083b9d450523",
+      "output_sha256": "0fc2d020d312145538425d1bb0675db0176749f33a8fb5dfc8b93a039a131a37",
+      "metrics": {
+        "max_abs": 4.1350722312927246e-07,
+        "max_relative": 0.0009267840593141798,
+        "max_error_over_sumabs": 1.0067591535477934e-08,
+        "normalized_l2": 1.0101715515377693e-07,
+        "nonfinite": 0
+      }
+    },
+    {
+      "case": "q4_0-17408-5120",
+      "input_sha256": "73a0f00d980219d4e8d340cab42a90669975caed70b3b1d10f3a8224e2594610",
+      "output_sha256": "29bc5790bd231aefd3f11c381e286af0864b8e2e846197c21dd485d5dbe58288",
+      "metrics": {
+        "max_abs": 5.792826414108276e-07,
+        "max_relative": 0.0009326747037894228,
+        "max_error_over_sumabs": 7.395260100771643e-09,
+        "normalized_l2": 1.7534932594130134e-07,
+        "nonfinite": 0
+      }
+    }
+  ],
+  "source_sha256": "8cb3238748a34f874c555c02f5553a42895066956afc3e8314caea3561b41869",
+  "tools": {
+    "glslc": "4a4743cde357af0949cdbc07668802297327e993e548f80f4e2ee67ba9b6c74d",
+    "spirv-val": "02fae2475ba0f3cb4987aca3c9eb938e8543cf269244bfcb856d8e0c252c753b"
+  },
+  "modules": {
+    "f32": {
+      "path": "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/f32.spv",
+      "sha256": "a1f01221ccd9e98a8409085e6ac70dc6934dd2a519f2b83af929ef3a13522839"
+    },
+    "q4_0": {
+      "path": "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_0.spv",
+      "sha256": "ce48f9d0facb12c9afbada0529c9ef3b7d72537947306922a61c7a40e2cb6cf2"
+    },
+    "q4_1": {
+      "path": "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q4_1.spv",
+      "sha256": "b7b77c1d244037b30baae4e6f997eced7ff8ecb5f81cca630d7c5558876172d7"
+    },
+    "q5_k": {
+      "path": "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q5_k.spv",
+      "sha256": "54cdf486386c33a3bd698817c8c0e96f9b34a82bafe201fbd277f63b6e8d0d1c"
+    },
+    "q6_k": {
+      "path": "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-block64r4f1/q6_k.spv",
+      "sha256": "22d0a22fe14971addcf02c957e01513b2b5f2d70827913efc9a4993834df8c3a"
+    }
+  },
+  "native_sha256": "0f304f5c2b553a83edaeeedff78ef75ce8b65c4a53a4c29f0a56d6cdd3c90ad4",
+  "fixtures": "48 cases, replay/guards/changed input passed",
+  "finished_at": "2026-09-22T15:51:53.433760+00:00",
+  "gpu_after": {
+    "/sys/class/drm/card1/device": {
+      "vendor": "0x1002",
+      "device": "0x744c",
+      "gpu_busy_percent": "50",
+      "mem_info_vram_total": "25753026560",
+      "mem_info_vram_used": "1045909504",
+      "mem_info_gtt_used": "101449728",
+      "hwmon/hwmon3/temp1_input": "49000"
+    }
+  }
+}

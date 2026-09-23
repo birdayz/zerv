@@ -1,0 +1,2752 @@
+["/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig", "version"]
+0.16.0
+["/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig", "build", "test", "gpu-test", "--summary", "all"]
+Build Summary: 6/6 steps succeeded; 42/42 tests passed
+test success
++- run test 39 pass (39 total) 17s MaxRSS:49M
+   +- compile test Debug native cached 8ms MaxRSS:41M
+gpu-test success
++- run test 3 pass (3 total) 891ms MaxRSS:40M
+   +- compile test Debug native success 3s MaxRSS:415M
+
+["/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig", "build", "test", "gpu-test", "gpu-driver-bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native", "--summary", "all"]
+Build Summary: 9/9 steps succeeded; 42/42 tests passed
+test success
++- run test 39 pass (39 total) 2s MaxRSS:45M
+   +- compile test ReleaseFast native cached 13ms MaxRSS:40M
+gpu-test success
++- run test 3 pass (3 total) 235ms MaxRSS:39M
+   +- compile test ReleaseFast native success 19s MaxRSS:591M
+gpu-driver-bench-build success
++- install zerv-gpu-driver-bench success
+   +- compile exe zerv-gpu-driver-bench ReleaseFast native success 14s MaxRSS:451M
+
+["/usr/bin/gcc", "--version"]
+gcc (GCC) 16.2.1 20260810
+Copyright (C) 2026 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+["/usr/bin/gcc", "-std=c11", "-O3", "-march=native", "-Wall", "-Wextra", "-Werror", "-I/home/USER/projects/zerv/third_party/vulkan/1.4.354/include", "/home/USER/projects/zerv/tests/reference/vulkan_driver.c", "-lvulkan", "-lcrypto", "-o", "/home/USER/projects/zerv/third_party/gpu-driver-bench/2026-09-22-gpu-driver-run1/reference"]
+["readelf", "-d", "/home/USER/projects/zerv/third_party/gpu-driver-bench/2026-09-22-gpu-driver-run1/native"]
+
+Dynamic section at offset 0x82aa8 contains 25 entries:
+  Tag        Type                         Name/Value
+ 0x0000000000000001 (NEEDED)             Shared library: [libvulkan.so.1]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [ld-linux-x86-64.so.2]
+ 0x000000000000001e (FLAGS)              BIND_NOW
+ 0x000000006ffffffb (FLAGS_1)            Flags: NOW
+ 0x0000000000000015 (DEBUG)              0x0
+ 0x0000000000000007 (RELA)               0x1001f30
+ 0x0000000000000008 (RELASZ)             48 (bytes)
+ 0x0000000000000009 (RELAENT)            24 (bytes)
+ 0x0000000000000017 (JMPREL)             0x1001f60
+ 0x0000000000000002 (PLTRELSZ)           3288 (bytes)
+ 0x0000000000000003 (PLTGOT)             0x1084c48
+ 0x0000000000000014 (PLTREL)             RELA
+ 0x0000000000000006 (SYMTAB)             0x1000320
+ 0x000000000000000b (SYMENT)             24 (bytes)
+ 0x0000000000000005 (STRTAB)             0x1001714
+ 0x000000000000000a (STRSZ)              2070 (bytes)
+ 0x000000006ffffef5 (GNU_HASH)           0x1001288
+ 0x0000000000000004 (HASH)               0x10012a4
+ 0x000000000000000c (INIT)               0x1080f70
+ 0x000000000000000d (FINI)               0x1080f8c
+ 0x000000006ffffff0 (VERSYM)             0x1001058
+ 0x000000006ffffffe (VERNEED)            0x1001174
+ 0x000000006fffffff (VERNEEDNUM)         2
+ 0x0000000000000000 (NULL)               0x0
+["ldd", "/home/USER/projects/zerv/third_party/gpu-driver-bench/2026-09-22-gpu-driver-run1/native"]
+	linux-vdso.so.1 (0x00007f25c1d72000)
+	libvulkan.so.1 => /usr/lib/libvulkan.so.1 (0x00007f25c1cad000)
+	libc.so.6 => /usr/lib/libc.so.6 (0x00007f25c1a00000)
+	/lib64/ld-linux-x86-64.so.2 => /usr/lib64/ld-linux-x86-64.so.2 (0x00007f25c1d74000)
+["ldd", "/home/USER/projects/zerv/third_party/gpu-driver-bench/2026-09-22-gpu-driver-run1/reference"]
+	linux-vdso.so.1 (0x00007f2333119000)
+	libvulkan.so.1 => /usr/lib/libvulkan.so.1 (0x00007f233304b000)
+	libcrypto.so.3 => /usr/lib/libcrypto.so.3 (0x00007f2332a00000)
+	libc.so.6 => /usr/lib/libc.so.6 (0x00007f2332600000)
+	libz.so.1 => /usr/lib/libz.so.1 (0x00007f2333030000)
+	libbrotlienc.so.1 => /usr/lib/libbrotlienc.so.1 (0x00007f2332940000)
+	libbrotlidec.so.1 => /usr/lib/libbrotlidec.so.1 (0x00007f233301f000)
+	libzstd.so.1 => /usr/lib/libzstd.so.1 (0x00007f233285a000)
+	/lib64/ld-linux-x86-64.so.2 => /usr/lib64/ld-linux-x86-64.so.2 (0x00007f233311b000)
+	libm.so.6 => /usr/lib/libm.so.6 (0x00007f23324c9000)
+	libbrotlicommon.so.1 => /usr/lib/libbrotlicommon.so.1 (0x00007f2332ffc000)
+["vulkaninfo", "--summary"]
+==========
+VULKANINFO
+==========
+
+Vulkan Instance Version: 1.4.357
+
+
+Instance Extensions: count = 26
+-------------------------------
+VK_EXT_acquire_drm_display             : extension revision 1
+VK_EXT_acquire_xlib_display            : extension revision 1
+VK_EXT_debug_report                    : extension revision 10
+VK_EXT_debug_utils                     : extension revision 2
+VK_EXT_direct_mode_display             : extension revision 1
+VK_EXT_display_surface_counter         : extension revision 1
+VK_EXT_headless_surface                : extension revision 1
+VK_EXT_layer_settings                  : extension revision 2
+VK_EXT_surface_maintenance1            : extension revision 1
+VK_EXT_swapchain_colorspace            : extension revision 5
+VK_KHR_device_group_creation           : extension revision 1
+VK_KHR_display                         : extension revision 23
+VK_KHR_external_fence_capabilities     : extension revision 1
+VK_KHR_external_memory_capabilities    : extension revision 1
+VK_KHR_external_semaphore_capabilities : extension revision 1
+VK_KHR_get_display_properties2         : extension revision 1
+VK_KHR_get_physical_device_properties2 : extension revision 2
+VK_KHR_get_surface_capabilities2       : extension revision 1
+VK_KHR_portability_enumeration         : extension revision 1
+VK_KHR_surface                         : extension revision 25
+VK_KHR_surface_maintenance1            : extension revision 1
+VK_KHR_surface_protected_capabilities  : extension revision 1
+VK_KHR_wayland_surface                 : extension revision 6
+VK_KHR_xcb_surface                     : extension revision 6
+VK_KHR_xlib_surface                    : extension revision 6
+VK_LUNARG_direct_driver_loading        : extension revision 1
+
+Instance Layers: count = 4
+--------------------------
+VK_LAYER_MANGOHUD_overlay_x86    Vulkan Hud Overlay                                           1.3.0    version 1
+VK_LAYER_MANGOHUD_overlay_x86_64 Vulkan Hud Overlay                                           1.3.0    version 1
+VK_LAYER_MESA_anti_lag           Open-source implementation of the VK_AMD_anti_lag extension. 1.4.303  version 1
+VK_LAYER_MESA_device_select      Linux device selection layer                                 1.4.303  version 1
+
+Devices:
+========
+GPU0:
+	apiVersion         = 1.4.354
+	driverVersion      = 26.2.3
+	vendorID           = 0x1002
+	deviceID           = 0x744c
+	deviceType         = PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
+	deviceName         = AMD Radeon RX 7900 XTX (RADV NAVI31)
+	driverID           = DRIVER_ID_MESA_RADV
+	driverName         = radv
+	driverInfo         = Mesa 26.2.3-arch1.1
+	conformanceVersion = 1.4.5.3
+	deviceUUID         = <REDACTED_DEVICE_UUID>
+	driverUUID         = 414d442d-4d45-5341-2d44-525600000000
+'DISPLAY' environment variable not set... skipping surface info
+["vulkaninfo"]
+==========
+VULKANINFO
+==========
+
+Vulkan Instance Version: 1.4.357
+
+
+Instance Extensions: count = 26
+===============================
+	VK_EXT_acquire_drm_display             : extension revision 1
+	VK_EXT_acquire_xlib_display            : extension revision 1
+	VK_EXT_debug_report                    : extension revision 10
+	VK_EXT_debug_utils                     : extension revision 2
+	VK_EXT_direct_mode_display             : extension revision 1
+	VK_EXT_display_surface_counter         : extension revision 1
+	VK_EXT_headless_surface                : extension revision 1
+	VK_EXT_layer_settings                  : extension revision 2
+	VK_EXT_surface_maintenance1            : extension revision 1
+	VK_EXT_swapchain_colorspace            : extension revision 5
+	VK_KHR_device_group_creation           : extension revision 1
+	VK_KHR_display                         : extension revision 23
+	VK_KHR_external_fence_capabilities     : extension revision 1
+	VK_KHR_external_memory_capabilities    : extension revision 1
+	VK_KHR_external_semaphore_capabilities : extension revision 1
+	VK_KHR_get_display_properties2         : extension revision 1
+	VK_KHR_get_physical_device_properties2 : extension revision 2
+	VK_KHR_get_surface_capabilities2       : extension revision 1
+	VK_KHR_portability_enumeration         : extension revision 1
+	VK_KHR_surface                         : extension revision 25
+	VK_KHR_surface_maintenance1            : extension revision 1
+	VK_KHR_surface_protected_capabilities  : extension revision 1
+	VK_KHR_wayland_surface                 : extension revision 6
+	VK_KHR_xcb_surface                     : extension revision 6
+	VK_KHR_xlib_surface                    : extension revision 6
+	VK_LUNARG_direct_driver_loading        : extension revision 1
+
+Layers: count = 4
+=================
+VK_LAYER_MANGOHUD_overlay_x86 (Vulkan Hud Overlay) Vulkan version 1.3.0, layer version 1:
+	Layer Extensions: count = 0
+	Devices: count = 1
+		GPU id = 0 (AMD Radeon RX 7900 XTX (RADV NAVI31))
+		Layer-Device Extensions: count = 0
+
+VK_LAYER_MANGOHUD_overlay_x86_64 (Vulkan Hud Overlay) Vulkan version 1.3.0, layer version 1:
+	Layer Extensions: count = 0
+	Devices: count = 1
+		GPU id = 0 (AMD Radeon RX 7900 XTX (RADV NAVI31))
+		Layer-Device Extensions: count = 0
+
+VK_LAYER_MESA_anti_lag (Open-source implementation of the VK_AMD_anti_lag extension.) Vulkan version 1.4.303, layer version 1:
+	Layer Extensions: count = 0
+	Devices: count = 1
+		GPU id = 0 (AMD Radeon RX 7900 XTX (RADV NAVI31))
+		Layer-Device Extensions: count = 1
+			VK_AMD_anti_lag : extension revision 1
+
+VK_LAYER_MESA_device_select (Linux device selection layer) Vulkan version 1.4.303, layer version 1:
+	Layer Extensions: count = 1
+		VK_EXT_layer_settings : extension revision 2
+	Devices: count = 1
+		GPU id = 0 (AMD Radeon RX 7900 XTX (RADV NAVI31))
+		Layer-Device Extensions: count = 0
+
+Device Groups:
+==============
+Group 0:
+	Properties:
+		physicalDevices: count = 1
+			AMD Radeon RX 7900 XTX (RADV NAVI31) (ID: 0)
+		subsetAllocation = 0
+
+	Present Capabilities:
+		AMD Radeon RX 7900 XTX (RADV NAVI31) (ID: 0):
+			Can present images from the following devices: count = 1
+				AMD Radeon RX 7900 XTX (RADV NAVI31) (ID: 0)
+		Present modes: count = 1
+			DEVICE_GROUP_PRESENT_MODE_LOCAL_BIT_KHR
+
+
+Device Properties and Extensions:
+=================================
+GPU0:
+VkPhysicalDeviceProperties:
+---------------------------
+	apiVersion        = 1.4.354 (4211042)
+	driverVersion     = 26.2.3 (109060099)
+	vendorID          = 0x1002
+	deviceID          = 0x744c
+	deviceType        = PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
+	deviceName        = AMD Radeon RX 7900 XTX (RADV NAVI31)
+	pipelineCacheUUID = fa708dc4-c9d4-82da-eaf8-d7acd86b74fd
+
+VkPhysicalDeviceLimits:
+-----------------------
+	maxImageDimension1D                             = 16384
+	maxImageDimension2D                             = 16384
+	maxImageDimension3D                             = 8192
+	maxImageDimensionCube                           = 16384
+	maxImageArrayLayers                             = 8192
+	maxTexelBufferElements                          = 536870912
+	maxUniformBufferRange                           = 4294967295
+	maxStorageBufferRange                           = 4294967295
+	maxPushConstantsSize                            = 256
+	maxMemoryAllocationCount                        = 4294967295
+	maxSamplerAllocationCount                       = 65536
+	bufferImageGranularity                          = 0x00000001
+	sparseAddressSpaceSize                          = 0x800000000000
+	maxBoundDescriptorSets                          = 32
+	maxPerStageDescriptorSamplers                   = 8388606
+	maxPerStageDescriptorUniformBuffers             = 8388606
+	maxPerStageDescriptorStorageBuffers             = 8388606
+	maxPerStageDescriptorSampledImages              = 8388606
+	maxPerStageDescriptorStorageImages              = 8388606
+	maxPerStageDescriptorInputAttachments           = 8388606
+	maxPerStageResources                            = 8388606
+	maxDescriptorSetSamplers                        = 8388606
+	maxDescriptorSetUniformBuffers                  = 8388606
+	maxDescriptorSetUniformBuffersDynamic           = 16
+	maxDescriptorSetStorageBuffers                  = 8388606
+	maxDescriptorSetStorageBuffersDynamic           = 8
+	maxDescriptorSetSampledImages                   = 8388606
+	maxDescriptorSetStorageImages                   = 8388606
+	maxDescriptorSetInputAttachments                = 8388606
+	maxVertexInputAttributes                        = 32
+	maxVertexInputBindings                          = 32
+	maxVertexInputAttributeOffset                   = 4294967295
+	maxVertexInputBindingStride                     = 2048
+	maxVertexOutputComponents                       = 128
+	maxTessellationGenerationLevel                  = 64
+	maxTessellationPatchSize                        = 32
+	maxTessellationControlPerVertexInputComponents  = 128
+	maxTessellationControlPerVertexOutputComponents = 128
+	maxTessellationControlPerPatchOutputComponents  = 120
+	maxTessellationControlTotalOutputComponents     = 4096
+	maxTessellationEvaluationInputComponents        = 128
+	maxTessellationEvaluationOutputComponents       = 128
+	maxGeometryShaderInvocations                    = 32
+	maxGeometryInputComponents                      = 64
+	maxGeometryOutputComponents                     = 128
+	maxGeometryOutputVertices                       = 256
+	maxGeometryTotalOutputComponents                = 1024
+	maxFragmentInputComponents                      = 128
+	maxFragmentOutputAttachments                    = 8
+	maxFragmentDualSrcAttachments                   = 1
+	maxFragmentCombinedOutputResources              = 8388606
+	maxComputeSharedMemorySize                      = 65536
+	maxComputeWorkGroupCount: count = 3
+		4294967295
+		65535
+		65535
+	maxComputeWorkGroupInvocations                  = 1024
+	maxComputeWorkGroupSize: count = 3
+		1024
+		1024
+		1024
+	subPixelPrecisionBits                           = 8
+	subTexelPrecisionBits                           = 8
+	mipmapPrecisionBits                             = 8
+	maxDrawIndexedIndexValue                        = 4294967295
+	maxDrawIndirectCount                            = 4294967295
+	maxSamplerLodBias                               = 16
+	maxSamplerAnisotropy                            = 16
+	maxViewports                                    = 16
+	maxViewportDimensions: count = 2
+		16384
+		16384
+	viewportBoundsRange: count = 2
+		-32768
+		32767
+	viewportSubPixelBits                            = 8
+	minMemoryMapAlignment                           = 4096
+	minTexelBufferOffsetAlignment                   = 0x00000004
+	minUniformBufferOffsetAlignment                 = 0x00000004
+	minStorageBufferOffsetAlignment                 = 0x00000004
+	minTexelOffset                                  = -32
+	maxTexelOffset                                  = 31
+	minTexelGatherOffset                            = -32
+	maxTexelGatherOffset                            = 31
+	minInterpolationOffset                          = -2
+	maxInterpolationOffset                          = 2
+	subPixelInterpolationOffsetBits                 = 8
+	maxFramebufferWidth                             = 16384
+	maxFramebufferHeight                            = 16384
+	maxFramebufferLayers                            = 1024
+	framebufferColorSampleCounts: count = 4
+		SAMPLE_COUNT_1_BIT
+		SAMPLE_COUNT_2_BIT
+		SAMPLE_COUNT_4_BIT
+		SAMPLE_COUNT_8_BIT
+	framebufferDepthSampleCounts: count = 4
+		SAMPLE_COUNT_1_BIT
+		SAMPLE_COUNT_2_BIT
+		SAMPLE_COUNT_4_BIT
+		SAMPLE_COUNT_8_BIT
+	framebufferStencilSampleCounts: count = 4
+		SAMPLE_COUNT_1_BIT
+		SAMPLE_COUNT_2_BIT
+		SAMPLE_COUNT_4_BIT
+		SAMPLE_COUNT_8_BIT
+	framebufferNoAttachmentsSampleCounts: count = 4
+		SAMPLE_COUNT_1_BIT
+		SAMPLE_COUNT_2_BIT
+		SAMPLE_COUNT_4_BIT
+		SAMPLE_COUNT_8_BIT
+	maxColorAttachments                             = 8
+	sampledImageColorSampleCounts: count = 4
+		SAMPLE_COUNT_1_BIT
+		SAMPLE_COUNT_2_BIT
+		SAMPLE_COUNT_4_BIT
+		SAMPLE_COUNT_8_BIT
+	sampledImageIntegerSampleCounts: count = 4
+		SAMPLE_COUNT_1_BIT
+		SAMPLE_COUNT_2_BIT
+		SAMPLE_COUNT_4_BIT
+		SAMPLE_COUNT_8_BIT
+	sampledImageDepthSampleCounts: count = 4
+		SAMPLE_COUNT_1_BIT
+		SAMPLE_COUNT_2_BIT
+		SAMPLE_COUNT_4_BIT
+		SAMPLE_COUNT_8_BIT
+	sampledImageStencilSampleCounts: count = 4
+		SAMPLE_COUNT_1_BIT
+		SAMPLE_COUNT_2_BIT
+		SAMPLE_COUNT_4_BIT
+		SAMPLE_COUNT_8_BIT
+	storageImageSampleCounts: count = 4
+		SAMPLE_COUNT_1_BIT
+		SAMPLE_COUNT_2_BIT
+		SAMPLE_COUNT_4_BIT
+		SAMPLE_COUNT_8_BIT
+	maxSampleMaskWords                              = 1
+	timestampComputeAndGraphics                     = true
+	timestampPeriod                                 = 10
+	maxClipDistances                                = 8
+	maxCullDistances                                = 8
+	maxCombinedClipAndCullDistances                 = 8
+	discreteQueuePriorities                         = 2
+	pointSizeRange: count = 2
+		0
+		8191.88
+	lineWidthRange: count = 2
+		0
+		8
+	pointSizeGranularity                            = 0.125
+	lineWidthGranularity                            = 0.125
+	strictLines                                     = false
+	standardSampleLocations                         = true
+	optimalBufferCopyOffsetAlignment                = 0x00000001
+	optimalBufferCopyRowPitchAlignment              = 0x00000001
+	nonCoherentAtomSize                             = 0x00000040
+
+VkPhysicalDeviceSparseProperties:
+---------------------------------
+	residencyStandard2DBlockShape            = true
+	residencyStandard2DMultisampleBlockShape = false
+	residencyStandard3DBlockShape            = true
+	residencyAlignedMipSize                  = false
+	residencyNonResidentStrict               = true
+
+VkPhysicalDeviceAccelerationStructurePropertiesKHR:
+---------------------------------------------------
+	maxGeometryCount                                           = 16777215
+	maxInstanceCount                                           = 16777215
+	maxPrimitiveCount                                          = 536870911
+	maxPerStageDescriptorAccelerationStructures                = 8388606
+	maxPerStageDescriptorUpdateAfterBindAccelerationStructures = 8388606
+	maxDescriptorSetAccelerationStructures                     = 8388606
+	maxDescriptorSetUpdateAfterBindAccelerationStructures      = 8388606
+	minAccelerationStructureScratchOffsetAlignment             = 256
+
+VkPhysicalDeviceComputeShaderDerivativesPropertiesKHR:
+------------------------------------------------------
+	meshAndTaskShaderDerivatives = true
+
+VkPhysicalDeviceConservativeRasterizationPropertiesEXT:
+-------------------------------------------------------
+	primitiveOverestimationSize                 = 0
+	maxExtraPrimitiveOverestimationSize         = 0
+	extraPrimitiveOverestimationSizeGranularity = 0
+	primitiveUnderestimation                    = true
+	conservativePointAndLineRasterization       = false
+	degenerateTrianglesRasterized               = true
+	degenerateLinesRasterized                   = false
+	fullyCoveredFragmentShaderInputVariable     = true
+	conservativeRasterizationPostDepthCoverage  = true
+
+VkPhysicalDeviceCooperativeMatrixPropertiesKHR:
+-----------------------------------------------
+	cooperativeMatrixSupportedStages: count = 1
+		SHADER_STAGE_COMPUTE_BIT
+
+VkPhysicalDeviceCopyMemoryIndirectPropertiesKHR:
+------------------------------------------------
+	supportedQueues: count = 2
+		QUEUE_GRAPHICS_BIT
+		QUEUE_COMPUTE_BIT
+
+VkPhysicalDeviceCustomBorderColorPropertiesEXT:
+-----------------------------------------------
+	maxCustomBorderColorSamplers = 4096
+
+VkPhysicalDeviceDescriptorBufferDensityMapPropertiesEXT:
+--------------------------------------------------------
+	combinedImageSamplerDensityMapDescriptorSize = 0
+
+VkPhysicalDeviceDescriptorBufferPropertiesEXT:
+----------------------------------------------
+	combinedImageSamplerDescriptorSingleArray            = true
+	bufferlessPushDescriptors                            = true
+	allowSamplerImageViewPostSubmitCreation              = false
+	descriptorBufferOffsetAlignment                      = 0x00000004
+	maxDescriptorBufferBindings                          = 32
+	maxResourceDescriptorBufferBindings                  = 32
+	maxSamplerDescriptorBufferBindings                   = 32
+	maxEmbeddedImmutableSamplerBindings                  = 32
+	maxEmbeddedImmutableSamplers                         = 8388606
+	bufferCaptureReplayDescriptorDataSize                = 8
+	imageCaptureReplayDescriptorDataSize                 = 8
+	imageViewCaptureReplayDescriptorDataSize             = 1
+	samplerCaptureReplayDescriptorDataSize               = 4
+	accelerationStructureCaptureReplayDescriptorDataSize = 1
+	samplerDescriptorSize                                = 16
+	combinedImageSamplerDescriptorSize                   = 64
+	sampledImageDescriptorSize                           = 32
+	storageImageDescriptorSize                           = 32
+	uniformTexelBufferDescriptorSize                     = 16
+	robustUniformTexelBufferDescriptorSize               = 16
+	storageTexelBufferDescriptorSize                     = 16
+	robustStorageTexelBufferDescriptorSize               = 16
+	uniformBufferDescriptorSize                          = 16
+	robustUniformBufferDescriptorSize                    = 16
+	storageBufferDescriptorSize                          = 16
+	robustStorageBufferDescriptorSize                    = 16
+	inputAttachmentDescriptorSize                        = 32
+	accelerationStructureDescriptorSize                  = 16
+	maxSamplerDescriptorBufferRange                      = 0xffffffff
+	maxResourceDescriptorBufferRange                     = 0xffffffff
+	samplerDescriptorBufferAddressSpaceSize              = 0xfffffffc
+	resourceDescriptorBufferAddressSpaceSize             = 0xfffffffc
+	descriptorBufferAddressSpaceSize                     = 0xfffffffc
+
+VkPhysicalDeviceDescriptorHeapPropertiesEXT:
+--------------------------------------------
+	samplerHeapAlignment                    = 0x00000004
+	resourceHeapAlignment                   = 0x00000004
+	maxSamplerHeapSize                      = 0xffffffffffffffff
+	maxResourceHeapSize                     = 0xffffffffffffffff
+	minSamplerHeapReservedRange             = 0x00000000
+	minSamplerHeapReservedRangeWithEmbedded = 0x00000000
+	minResourceHeapReservedRange            = 0x00000000
+	samplerDescriptorSize                   = 0x00000010
+	imageDescriptorSize                     = 0x00000020
+	bufferDescriptorSize                    = 0x00000010
+	samplerDescriptorAlignment              = 0x00000004
+	imageDescriptorAlignment                = 0x00000004
+	bufferDescriptorAlignment               = 0x00000004
+	maxPushDataSize                         = 0x00000100
+	imageCaptureReplayOpaqueDataSize        = 8
+	maxDescriptorHeapEmbeddedSamplers       = 2048
+	samplerYcbcrConversionCount             = 3
+	sparseDescriptorHeaps                   = false
+	protectedDescriptorHeaps                = false
+
+VkPhysicalDeviceDescriptorHeapTensorPropertiesARM:
+--------------------------------------------------
+	tensorDescriptorSize              = 0x00000000
+	tensorDescriptorAlignment         = 0x00000000
+	tensorCaptureReplayOpaqueDataSize = 0
+
+VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT:
+-----------------------------------------------------
+	maxIndirectPipelineCount                      = 4096
+	maxIndirectShaderObjectCount                  = 4096
+	maxIndirectSequenceCount                      = 1048576
+	maxIndirectCommandsTokenCount                 = 128
+	maxIndirectCommandsTokenOffset                = 2047
+	maxIndirectCommandsIndirectStride             = 2048
+	supportedIndirectCommandsInputModes: count = 2
+		INDIRECT_COMMANDS_INPUT_MODE_VULKAN_INDEX_BUFFER_EXT
+		INDIRECT_COMMANDS_INPUT_MODE_DXGI_INDEX_BUFFER_EXT
+	supportedIndirectCommandsShaderStages: count = 14
+		SHADER_STAGE_VERTEX_BIT
+		SHADER_STAGE_TESSELLATION_CONTROL_BIT
+		SHADER_STAGE_TESSELLATION_EVALUATION_BIT
+		SHADER_STAGE_GEOMETRY_BIT
+		SHADER_STAGE_FRAGMENT_BIT
+		SHADER_STAGE_COMPUTE_BIT
+		SHADER_STAGE_RAYGEN_BIT_KHR
+		SHADER_STAGE_ANY_HIT_BIT_KHR
+		SHADER_STAGE_CLOSEST_HIT_BIT_KHR
+		SHADER_STAGE_MISS_BIT_KHR
+		SHADER_STAGE_INTERSECTION_BIT_KHR
+		SHADER_STAGE_CALLABLE_BIT_KHR
+		SHADER_STAGE_TASK_BIT_EXT
+		SHADER_STAGE_MESH_BIT_EXT
+	supportedIndirectCommandsShaderStagesPipelineBinding: count = 1
+		SHADER_STAGE_COMPUTE_BIT
+	supportedIndirectCommandsShaderStagesShaderBinding: count = 1
+		SHADER_STAGE_COMPUTE_BIT
+	deviceGeneratedCommandsTransformFeedback      = true
+	deviceGeneratedCommandsMultiDrawIndirectCount = true
+
+VkPhysicalDeviceDiscardRectanglePropertiesEXT:
+----------------------------------------------
+	maxDiscardRectangles = 4
+
+VkPhysicalDeviceDrmPropertiesEXT:
+---------------------------------
+	hasPrimary   = true
+	hasRender    = true
+	primaryMajor = 226
+	primaryMinor = 1
+	renderMajor  = 226
+	renderMinor  = 128
+
+VkPhysicalDeviceExtendedDynamicState3PropertiesEXT:
+---------------------------------------------------
+	dynamicPrimitiveTopologyUnrestricted = false
+
+VkPhysicalDeviceExternalMemoryHostPropertiesEXT:
+------------------------------------------------
+	minImportedHostPointerAlignment = 0x00001000
+
+VkPhysicalDeviceFaultPropertiesKHR:
+-----------------------------------
+	maxDeviceFaultCount = 1
+
+VkPhysicalDeviceFragmentShaderBarycentricPropertiesKHR:
+-------------------------------------------------------
+	triStripVertexOrderIndependentOfProvokingVertex = false
+
+VkPhysicalDeviceFragmentShadingRatePropertiesKHR:
+-------------------------------------------------
+	minFragmentShadingRateAttachmentTexelSize:
+		width  = 8
+		height = 8
+	maxFragmentShadingRateAttachmentTexelSize:
+		width  = 8
+		height = 8
+	maxFragmentShadingRateAttachmentTexelSizeAspectRatio = 1
+	primitiveFragmentShadingRateWithMultipleViewports    = true
+	layeredShadingRateAttachments                        = false
+	fragmentShadingRateNonTrivialCombinerOps             = true
+	maxFragmentSize:
+		width  = 2
+		height = 2
+	maxFragmentSizeAspectRatio                           = 2
+	maxFragmentShadingRateCoverageSamples                = 32
+	maxFragmentShadingRateRasterizationSamples           = SAMPLE_COUNT_8_BIT
+	fragmentShadingRateWithShaderDepthStencilWrites      = true
+	fragmentShadingRateWithSampleMask                    = true
+	fragmentShadingRateWithShaderSampleMask              = false
+	fragmentShadingRateWithConservativeRasterization     = true
+	fragmentShadingRateWithFragmentShaderInterlock       = true
+	fragmentShadingRateWithCustomSampleLocations         = true
+	fragmentShadingRateStrictMultiplyCombiner            = true
+
+VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT:
+-----------------------------------------------------
+	graphicsPipelineLibraryFastLinking                        = true
+	graphicsPipelineLibraryIndependentInterpolationDecoration = true
+
+VkPhysicalDeviceLayeredApiPropertiesListKHR:
+--------------------------------------------
+	layeredApiCount = 0
+	pLayeredApis    = NULL
+
+VkPhysicalDeviceLegacyVertexAttributesPropertiesEXT:
+----------------------------------------------------
+	nativeUnalignedPerformance = false
+
+VkPhysicalDeviceMaintenance10PropertiesKHR:
+-------------------------------------------
+	rgba4OpaqueBlackSwizzled                         = true
+	resolveSrgbFormatAppliesTransferFunction         = true
+	resolveSrgbFormatSupportsTransferFunctionControl = true
+
+VkPhysicalDeviceMaintenance7PropertiesKHR:
+------------------------------------------
+	robustFragmentShadingRateAttachmentAccess                 = true
+	separateDepthStencilAttachmentAccess                      = true
+	maxDescriptorSetTotalUniformBuffersDynamic                = 16
+	maxDescriptorSetTotalStorageBuffersDynamic                = 8
+	maxDescriptorSetTotalBuffersDynamic                       = 24
+	maxDescriptorSetUpdateAfterBindTotalUniformBuffersDynamic = 16
+	maxDescriptorSetUpdateAfterBindTotalStorageBuffersDynamic = 8
+	maxDescriptorSetUpdateAfterBindTotalBuffersDynamic        = 24
+
+VkPhysicalDeviceMaintenance9PropertiesKHR:
+------------------------------------------
+	image2DViewOf3DSparse = true
+	defaultVertexAttributeValue = DEFAULT_VERTEX_ATTRIBUTE_VALUE_ZERO_ZERO_ZERO_ZERO_KHR
+
+VkPhysicalDeviceMapMemoryPlacedPropertiesEXT:
+---------------------------------------------
+	minPlacedMemoryMapAlignment = 0x00001000
+
+VkPhysicalDeviceMeshShaderPropertiesEXT:
+----------------------------------------
+	maxTaskWorkGroupTotalCount            = 4194304
+	maxTaskWorkGroupCount: count = 3
+		65535
+		65535
+		65535
+	maxTaskWorkGroupInvocations           = 1024
+	maxTaskWorkGroupSize: count = 3
+		1024
+		1024
+		1024
+	maxTaskPayloadSize                    = 16384
+	maxTaskSharedMemorySize               = 65536
+	maxTaskPayloadAndSharedMemorySize     = 65536
+	maxMeshWorkGroupTotalCount            = 4194304
+	maxMeshWorkGroupCount: count = 3
+		65535
+		65535
+		65535
+	maxMeshWorkGroupInvocations           = 256
+	maxMeshWorkGroupSize: count = 3
+		256
+		256
+		256
+	maxMeshSharedMemorySize               = 28672
+	maxMeshPayloadAndSharedMemorySize     = 45056
+	maxMeshOutputMemorySize               = 32768
+	maxMeshPayloadAndOutputMemorySize     = 49152
+	maxMeshOutputComponents               = 128
+	maxMeshOutputVertices                 = 256
+	maxMeshOutputPrimitives               = 256
+	maxMeshOutputLayers                   = 8
+	maxMeshMultiviewViewCount             = 8
+	meshOutputPerVertexGranularity        = 1
+	meshOutputPerPrimitiveGranularity     = 1
+	maxPreferredTaskWorkGroupInvocations  = 64
+	maxPreferredMeshWorkGroupInvocations  = 128
+	prefersLocalInvocationVertexOutput    = true
+	prefersLocalInvocationPrimitiveOutput = true
+	prefersCompactVertexOutput            = true
+	prefersCompactPrimitiveOutput         = false
+
+VkPhysicalDeviceMultiDrawPropertiesEXT:
+---------------------------------------
+	maxMultiDrawCount = 2048
+
+VkPhysicalDeviceNestedCommandBufferPropertiesEXT:
+-------------------------------------------------
+	maxCommandBufferNestingLevel = 4294967295
+
+VkPhysicalDevicePCIBusInfoPropertiesEXT:
+----------------------------------------
+	pciDomain   = 0
+	pciBus      = 13
+	pciDevice   = 0
+	pciFunction = 0
+
+VkPhysicalDevicePerformanceQueryPropertiesKHR:
+----------------------------------------------
+	allowCommandBufferQueryCopies = false
+
+VkPhysicalDevicePipelineBinaryPropertiesKHR:
+--------------------------------------------
+	pipelineBinaryInternalCache            = true
+	pipelineBinaryInternalCacheControl     = true
+	pipelineBinaryPrefersInternalCache     = false
+	pipelineBinaryPrecompiledInternalCache = false
+	pipelineBinaryCompressedData           = false
+
+VkPhysicalDeviceProvokingVertexPropertiesEXT:
+---------------------------------------------
+	provokingVertexModePerPipeline                       = true
+	transformFeedbackPreservesTriangleFanProvokingVertex = true
+
+VkPhysicalDeviceRayTracingPipelinePropertiesKHR:
+------------------------------------------------
+	shaderGroupHandleSize              = 32
+	maxRayRecursionDepth               = 31
+	maxShaderGroupStride               = 16384
+	shaderGroupBaseAlignment           = 32
+	shaderGroupHandleCaptureReplaySize = 56
+	maxRayDispatchInvocationCount      = 1073741824
+	shaderGroupHandleAlignment         = 16
+	maxRayHitAttributeSize             = 32
+
+VkPhysicalDeviceRobustness2PropertiesKHR:
+-----------------------------------------
+	robustStorageBufferAccessSizeAlignment = 0x00000004
+	robustUniformBufferAccessSizeAlignment = 0x00000004
+
+VkPhysicalDeviceSampleLocationsPropertiesEXT:
+---------------------------------------------
+	sampleLocationSampleCounts: count = 4
+		SAMPLE_COUNT_1_BIT
+		SAMPLE_COUNT_2_BIT
+		SAMPLE_COUNT_4_BIT
+		SAMPLE_COUNT_8_BIT
+	maxSampleLocationGridSize:
+		width  = 2
+		height = 2
+	sampleLocationCoordinateRange: count = 2
+		0
+		0.9375
+	sampleLocationSubPixelBits = 4
+	variableSampleLocations    = true
+
+VkPhysicalDeviceShaderAbortPropertiesKHR:
+-----------------------------------------
+	maxShaderAbortMessageSize = 65536
+
+VkPhysicalDeviceShaderModuleIdentifierPropertiesEXT:
+----------------------------------------------------
+	shaderModuleIdentifierAlgorithmUUID = 4d455341-2d42-4c41-4b45-330000000000
+
+VkPhysicalDeviceShaderObjectPropertiesEXT:
+------------------------------------------
+	shaderBinaryUUID    = fa708dc4-c9d4-82da-eaf8-d7acd86b74fd
+	shaderBinaryVersion = 1
+
+VkPhysicalDeviceTransformFeedbackPropertiesEXT:
+-----------------------------------------------
+	maxTransformFeedbackStreams                = 4
+	maxTransformFeedbackBuffers                = 4
+	maxTransformFeedbackBufferSize             = 0xffffffff
+	maxTransformFeedbackStreamDataSize         = 512
+	maxTransformFeedbackBufferDataSize         = 512
+	maxTransformFeedbackBufferDataStride       = 512
+	transformFeedbackQueries                   = true
+	transformFeedbackStreamsLinesTriangles     = true
+	transformFeedbackRasterizationStreamSelect = false
+	transformFeedbackDraw                      = true
+
+VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT:
+----------------------------------------------------
+	maxVertexAttribDivisor = 4294967295
+
+VkPhysicalDeviceVulkan11Properties:
+-----------------------------------
+	deviceUUID                        = <REDACTED_DEVICE_UUID>
+	driverUUID                        = 414d442d-4d45-5341-2d44-525600000000
+	deviceNodeMask                    = 0
+	deviceLUIDValid                   = false
+	subgroupSize                      = 64
+	subgroupSupportedStages: count = 14
+		SHADER_STAGE_VERTEX_BIT
+		SHADER_STAGE_TESSELLATION_CONTROL_BIT
+		SHADER_STAGE_TESSELLATION_EVALUATION_BIT
+		SHADER_STAGE_GEOMETRY_BIT
+		SHADER_STAGE_FRAGMENT_BIT
+		SHADER_STAGE_COMPUTE_BIT
+		SHADER_STAGE_RAYGEN_BIT_KHR
+		SHADER_STAGE_ANY_HIT_BIT_KHR
+		SHADER_STAGE_CLOSEST_HIT_BIT_KHR
+		SHADER_STAGE_MISS_BIT_KHR
+		SHADER_STAGE_INTERSECTION_BIT_KHR
+		SHADER_STAGE_CALLABLE_BIT_KHR
+		SHADER_STAGE_TASK_BIT_EXT
+		SHADER_STAGE_MESH_BIT_EXT
+	subgroupSupportedOperations: count = 10
+		SUBGROUP_FEATURE_BASIC_BIT
+		SUBGROUP_FEATURE_VOTE_BIT
+		SUBGROUP_FEATURE_ARITHMETIC_BIT
+		SUBGROUP_FEATURE_BALLOT_BIT
+		SUBGROUP_FEATURE_SHUFFLE_BIT
+		SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT
+		SUBGROUP_FEATURE_CLUSTERED_BIT
+		SUBGROUP_FEATURE_QUAD_BIT
+		SUBGROUP_FEATURE_ROTATE_BIT
+		SUBGROUP_FEATURE_ROTATE_CLUSTERED_BIT
+	subgroupQuadOperationsInAllStages = true
+	pointClippingBehavior             = POINT_CLIPPING_BEHAVIOR_ALL_CLIP_PLANES
+	maxMultiviewViewCount             = 8
+	maxMultiviewInstanceIndex         = 2147483647
+	protectedNoFault                  = false
+	maxPerSetDescriptors              = 22369621
+	maxMemoryAllocationSize           = 0xfffffffc
+
+VkPhysicalDeviceVulkan12Properties:
+-----------------------------------
+	driverID                                             = DRIVER_ID_MESA_RADV
+	driverName                                           = radv
+	driverInfo                                           = Mesa 26.2.3-arch1.1
+	conformanceVersion:
+		major    = 1
+		minor    = 4
+		subminor = 5
+		patch    = 3
+	denormBehaviorIndependence                           = SHADER_FLOAT_CONTROLS_INDEPENDENCE_32_BIT_ONLY
+	roundingModeIndependence                             = SHADER_FLOAT_CONTROLS_INDEPENDENCE_32_BIT_ONLY
+	shaderSignedZeroInfNanPreserveFloat16                = true
+	shaderSignedZeroInfNanPreserveFloat32                = true
+	shaderSignedZeroInfNanPreserveFloat64                = true
+	shaderDenormPreserveFloat16                          = true
+	shaderDenormPreserveFloat32                          = true
+	shaderDenormPreserveFloat64                          = true
+	shaderDenormFlushToZeroFloat16                       = true
+	shaderDenormFlushToZeroFloat32                       = true
+	shaderDenormFlushToZeroFloat64                       = true
+	shaderRoundingModeRTEFloat16                         = true
+	shaderRoundingModeRTEFloat32                         = true
+	shaderRoundingModeRTEFloat64                         = true
+	shaderRoundingModeRTZFloat16                         = true
+	shaderRoundingModeRTZFloat32                         = true
+	shaderRoundingModeRTZFloat64                         = true
+	maxUpdateAfterBindDescriptorsInAllPools              = 67108863
+	shaderUniformBufferArrayNonUniformIndexingNative     = false
+	shaderSampledImageArrayNonUniformIndexingNative      = false
+	shaderStorageBufferArrayNonUniformIndexingNative     = false
+	shaderStorageImageArrayNonUniformIndexingNative      = false
+	shaderInputAttachmentArrayNonUniformIndexingNative   = false
+	robustBufferAccessUpdateAfterBind                    = true
+	quadDivergentImplicitLod                             = false
+	maxPerStageDescriptorUpdateAfterBindSamplers         = 8388606
+	maxPerStageDescriptorUpdateAfterBindUniformBuffers   = 8388606
+	maxPerStageDescriptorUpdateAfterBindStorageBuffers   = 8388606
+	maxPerStageDescriptorUpdateAfterBindSampledImages    = 8388606
+	maxPerStageDescriptorUpdateAfterBindStorageImages    = 8388606
+	maxPerStageDescriptorUpdateAfterBindInputAttachments = 8388606
+	maxPerStageUpdateAfterBindResources                  = 8388606
+	maxDescriptorSetUpdateAfterBindSamplers              = 8388606
+	maxDescriptorSetUpdateAfterBindUniformBuffers        = 8388606
+	maxDescriptorSetUpdateAfterBindUniformBuffersDynamic = 16
+	maxDescriptorSetUpdateAfterBindStorageBuffers        = 8388606
+	maxDescriptorSetUpdateAfterBindStorageBuffersDynamic = 8
+	maxDescriptorSetUpdateAfterBindSampledImages         = 8388606
+	maxDescriptorSetUpdateAfterBindStorageImages         = 8388606
+	maxDescriptorSetUpdateAfterBindInputAttachments      = 8388606
+	supportedDepthResolveModes: count = 5
+		RESOLVE_MODE_SAMPLE_ZERO_BIT
+		RESOLVE_MODE_AVERAGE_BIT
+		RESOLVE_MODE_MIN_BIT
+		RESOLVE_MODE_MAX_BIT
+		RESOLVE_MODE_CUSTOM_BIT_EXT
+	supportedStencilResolveModes: count = 4
+		RESOLVE_MODE_SAMPLE_ZERO_BIT
+		RESOLVE_MODE_MIN_BIT
+		RESOLVE_MODE_MAX_BIT
+		RESOLVE_MODE_CUSTOM_BIT_EXT
+	independentResolveNone                               = true
+	independentResolve                                   = true
+	filterMinmaxSingleComponentFormats                   = true
+	filterMinmaxImageComponentMapping                    = true
+	maxTimelineSemaphoreValueDifference                  = 18446744073709551615
+	framebufferIntegerColorSampleCounts: count = 1
+		SAMPLE_COUNT_1_BIT
+
+VkPhysicalDeviceVulkan13Properties:
+-----------------------------------
+	minSubgroupSize                                                               = 32
+	maxSubgroupSize                                                               = 64
+	maxComputeWorkgroupSubgroups                                                  = 4294967295
+	requiredSubgroupSizeStages: count = 4
+		SHADER_STAGE_FRAGMENT_BIT
+		SHADER_STAGE_COMPUTE_BIT
+		SHADER_STAGE_TASK_BIT_EXT
+		SHADER_STAGE_MESH_BIT_EXT
+	maxInlineUniformBlockSize                                                     = 4194304
+	maxPerStageDescriptorInlineUniformBlocks                                      = 134217728
+	maxPerStageDescriptorUpdateAfterBindInlineUniformBlocks                       = 134217728
+	maxDescriptorSetInlineUniformBlocks                                           = 64
+	maxDescriptorSetUpdateAfterBindInlineUniformBlocks                            = 64
+	maxInlineUniformTotalSize                                                     = 65535
+	integerDotProduct8BitUnsignedAccelerated                                      = true
+	integerDotProduct8BitSignedAccelerated                                        = true
+	integerDotProduct8BitMixedSignednessAccelerated                               = true
+	integerDotProduct4x8BitPackedUnsignedAccelerated                              = true
+	integerDotProduct4x8BitPackedSignedAccelerated                                = true
+	integerDotProduct4x8BitPackedMixedSignednessAccelerated                       = true
+	integerDotProduct16BitUnsignedAccelerated                                     = false
+	integerDotProduct16BitSignedAccelerated                                       = false
+	integerDotProduct16BitMixedSignednessAccelerated                              = false
+	integerDotProduct32BitUnsignedAccelerated                                     = false
+	integerDotProduct32BitSignedAccelerated                                       = false
+	integerDotProduct32BitMixedSignednessAccelerated                              = false
+	integerDotProduct64BitUnsignedAccelerated                                     = false
+	integerDotProduct64BitSignedAccelerated                                       = false
+	integerDotProduct64BitMixedSignednessAccelerated                              = false
+	integerDotProductAccumulatingSaturating8BitUnsignedAccelerated                = true
+	integerDotProductAccumulatingSaturating8BitSignedAccelerated                  = true
+	integerDotProductAccumulatingSaturating8BitMixedSignednessAccelerated         = true
+	integerDotProductAccumulatingSaturating4x8BitPackedUnsignedAccelerated        = true
+	integerDotProductAccumulatingSaturating4x8BitPackedSignedAccelerated          = true
+	integerDotProductAccumulatingSaturating4x8BitPackedMixedSignednessAccelerated = true
+	integerDotProductAccumulatingSaturating16BitUnsignedAccelerated               = false
+	integerDotProductAccumulatingSaturating16BitSignedAccelerated                 = false
+	integerDotProductAccumulatingSaturating16BitMixedSignednessAccelerated        = false
+	integerDotProductAccumulatingSaturating32BitUnsignedAccelerated               = false
+	integerDotProductAccumulatingSaturating32BitSignedAccelerated                 = false
+	integerDotProductAccumulatingSaturating32BitMixedSignednessAccelerated        = false
+	integerDotProductAccumulatingSaturating64BitUnsignedAccelerated               = false
+	integerDotProductAccumulatingSaturating64BitSignedAccelerated                 = false
+	integerDotProductAccumulatingSaturating64BitMixedSignednessAccelerated        = false
+	storageTexelBufferOffsetAlignmentBytes                                        = 0x00000004
+	storageTexelBufferOffsetSingleTexelAlignment                                  = true
+	uniformTexelBufferOffsetAlignmentBytes                                        = 0x00000004
+	uniformTexelBufferOffsetSingleTexelAlignment                                  = true
+	maxBufferSize                                                                 = 0xfffffffc
+
+VkPhysicalDeviceVulkan14Properties:
+-----------------------------------
+	lineSubPixelPrecisionBits                           = 4
+	maxVertexAttribDivisor                              = 4294967295
+	supportsNonZeroFirstInstance                        = true
+	maxPushDescriptors                                  = 32
+	dynamicRenderingLocalReadDepthStencilAttachments    = true
+	dynamicRenderingLocalReadMultisampledAttachments    = true
+	earlyFragmentMultisampleCoverageAfterSampleCounting = true
+	earlyFragmentSampleMaskTestBeforeSampleCounting     = true
+	depthStencilSwizzleOneSupport                       = true
+	polygonModePointSize                                = true
+	nonStrictSinglePixelWideLinesUseParallelogram       = true
+	nonStrictWideLinesUseParallelogram                  = true
+	blockTexelViewCompatibleMultipleLayers              = true
+	maxCombinedImageSamplerDescriptorCount              = 3
+	fragmentShadingRateClampCombinerInputs              = true
+	defaultRobustnessStorageBuffers                     = PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS
+	defaultRobustnessUniformBuffers                     = PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_ROBUST_BUFFER_ACCESS
+	defaultRobustnessVertexInputs                       = PIPELINE_ROBUSTNESS_BUFFER_BEHAVIOR_DISABLED
+	defaultRobustnessImages                             = PIPELINE_ROBUSTNESS_IMAGE_BEHAVIOR_ROBUST_IMAGE_ACCESS_2
+	copySrcLayoutCount                                  = 29
+	pCopySrcLayouts: count = 29
+		IMAGE_LAYOUT_UNDEFINED
+		IMAGE_LAYOUT_GENERAL
+		IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+		IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+		IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+		IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+		IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+		IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+		IMAGE_LAYOUT_PREINITIALIZED
+		IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL
+		IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL
+		IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
+		IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+		IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL
+		IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL
+		IMAGE_LAYOUT_READ_ONLY_OPTIMAL
+		IMAGE_LAYOUT_ATTACHMENT_OPTIMAL
+		IMAGE_LAYOUT_RENDERING_LOCAL_READ
+		IMAGE_LAYOUT_PRESENT_SRC_KHR
+		IMAGE_LAYOUT_VIDEO_DECODE_DST_KHR
+		IMAGE_LAYOUT_VIDEO_DECODE_SRC_KHR
+		IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR
+		IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR
+		IMAGE_LAYOUT_VIDEO_ENCODE_DST_KHR
+		IMAGE_LAYOUT_VIDEO_ENCODE_SRC_KHR
+		IMAGE_LAYOUT_VIDEO_ENCODE_DPB_KHR
+		IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT
+		IMAGE_LAYOUT_ZERO_INITIALIZED_EXT
+		IMAGE_LAYOUT_VIDEO_ENCODE_QUANTIZATION_MAP_KHR
+	copyDstLayoutCount                                  = 29
+	pCopyDstLayouts: count = 29
+		IMAGE_LAYOUT_UNDEFINED
+		IMAGE_LAYOUT_GENERAL
+		IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+		IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+		IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+		IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+		IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+		IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+		IMAGE_LAYOUT_PREINITIALIZED
+		IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL
+		IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL
+		IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
+		IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+		IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL
+		IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL
+		IMAGE_LAYOUT_READ_ONLY_OPTIMAL
+		IMAGE_LAYOUT_ATTACHMENT_OPTIMAL
+		IMAGE_LAYOUT_RENDERING_LOCAL_READ
+		IMAGE_LAYOUT_PRESENT_SRC_KHR
+		IMAGE_LAYOUT_VIDEO_DECODE_DST_KHR
+		IMAGE_LAYOUT_VIDEO_DECODE_SRC_KHR
+		IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR
+		IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR
+		IMAGE_LAYOUT_VIDEO_ENCODE_DST_KHR
+		IMAGE_LAYOUT_VIDEO_ENCODE_SRC_KHR
+		IMAGE_LAYOUT_VIDEO_ENCODE_DPB_KHR
+		IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT
+		IMAGE_LAYOUT_ZERO_INITIALIZED_EXT
+		IMAGE_LAYOUT_VIDEO_ENCODE_QUANTIZATION_MAP_KHR
+	optimalTilingLayoutUUID                             = 0cdc08ce-45e1-d8ca-931c-5b96212d9a93
+	identicalMemoryTypeRequirements                     = false
+
+Device Extensions: count = 246
+	VK_AMD_buffer_marker                          : extension revision 1
+	VK_AMD_device_coherent_memory                 : extension revision 1
+	VK_AMD_draw_indirect_count                    : extension revision 2
+	VK_AMD_gcn_shader                             : extension revision 1
+	VK_AMD_gpu_shader_half_float                  : extension revision 2
+	VK_AMD_gpu_shader_int16                       : extension revision 2
+	VK_AMD_memory_overallocation_behavior         : extension revision 1
+	VK_AMD_mixed_attachment_samples               : extension revision 1
+	VK_AMD_shader_ballot                          : extension revision 1
+	VK_AMD_shader_core_properties                 : extension revision 2
+	VK_AMD_shader_core_properties2                : extension revision 1
+	VK_AMD_shader_early_and_late_fragment_tests   : extension revision 1
+	VK_AMD_shader_explicit_vertex_parameter       : extension revision 1
+	VK_AMD_shader_image_load_store_lod            : extension revision 1
+	VK_AMD_shader_trinary_minmax                  : extension revision 1
+	VK_EXT_4444_formats                           : extension revision 1
+	VK_EXT_attachment_feedback_loop_dynamic_state : extension revision 1
+	VK_EXT_attachment_feedback_loop_layout        : extension revision 2
+	VK_EXT_border_color_swizzle                   : extension revision 1
+	VK_EXT_buffer_device_address                  : extension revision 2
+	VK_EXT_calibrated_timestamps                  : extension revision 2
+	VK_EXT_color_write_enable                     : extension revision 1
+	VK_EXT_conditional_rendering                  : extension revision 2
+	VK_EXT_conservative_rasterization             : extension revision 1
+	VK_EXT_custom_border_color                    : extension revision 12
+	VK_EXT_custom_resolve                         : extension revision 1
+	VK_EXT_depth_bias_control                     : extension revision 1
+	VK_EXT_depth_clamp_control                    : extension revision 1
+	VK_EXT_depth_clamp_zero_one                   : extension revision 1
+	VK_EXT_depth_clip_control                     : extension revision 1
+	VK_EXT_depth_clip_enable                      : extension revision 1
+	VK_EXT_depth_range_unrestricted               : extension revision 1
+	VK_EXT_descriptor_buffer                      : extension revision 1
+	VK_EXT_descriptor_heap                        : extension revision 1
+	VK_EXT_descriptor_indexing                    : extension revision 2
+	VK_EXT_device_address_binding_report          : extension revision 1
+	VK_EXT_device_fault                           : extension revision 2
+	VK_EXT_device_generated_commands              : extension revision 1
+	VK_EXT_device_memory_report                   : extension revision 2
+	VK_EXT_discard_rectangles                     : extension revision 2
+	VK_EXT_display_control                        : extension revision 1
+	VK_EXT_dynamic_rendering_unused_attachments   : extension revision 1
+	VK_EXT_extended_dynamic_state                 : extension revision 1
+	VK_EXT_extended_dynamic_state2                : extension revision 1
+	VK_EXT_extended_dynamic_state3                : extension revision 2
+	VK_EXT_external_memory_acquire_unmodified     : extension revision 1
+	VK_EXT_external_memory_dma_buf                : extension revision 1
+	VK_EXT_external_memory_host                   : extension revision 1
+	VK_EXT_fragment_shader_interlock              : extension revision 1
+	VK_EXT_global_priority                        : extension revision 2
+	VK_EXT_global_priority_query                  : extension revision 1
+	VK_EXT_graphics_pipeline_library              : extension revision 1
+	VK_EXT_hdr_metadata                           : extension revision 3
+	VK_EXT_host_image_copy                        : extension revision 1
+	VK_EXT_host_query_reset                       : extension revision 1
+	VK_EXT_image_2d_view_of_3d                    : extension revision 1
+	VK_EXT_image_compression_control              : extension revision 1
+	VK_EXT_image_compression_control_swapchain    : extension revision 1
+	VK_EXT_image_drm_format_modifier              : extension revision 2
+	VK_EXT_image_robustness                       : extension revision 1
+	VK_EXT_image_sliced_view_of_3d                : extension revision 1
+	VK_EXT_image_view_min_lod                     : extension revision 1
+	VK_EXT_index_type_uint8                       : extension revision 1
+	VK_EXT_inline_uniform_block                   : extension revision 1
+	VK_EXT_legacy_vertex_attributes               : extension revision 1
+	VK_EXT_line_rasterization                     : extension revision 1
+	VK_EXT_load_store_op_none                     : extension revision 1
+	VK_EXT_map_memory_placed                      : extension revision 1
+	VK_EXT_memory_budget                          : extension revision 1
+	VK_EXT_memory_priority                        : extension revision 1
+	VK_EXT_mesh_shader                            : extension revision 1
+	VK_EXT_multi_draw                             : extension revision 1
+	VK_EXT_mutable_descriptor_type                : extension revision 1
+	VK_EXT_nested_command_buffer                  : extension revision 1
+	VK_EXT_non_seamless_cube_map                  : extension revision 1
+	VK_EXT_pci_bus_info                           : extension revision 2
+	VK_EXT_physical_device_drm                    : extension revision 1
+	VK_EXT_pipeline_creation_cache_control        : extension revision 3
+	VK_EXT_pipeline_creation_feedback             : extension revision 1
+	VK_EXT_pipeline_library_group_handles         : extension revision 1
+	VK_EXT_pipeline_robustness                    : extension revision 1
+	VK_EXT_post_depth_coverage                    : extension revision 1
+	VK_EXT_present_timing                         : extension revision 3
+	VK_EXT_primitive_restart_index                : extension revision 1
+	VK_EXT_primitive_topology_list_restart        : extension revision 1
+	VK_EXT_primitives_generated_query             : extension revision 1
+	VK_EXT_private_data                           : extension revision 1
+	VK_EXT_provoking_vertex                       : extension revision 1
+	VK_EXT_queue_family_foreign                   : extension revision 1
+	VK_EXT_robustness2                            : extension revision 1
+	VK_EXT_sample_locations                       : extension revision 1
+	VK_EXT_sampler_filter_minmax                  : extension revision 2
+	VK_EXT_scalar_block_layout                    : extension revision 1
+	VK_EXT_separate_stencil_usage                 : extension revision 1
+	VK_EXT_shader_atomic_float                    : extension revision 1
+	VK_EXT_shader_atomic_float2                   : extension revision 1
+	VK_EXT_shader_demote_to_helper_invocation     : extension revision 1
+	VK_EXT_shader_image_atomic_int64              : extension revision 1
+	VK_EXT_shader_module_identifier               : extension revision 1
+	VK_EXT_shader_object                          : extension revision 1
+	VK_EXT_shader_replicated_composites           : extension revision 1
+	VK_EXT_shader_stencil_export                  : extension revision 1
+	VK_EXT_shader_subgroup_ballot                 : extension revision 1
+	VK_EXT_shader_subgroup_vote                   : extension revision 1
+	VK_EXT_shader_uniform_buffer_unsized_array    : extension revision 1
+	VK_EXT_shader_viewport_index_layer            : extension revision 1
+	VK_EXT_subgroup_size_control                  : extension revision 2
+	VK_EXT_swapchain_maintenance1                 : extension revision 1
+	VK_EXT_texel_buffer_alignment                 : extension revision 1
+	VK_EXT_tooling_info                           : extension revision 1
+	VK_EXT_transform_feedback                     : extension revision 1
+	VK_EXT_vertex_attribute_divisor               : extension revision 3
+	VK_EXT_vertex_input_dynamic_state             : extension revision 2
+	VK_EXT_ycbcr_2plane_444_formats               : extension revision 1
+	VK_EXT_ycbcr_image_arrays                     : extension revision 1
+	VK_EXT_zero_initialize_device_memory          : extension revision 1
+	VK_GOOGLE_decorate_string                     : extension revision 1
+	VK_GOOGLE_hlsl_functionality1                 : extension revision 1
+	VK_GOOGLE_user_type                           : extension revision 1
+	VK_INTEL_shader_integer_functions2            : extension revision 1
+	VK_KHR_16bit_storage                          : extension revision 1
+	VK_KHR_8bit_storage                           : extension revision 1
+	VK_KHR_acceleration_structure                 : extension revision 13
+	VK_KHR_bind_memory2                           : extension revision 1
+	VK_KHR_buffer_device_address                  : extension revision 1
+	VK_KHR_calibrated_timestamps                  : extension revision 1
+	VK_KHR_compute_shader_derivatives             : extension revision 1
+	VK_KHR_cooperative_matrix                     : extension revision 2
+	VK_KHR_copy_commands2                         : extension revision 1
+	VK_KHR_copy_memory_indirect                   : extension revision 1
+	VK_KHR_create_renderpass2                     : extension revision 1
+	VK_KHR_dedicated_allocation                   : extension revision 3
+	VK_KHR_deferred_host_operations               : extension revision 4
+	VK_KHR_depth_clamp_zero_one                   : extension revision 1
+	VK_KHR_depth_stencil_resolve                  : extension revision 1
+	VK_KHR_descriptor_update_template             : extension revision 1
+	VK_KHR_device_address_commands                : extension revision 1
+	VK_KHR_device_fault                           : extension revision 1
+	VK_KHR_device_group                           : extension revision 4
+	VK_KHR_draw_indirect_count                    : extension revision 1
+	VK_KHR_driver_properties                      : extension revision 1
+	VK_KHR_dynamic_rendering                      : extension revision 1
+	VK_KHR_dynamic_rendering_local_read           : extension revision 1
+	VK_KHR_extended_flags                         : extension revision 1
+	VK_KHR_external_fence                         : extension revision 1
+	VK_KHR_external_fence_fd                      : extension revision 1
+	VK_KHR_external_memory                        : extension revision 1
+	VK_KHR_external_memory_fd                     : extension revision 1
+	VK_KHR_external_semaphore                     : extension revision 1
+	VK_KHR_external_semaphore_fd                  : extension revision 1
+	VK_KHR_format_feature_flags2                  : extension revision 2
+	VK_KHR_fragment_shader_barycentric            : extension revision 1
+	VK_KHR_fragment_shading_rate                  : extension revision 2
+	VK_KHR_get_memory_requirements2               : extension revision 1
+	VK_KHR_global_priority                        : extension revision 1
+	VK_KHR_image_format_list                      : extension revision 1
+	VK_KHR_imageless_framebuffer                  : extension revision 1
+	VK_KHR_incremental_present                    : extension revision 2
+	VK_KHR_index_type_uint8                       : extension revision 1
+	VK_KHR_internally_synchronized_queues         : extension revision 1
+	VK_KHR_line_rasterization                     : extension revision 1
+	VK_KHR_load_store_op_none                     : extension revision 1
+	VK_KHR_maintenance1                           : extension revision 2
+	VK_KHR_maintenance10                          : extension revision 1
+	VK_KHR_maintenance11                          : extension revision 1
+	VK_KHR_maintenance2                           : extension revision 1
+	VK_KHR_maintenance3                           : extension revision 1
+	VK_KHR_maintenance4                           : extension revision 2
+	VK_KHR_maintenance5                           : extension revision 1
+	VK_KHR_maintenance6                           : extension revision 1
+	VK_KHR_maintenance7                           : extension revision 1
+	VK_KHR_maintenance8                           : extension revision 1
+	VK_KHR_maintenance9                           : extension revision 1
+	VK_KHR_map_memory2                            : extension revision 1
+	VK_KHR_multiview                              : extension revision 1
+	VK_KHR_performance_query                      : extension revision 1
+	VK_KHR_pipeline_binary                        : extension revision 1
+	VK_KHR_pipeline_executable_properties         : extension revision 1
+	VK_KHR_pipeline_library                       : extension revision 1
+	VK_KHR_present_id                             : extension revision 1
+	VK_KHR_present_id2                            : extension revision 1
+	VK_KHR_present_wait                           : extension revision 1
+	VK_KHR_present_wait2                          : extension revision 1
+	VK_KHR_push_descriptor                        : extension revision 2
+	VK_KHR_ray_query                              : extension revision 1
+	VK_KHR_ray_tracing_maintenance1               : extension revision 1
+	VK_KHR_ray_tracing_pipeline                   : extension revision 1
+	VK_KHR_ray_tracing_position_fetch             : extension revision 1
+	VK_KHR_relaxed_block_layout                   : extension revision 1
+	VK_KHR_robustness2                            : extension revision 1
+	VK_KHR_sampler_mirror_clamp_to_edge           : extension revision 3
+	VK_KHR_sampler_ycbcr_conversion               : extension revision 14
+	VK_KHR_separate_depth_stencil_layouts         : extension revision 1
+	VK_KHR_shader_abort                           : extension revision 1
+	VK_KHR_shader_atomic_int64                    : extension revision 1
+	VK_KHR_shader_clock                           : extension revision 1
+	VK_KHR_shader_constant_data                   : extension revision 1
+	VK_KHR_shader_draw_parameters                 : extension revision 1
+	VK_KHR_shader_expect_assume                   : extension revision 1
+	VK_KHR_shader_float16_int8                    : extension revision 1
+	VK_KHR_shader_float_controls                  : extension revision 4
+	VK_KHR_shader_float_controls2                 : extension revision 1
+	VK_KHR_shader_fma                             : extension revision 1
+	VK_KHR_shader_integer_dot_product             : extension revision 1
+	VK_KHR_shader_maximal_reconvergence           : extension revision 1
+	VK_KHR_shader_non_semantic_info               : extension revision 1
+	VK_KHR_shader_quad_control                    : extension revision 1
+	VK_KHR_shader_relaxed_extended_instruction    : extension revision 1
+	VK_KHR_shader_subgroup_extended_types         : extension revision 1
+	VK_KHR_shader_subgroup_rotate                 : extension revision 2
+	VK_KHR_shader_subgroup_uniform_control_flow   : extension revision 1
+	VK_KHR_shader_terminate_invocation            : extension revision 1
+	VK_KHR_shader_untyped_pointers                : extension revision 1
+	VK_KHR_spirv_1_4                              : extension revision 1
+	VK_KHR_storage_buffer_storage_class           : extension revision 1
+	VK_KHR_swapchain                              : extension revision 70
+	VK_KHR_swapchain_maintenance1                 : extension revision 1
+	VK_KHR_swapchain_mutable_format               : extension revision 1
+	VK_KHR_synchronization2                       : extension revision 1
+	VK_KHR_timeline_semaphore                     : extension revision 2
+	VK_KHR_unified_image_layouts                  : extension revision 1
+	VK_KHR_uniform_buffer_standard_layout         : extension revision 1
+	VK_KHR_variable_pointers                      : extension revision 1
+	VK_KHR_vertex_attribute_divisor               : extension revision 1
+	VK_KHR_video_decode_av1                       : extension revision 1
+	VK_KHR_video_decode_h264                      : extension revision 9
+	VK_KHR_video_decode_h265                      : extension revision 8
+	VK_KHR_video_decode_queue                     : extension revision 8
+	VK_KHR_video_decode_vp9                       : extension revision 1
+	VK_KHR_video_encode_av1                       : extension revision 1
+	VK_KHR_video_encode_h264                      : extension revision 14
+	VK_KHR_video_encode_h265                      : extension revision 14
+	VK_KHR_video_encode_intra_refresh             : extension revision 1
+	VK_KHR_video_encode_quantization_map          : extension revision 2
+	VK_KHR_video_encode_queue                     : extension revision 12
+	VK_KHR_video_maintenance1                     : extension revision 1
+	VK_KHR_video_maintenance2                     : extension revision 1
+	VK_KHR_video_queue                            : extension revision 8
+	VK_KHR_vulkan_memory_model                    : extension revision 3
+	VK_KHR_workgroup_memory_explicit_layout       : extension revision 1
+	VK_KHR_zero_initialize_workgroup_memory       : extension revision 1
+	VK_MESA_image_alignment_control               : extension revision 1
+	VK_NV_compute_shader_derivatives              : extension revision 1
+	VK_VALVE_mutable_descriptor_type              : extension revision 1
+	VK_VALVE_shader_mixed_float_dot_product       : extension revision 1
+	VK_VALVE_video_encode_rgb_conversion          : extension revision 1
+
+VkQueueFamilyProperties:
+========================
+	queueProperties[0]:
+	-------------------
+		minImageTransferGranularity = (1,1,1)
+		queueCount                  = 1
+		queueFlags                  = QUEUE_GRAPHICS_BIT | QUEUE_COMPUTE_BIT | QUEUE_TRANSFER_BIT | QUEUE_SPARSE_BINDING_BIT
+		timestampValidBits          = 64
+		present support             = false
+		VkQueueFamilyOptimalImageTransferGranularityPropertiesKHR:
+		----------------------------------------------------------
+			optimalImageTransferGranularity:
+				width  = 16
+				height = 16
+				depth  = 8
+
+		VkQueueFamilyOwnershipTransferPropertiesKHR:
+		--------------------------------------------
+			optimalImageTransferToQueueFamilies = 4294967295
+
+		VkQueueFamilyQueryResultStatusPropertiesKHR:
+		--------------------------------------------
+			queryResultStatusSupport = false
+
+		VkQueueFamilyVideoPropertiesKHR:
+		--------------------------------
+			videoCodecOperations:
+				None
+
+
+	queueProperties[1]:
+	-------------------
+		minImageTransferGranularity = (1,1,1)
+		queueCount                  = 4
+		queueFlags                  = QUEUE_COMPUTE_BIT | QUEUE_TRANSFER_BIT | QUEUE_SPARSE_BINDING_BIT
+		timestampValidBits          = 64
+		present support             = false
+		VkQueueFamilyOptimalImageTransferGranularityPropertiesKHR:
+		----------------------------------------------------------
+			optimalImageTransferGranularity:
+				width  = 16
+				height = 16
+				depth  = 8
+
+		VkQueueFamilyOwnershipTransferPropertiesKHR:
+		--------------------------------------------
+			optimalImageTransferToQueueFamilies = 4294967295
+
+		VkQueueFamilyQueryResultStatusPropertiesKHR:
+		--------------------------------------------
+			queryResultStatusSupport = false
+
+		VkQueueFamilyVideoPropertiesKHR:
+		--------------------------------
+			videoCodecOperations:
+				None
+
+
+	queueProperties[2]:
+	-------------------
+		minImageTransferGranularity = (1,1,1)
+		queueCount                  = 1
+		queueFlags                  = QUEUE_VIDEO_DECODE_BIT_KHR
+		timestampValidBits          = 64
+		present support             = false
+		VkQueueFamilyOptimalImageTransferGranularityPropertiesKHR:
+		----------------------------------------------------------
+			optimalImageTransferGranularity:
+				width  = 1
+				height = 1
+				depth  = 1
+
+		VkQueueFamilyOwnershipTransferPropertiesKHR:
+		--------------------------------------------
+			optimalImageTransferToQueueFamilies = 4294967295
+
+		VkQueueFamilyQueryResultStatusPropertiesKHR:
+		--------------------------------------------
+			queryResultStatusSupport = false
+
+		VkQueueFamilyVideoPropertiesKHR:
+		--------------------------------
+			videoCodecOperations: count = 4
+				VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR
+				VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR
+				VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR
+				VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR
+
+
+	queueProperties[3]:
+	-------------------
+		minImageTransferGranularity = (1,1,1)
+		queueCount                  = 1
+		queueFlags                  = QUEUE_VIDEO_ENCODE_BIT_KHR
+		timestampValidBits          = 64
+		present support             = false
+		VkQueueFamilyOptimalImageTransferGranularityPropertiesKHR:
+		----------------------------------------------------------
+			optimalImageTransferGranularity:
+				width  = 1
+				height = 1
+				depth  = 1
+
+		VkQueueFamilyOwnershipTransferPropertiesKHR:
+		--------------------------------------------
+			optimalImageTransferToQueueFamilies = 4294967295
+
+		VkQueueFamilyQueryResultStatusPropertiesKHR:
+		--------------------------------------------
+			queryResultStatusSupport = false
+
+		VkQueueFamilyVideoPropertiesKHR:
+		--------------------------------
+			videoCodecOperations: count = 3
+				VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR
+				VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR
+				VIDEO_CODEC_OPERATION_ENCODE_AV1_BIT_KHR
+
+
+	queueProperties[4]:
+	-------------------
+		minImageTransferGranularity = (1,1,1)
+		queueCount                  = 1
+		queueFlags                  = QUEUE_SPARSE_BINDING_BIT
+		timestampValidBits          = 0
+		present support             = false
+		VkQueueFamilyOptimalImageTransferGranularityPropertiesKHR:
+		----------------------------------------------------------
+			optimalImageTransferGranularity:
+				width  = 1
+				height = 1
+				depth  = 1
+
+		VkQueueFamilyOwnershipTransferPropertiesKHR:
+		--------------------------------------------
+			optimalImageTransferToQueueFamilies = 4294967295
+
+		VkQueueFamilyQueryResultStatusPropertiesKHR:
+		--------------------------------------------
+			queryResultStatusSupport = false
+
+		VkQueueFamilyVideoPropertiesKHR:
+		--------------------------------
+			videoCodecOperations:
+				None
+
+
+VkPhysicalDeviceMemoryProperties:
+=================================
+memoryHeaps: count = 2
+	memoryHeaps[0]:
+		size   = 33676546048 (0x7d7475000) (31.36 GiB)
+		budget = 33575976960 (0x7d148c000) (31.27 GiB)
+		usage  = 0 (0x00000000) (0.00 B)
+		flags:
+			None
+	memoryHeaps[1]:
+		size   = 25753026560 (0x5ff000000) (23.98 GiB)
+		budget = 24641871872 (0x5bcc52000) (22.95 GiB)
+		usage  = 0 (0x00000000) (0.00 B)
+		flags: count = 1
+			MEMORY_HEAP_DEVICE_LOCAL_BIT
+memoryTypes: count = 11
+	memoryTypes[0]:
+		heapIndex     = 1
+		propertyFlags = 0x0001: count = 1
+			MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+		usable for:
+			IMAGE_TILING_OPTIMAL:
+				color images
+				FORMAT_D16_UNORM
+				FORMAT_D32_SFLOAT
+				FORMAT_S8_UINT
+				FORMAT_D16_UNORM_S8_UINT
+				FORMAT_D32_SFLOAT_S8_UINT
+			IMAGE_TILING_LINEAR:
+				color images
+	memoryTypes[1]:
+		heapIndex     = 1
+		propertyFlags = 0x0001: count = 1
+			MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+		usable for:
+			IMAGE_TILING_OPTIMAL:
+				None
+			IMAGE_TILING_LINEAR:
+				None
+	memoryTypes[2]:
+		heapIndex     = 0
+		propertyFlags = 0x0006: count = 2
+			MEMORY_PROPERTY_HOST_VISIBLE_BIT
+			MEMORY_PROPERTY_HOST_COHERENT_BIT
+		usable for:
+			IMAGE_TILING_OPTIMAL:
+				color images
+				FORMAT_D16_UNORM
+				FORMAT_D32_SFLOAT
+				FORMAT_S8_UINT
+				FORMAT_D16_UNORM_S8_UINT
+				FORMAT_D32_SFLOAT_S8_UINT
+			IMAGE_TILING_LINEAR:
+				color images
+	memoryTypes[3]:
+		heapIndex     = 1
+		propertyFlags = 0x0007: count = 3
+			MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+			MEMORY_PROPERTY_HOST_VISIBLE_BIT
+			MEMORY_PROPERTY_HOST_COHERENT_BIT
+		usable for:
+			IMAGE_TILING_OPTIMAL:
+				color images
+				FORMAT_D16_UNORM
+				FORMAT_D32_SFLOAT
+				FORMAT_S8_UINT
+				FORMAT_D16_UNORM_S8_UINT
+				FORMAT_D32_SFLOAT_S8_UINT
+			IMAGE_TILING_LINEAR:
+				color images
+	memoryTypes[4]:
+		heapIndex     = 1
+		propertyFlags = 0x0007: count = 3
+			MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+			MEMORY_PROPERTY_HOST_VISIBLE_BIT
+			MEMORY_PROPERTY_HOST_COHERENT_BIT
+		usable for:
+			IMAGE_TILING_OPTIMAL:
+				None
+			IMAGE_TILING_LINEAR:
+				None
+	memoryTypes[5]:
+		heapIndex     = 0
+		propertyFlags = 0x000e: count = 3
+			MEMORY_PROPERTY_HOST_VISIBLE_BIT
+			MEMORY_PROPERTY_HOST_COHERENT_BIT
+			MEMORY_PROPERTY_HOST_CACHED_BIT
+		usable for:
+			IMAGE_TILING_OPTIMAL:
+				color images
+				FORMAT_D16_UNORM
+				FORMAT_D32_SFLOAT
+				FORMAT_S8_UINT
+				FORMAT_D16_UNORM_S8_UINT
+				FORMAT_D32_SFLOAT_S8_UINT
+			IMAGE_TILING_LINEAR:
+				color images
+	memoryTypes[6]:
+		heapIndex     = 0
+		propertyFlags = 0x000e: count = 3
+			MEMORY_PROPERTY_HOST_VISIBLE_BIT
+			MEMORY_PROPERTY_HOST_COHERENT_BIT
+			MEMORY_PROPERTY_HOST_CACHED_BIT
+		usable for:
+			IMAGE_TILING_OPTIMAL:
+				None
+			IMAGE_TILING_LINEAR:
+				None
+	memoryTypes[7]:
+		heapIndex     = 1
+		propertyFlags = 0x00c1: count = 3
+			MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+			MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD
+			MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD
+		usable for:
+			IMAGE_TILING_OPTIMAL:
+				color images
+				FORMAT_D16_UNORM
+				FORMAT_D32_SFLOAT
+				FORMAT_S8_UINT
+				FORMAT_D16_UNORM_S8_UINT
+				FORMAT_D32_SFLOAT_S8_UINT
+			IMAGE_TILING_LINEAR:
+				color images
+	memoryTypes[8]:
+		heapIndex     = 0
+		propertyFlags = 0x00c6: count = 4
+			MEMORY_PROPERTY_HOST_VISIBLE_BIT
+			MEMORY_PROPERTY_HOST_COHERENT_BIT
+			MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD
+			MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD
+		usable for:
+			IMAGE_TILING_OPTIMAL:
+				color images
+				FORMAT_D16_UNORM
+				FORMAT_D32_SFLOAT
+				FORMAT_S8_UINT
+				FORMAT_D16_UNORM_S8_UINT
+				FORMAT_D32_SFLOAT_S8_UINT
+			IMAGE_TILING_LINEAR:
+				color images
+	memoryTypes[9]:
+		heapIndex     = 1
+		propertyFlags = 0x00c7: count = 5
+			MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+			MEMORY_PROPERTY_HOST_VISIBLE_BIT
+			MEMORY_PROPERTY_HOST_COHERENT_BIT
+			MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD
+			MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD
+		usable for:
+			IMAGE_TILING_OPTIMAL:
+				color images
+				FORMAT_D16_UNORM
+				FORMAT_D32_SFLOAT
+				FORMAT_S8_UINT
+				FORMAT_D16_UNORM_S8_UINT
+				FORMAT_D32_SFLOAT_S8_UINT
+			IMAGE_TILING_LINEAR:
+				color images
+	memoryTypes[10]:
+		heapIndex     = 0
+		propertyFlags = 0x00ce: count = 5
+			MEMORY_PROPERTY_HOST_VISIBLE_BIT
+			MEMORY_PROPERTY_HOST_COHERENT_BIT
+			MEMORY_PROPERTY_HOST_CACHED_BIT
+			MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD
+			MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD
+		usable for:
+			IMAGE_TILING_OPTIMAL:
+				color images
+				FORMAT_D16_UNORM
+				FORMAT_D32_SFLOAT
+				FORMAT_S8_UINT
+				FORMAT_D16_UNORM_S8_UINT
+				FORMAT_D32_SFLOAT_S8_UINT
+			IMAGE_TILING_LINEAR:
+				color images
+
+VkPhysicalDeviceFeatures:
+=========================
+	robustBufferAccess                      = true
+	fullDrawIndexUint32                     = true
+	imageCubeArray                          = true
+	independentBlend                        = true
+	geometryShader                          = true
+	tessellationShader                      = true
+	sampleRateShading                       = true
+	dualSrcBlend                            = true
+	logicOp                                 = true
+	multiDrawIndirect                       = true
+	drawIndirectFirstInstance               = true
+	depthClamp                              = true
+	depthBiasClamp                          = true
+	fillModeNonSolid                        = true
+	depthBounds                             = true
+	wideLines                               = true
+	largePoints                             = true
+	alphaToOne                              = true
+	multiViewport                           = true
+	samplerAnisotropy                       = true
+	textureCompressionETC2                  = false
+	textureCompressionASTC_LDR              = false
+	textureCompressionBC                    = true
+	occlusionQueryPrecise                   = true
+	pipelineStatisticsQuery                 = true
+	vertexPipelineStoresAndAtomics          = true
+	fragmentStoresAndAtomics                = true
+	shaderTessellationAndGeometryPointSize  = true
+	shaderImageGatherExtended               = true
+	shaderStorageImageExtendedFormats       = true
+	shaderStorageImageMultisample           = true
+	shaderStorageImageReadWithoutFormat     = true
+	shaderStorageImageWriteWithoutFormat    = true
+	shaderUniformBufferArrayDynamicIndexing = true
+	shaderSampledImageArrayDynamicIndexing  = true
+	shaderStorageBufferArrayDynamicIndexing = true
+	shaderStorageImageArrayDynamicIndexing  = true
+	shaderClipDistance                      = true
+	shaderCullDistance                      = true
+	shaderFloat64                           = true
+	shaderInt64                             = true
+	shaderInt16                             = true
+	shaderResourceResidency                 = true
+	shaderResourceMinLod                    = true
+	sparseBinding                           = true
+	sparseResidencyBuffer                   = true
+	sparseResidencyImage2D                  = true
+	sparseResidencyImage3D                  = true
+	sparseResidency2Samples                 = false
+	sparseResidency4Samples                 = false
+	sparseResidency8Samples                 = false
+	sparseResidency16Samples                = false
+	sparseResidencyAliased                  = true
+	variableMultisampleRate                 = true
+	inheritedQueries                        = true
+
+VkPhysicalDevice4444FormatsFeaturesEXT:
+---------------------------------------
+	formatA4R4G4B4 = true
+	formatA4B4G4R4 = true
+
+VkPhysicalDeviceAccelerationStructureFeaturesKHR:
+-------------------------------------------------
+	accelerationStructure                                 = true
+	accelerationStructureCaptureReplay                    = true
+	accelerationStructureIndirectBuild                    = false
+	accelerationStructureHostCommands                     = false
+	descriptorBindingAccelerationStructureUpdateAfterBind = true
+
+VkPhysicalDeviceAddressBindingReportFeaturesEXT:
+------------------------------------------------
+	reportAddressBinding = true
+
+VkPhysicalDeviceAttachmentFeedbackLoopDynamicStateFeaturesEXT:
+--------------------------------------------------------------
+	attachmentFeedbackLoopDynamicState = true
+
+VkPhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT:
+--------------------------------------------------------
+	attachmentFeedbackLoopLayout = true
+
+VkPhysicalDeviceBorderColorSwizzleFeaturesEXT:
+----------------------------------------------
+	borderColorSwizzle          = true
+	borderColorSwizzleFromImage = true
+
+VkPhysicalDeviceBufferDeviceAddressFeaturesEXT:
+-----------------------------------------------
+	bufferDeviceAddress              = true
+	bufferDeviceAddressCaptureReplay = false
+	bufferDeviceAddressMultiDevice   = false
+
+VkPhysicalDeviceColorWriteEnableFeaturesEXT:
+--------------------------------------------
+	colorWriteEnable = true
+
+VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR:
+----------------------------------------------------
+	computeDerivativeGroupQuads  = true
+	computeDerivativeGroupLinear = true
+
+VkPhysicalDeviceConditionalRenderingFeaturesEXT:
+------------------------------------------------
+	conditionalRendering          = true
+	inheritedConditionalRendering = false
+
+VkPhysicalDeviceCooperativeMatrixFeaturesKHR:
+---------------------------------------------
+	cooperativeMatrix                   = true
+	cooperativeMatrixRobustBufferAccess = false
+
+VkPhysicalDeviceCopyMemoryIndirectFeaturesKHR:
+----------------------------------------------
+	indirectMemoryCopy        = true
+	indirectMemoryToImageCopy = true
+
+VkPhysicalDeviceCustomBorderColorFeaturesEXT:
+---------------------------------------------
+	customBorderColors             = true
+	customBorderColorWithoutFormat = true
+
+VkPhysicalDeviceCustomResolveFeaturesEXT:
+-----------------------------------------
+	customResolve = true
+
+VkPhysicalDeviceDepthBiasControlFeaturesEXT:
+--------------------------------------------
+	depthBiasControl                                = true
+	leastRepresentableValueForceUnormRepresentation = true
+	floatRepresentation                             = true
+	depthBiasExact                                  = true
+
+VkPhysicalDeviceDepthClampControlFeaturesEXT:
+---------------------------------------------
+	depthClampControl = true
+
+VkPhysicalDeviceDepthClampZeroOneFeaturesKHR:
+---------------------------------------------
+	depthClampZeroOne = true
+
+VkPhysicalDeviceDepthClipControlFeaturesEXT:
+--------------------------------------------
+	depthClipControl = true
+
+VkPhysicalDeviceDepthClipEnableFeaturesEXT:
+-------------------------------------------
+	depthClipEnable = true
+
+VkPhysicalDeviceDescriptorBufferFeaturesEXT:
+--------------------------------------------
+	descriptorBuffer                   = true
+	descriptorBufferCaptureReplay      = true
+	descriptorBufferImageLayoutIgnored = true
+	descriptorBufferPushDescriptors    = true
+
+VkPhysicalDeviceDescriptorHeapFeaturesEXT:
+------------------------------------------
+	descriptorHeap              = true
+	descriptorHeapCaptureReplay = true
+
+VkPhysicalDeviceDeviceAddressCommandsFeaturesKHR:
+-------------------------------------------------
+	deviceAddressCommands = true
+
+VkPhysicalDeviceDeviceGeneratedCommandsFeaturesEXT:
+---------------------------------------------------
+	deviceGeneratedCommands        = true
+	dynamicGeneratedPipelineLayout = true
+
+VkPhysicalDeviceDeviceMemoryReportFeaturesEXT:
+----------------------------------------------
+	deviceMemoryReport = true
+
+VkPhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT:
+-------------------------------------------------------------
+	dynamicRenderingUnusedAttachments = true
+
+VkPhysicalDeviceExtendedDynamicState2FeaturesEXT:
+-------------------------------------------------
+	extendedDynamicState2                   = true
+	extendedDynamicState2LogicOp            = true
+	extendedDynamicState2PatchControlPoints = true
+
+VkPhysicalDeviceExtendedDynamicState3FeaturesEXT:
+-------------------------------------------------
+	extendedDynamicState3TessellationDomainOrigin         = true
+	extendedDynamicState3DepthClampEnable                 = true
+	extendedDynamicState3PolygonMode                      = true
+	extendedDynamicState3RasterizationSamples             = true
+	extendedDynamicState3SampleMask                       = true
+	extendedDynamicState3AlphaToCoverageEnable            = true
+	extendedDynamicState3AlphaToOneEnable                 = true
+	extendedDynamicState3LogicOpEnable                    = true
+	extendedDynamicState3ColorBlendEnable                 = true
+	extendedDynamicState3ColorBlendEquation               = true
+	extendedDynamicState3ColorWriteMask                   = true
+	extendedDynamicState3RasterizationStream              = false
+	extendedDynamicState3ConservativeRasterizationMode    = true
+	extendedDynamicState3ExtraPrimitiveOverestimationSize = false
+	extendedDynamicState3DepthClipEnable                  = true
+	extendedDynamicState3SampleLocationsEnable            = true
+	extendedDynamicState3ColorBlendAdvanced               = false
+	extendedDynamicState3ProvokingVertexMode              = true
+	extendedDynamicState3LineRasterizationMode            = true
+	extendedDynamicState3LineStippleEnable                = true
+	extendedDynamicState3DepthClipNegativeOneToOne        = true
+	extendedDynamicState3ViewportWScalingEnable           = false
+	extendedDynamicState3ViewportSwizzle                  = false
+	extendedDynamicState3CoverageToColorEnable            = false
+	extendedDynamicState3CoverageToColorLocation          = false
+	extendedDynamicState3CoverageModulationMode           = false
+	extendedDynamicState3CoverageModulationTableEnable    = false
+	extendedDynamicState3CoverageModulationTable          = false
+	extendedDynamicState3CoverageReductionMode            = false
+	extendedDynamicState3RepresentativeFragmentTestEnable = false
+	extendedDynamicState3ShadingRateImageEnable           = false
+
+VkPhysicalDeviceExtendedDynamicStateFeaturesEXT:
+------------------------------------------------
+	extendedDynamicState = true
+
+VkPhysicalDeviceExtendedFlagsFeaturesKHR:
+-----------------------------------------
+	extendedFlags = true
+
+VkPhysicalDeviceFaultFeaturesEXT:
+---------------------------------
+	deviceFault             = true
+	deviceFaultVendorBinary = false
+
+VkPhysicalDeviceFaultFeaturesKHR:
+---------------------------------
+	deviceFault                   = true
+	deviceFaultVendorBinary       = false
+	deviceFaultReportMasked       = true
+	deviceFaultDeviceLostOnMasked = false
+
+VkPhysicalDeviceFragmentShaderBarycentricFeaturesKHR:
+-----------------------------------------------------
+	fragmentShaderBarycentric = true
+
+VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT:
+---------------------------------------------------
+	fragmentShaderSampleInterlock      = true
+	fragmentShaderPixelInterlock       = true
+	fragmentShaderShadingRateInterlock = false
+
+VkPhysicalDeviceFragmentShadingRateFeaturesKHR:
+-----------------------------------------------
+	pipelineFragmentShadingRate   = true
+	primitiveFragmentShadingRate  = true
+	attachmentFragmentShadingRate = true
+
+VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT:
+---------------------------------------------------
+	graphicsPipelineLibrary = true
+
+VkPhysicalDeviceImage2DViewOf3DFeaturesEXT:
+-------------------------------------------
+	image2DViewOf3D   = true
+	sampler2DViewOf3D = false
+
+VkPhysicalDeviceImageCompressionControlFeaturesEXT:
+---------------------------------------------------
+	imageCompressionControl = true
+
+VkPhysicalDeviceImageCompressionControlSwapchainFeaturesEXT:
+------------------------------------------------------------
+	imageCompressionControlSwapchain = true
+
+VkPhysicalDeviceImageSlicedViewOf3DFeaturesEXT:
+-----------------------------------------------
+	imageSlicedViewOf3D = true
+
+VkPhysicalDeviceImageViewMinLodFeaturesEXT:
+-------------------------------------------
+	minLod = true
+
+VkPhysicalDeviceInternallySynchronizedQueuesFeaturesKHR:
+--------------------------------------------------------
+	internallySynchronizedQueues = true
+
+VkPhysicalDeviceLegacyVertexAttributesFeaturesEXT:
+--------------------------------------------------
+	legacyVertexAttributes = true
+
+VkPhysicalDeviceMaintenance10FeaturesKHR:
+-----------------------------------------
+	maintenance10 = true
+
+VkPhysicalDeviceMaintenance11FeaturesKHR:
+-----------------------------------------
+	maintenance11 = true
+
+VkPhysicalDeviceMaintenance7FeaturesKHR:
+----------------------------------------
+	maintenance7 = true
+
+VkPhysicalDeviceMaintenance8FeaturesKHR:
+----------------------------------------
+	maintenance8 = true
+
+VkPhysicalDeviceMaintenance9FeaturesKHR:
+----------------------------------------
+	maintenance9 = true
+
+VkPhysicalDeviceMapMemoryPlacedFeaturesEXT:
+-------------------------------------------
+	memoryMapPlaced      = true
+	memoryMapRangePlaced = false
+	memoryUnmapReserve   = true
+
+VkPhysicalDeviceMemoryPriorityFeaturesEXT:
+------------------------------------------
+	memoryPriority = true
+
+VkPhysicalDeviceMeshShaderFeaturesEXT:
+--------------------------------------
+	taskShader                             = true
+	meshShader                             = true
+	multiviewMeshShader                    = true
+	primitiveFragmentShadingRateMeshShader = true
+	meshShaderQueries                      = false
+
+VkPhysicalDeviceMultiDrawFeaturesEXT:
+-------------------------------------
+	multiDraw = true
+
+VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT:
+-------------------------------------------------
+	mutableDescriptorType = true
+
+VkPhysicalDeviceNestedCommandBufferFeaturesEXT:
+-----------------------------------------------
+	nestedCommandBuffer                = true
+	nestedCommandBufferRendering       = true
+	nestedCommandBufferSimultaneousUse = true
+
+VkPhysicalDeviceNonSeamlessCubeMapFeaturesEXT:
+----------------------------------------------
+	nonSeamlessCubeMap = true
+
+VkPhysicalDevicePerformanceQueryFeaturesKHR:
+--------------------------------------------
+	performanceCounterQueryPools         = true
+	performanceCounterMultipleQueryPools = true
+
+VkPhysicalDevicePipelineBinaryFeaturesKHR:
+------------------------------------------
+	pipelineBinaries = true
+
+VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR:
+--------------------------------------------------------
+	pipelineExecutableInfo = true
+
+VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT:
+-------------------------------------------------------
+	pipelineLibraryGroupHandles = true
+
+VkPhysicalDevicePresentId2FeaturesKHR:
+--------------------------------------
+	presentId2 = true
+
+VkPhysicalDevicePresentIdFeaturesKHR:
+-------------------------------------
+	presentId = true
+
+VkPhysicalDevicePresentTimingFeaturesEXT:
+-----------------------------------------
+	presentTiming         = true
+	presentAtAbsoluteTime = true
+	presentAtRelativeTime = true
+
+VkPhysicalDevicePresentWait2FeaturesKHR:
+----------------------------------------
+	presentWait2 = true
+
+VkPhysicalDevicePresentWaitFeaturesKHR:
+---------------------------------------
+	presentWait = true
+
+VkPhysicalDevicePrimitiveRestartIndexFeaturesEXT:
+-------------------------------------------------
+	primitiveRestartIndex = true
+
+VkPhysicalDevicePrimitiveTopologyListRestartFeaturesEXT:
+--------------------------------------------------------
+	primitiveTopologyListRestart      = true
+	primitiveTopologyPatchListRestart = false
+
+VkPhysicalDevicePrimitivesGeneratedQueryFeaturesEXT:
+----------------------------------------------------
+	primitivesGeneratedQuery                      = true
+	primitivesGeneratedQueryWithRasterizerDiscard = true
+	primitivesGeneratedQueryWithNonZeroStreams    = true
+
+VkPhysicalDeviceProvokingVertexFeaturesEXT:
+-------------------------------------------
+	provokingVertexLast                       = true
+	transformFeedbackPreservesProvokingVertex = true
+
+VkPhysicalDeviceRayQueryFeaturesKHR:
+------------------------------------
+	rayQuery = true
+
+VkPhysicalDeviceRayTracingMaintenance1FeaturesKHR:
+--------------------------------------------------
+	rayTracingMaintenance1               = true
+	rayTracingPipelineTraceRaysIndirect2 = true
+
+VkPhysicalDeviceRayTracingPipelineFeaturesKHR:
+----------------------------------------------
+	rayTracingPipeline                                    = true
+	rayTracingPipelineShaderGroupHandleCaptureReplay      = true
+	rayTracingPipelineShaderGroupHandleCaptureReplayMixed = false
+	rayTracingPipelineTraceRaysIndirect                   = true
+	rayTraversalPrimitiveCulling                          = true
+
+VkPhysicalDeviceRayTracingPositionFetchFeaturesKHR:
+---------------------------------------------------
+	rayTracingPositionFetch = true
+
+VkPhysicalDeviceRobustness2FeaturesKHR:
+---------------------------------------
+	robustBufferAccess2 = true
+	robustImageAccess2  = true
+	nullDescriptor      = true
+
+VkPhysicalDeviceShaderAbortFeaturesKHR:
+---------------------------------------
+	shaderAbort = true
+
+VkPhysicalDeviceShaderAtomicFloat2FeaturesEXT:
+----------------------------------------------
+	shaderBufferFloat16Atomics      = false
+	shaderBufferFloat16AtomicAdd    = false
+	shaderBufferFloat16AtomicMinMax = false
+	shaderBufferFloat32AtomicMinMax = true
+	shaderBufferFloat64AtomicMinMax = false
+	shaderSharedFloat16Atomics      = false
+	shaderSharedFloat16AtomicAdd    = false
+	shaderSharedFloat16AtomicMinMax = false
+	shaderSharedFloat32AtomicMinMax = true
+	shaderSharedFloat64AtomicMinMax = true
+	shaderImageFloat32AtomicMinMax  = false
+	sparseImageFloat32AtomicMinMax  = false
+
+VkPhysicalDeviceShaderAtomicFloatFeaturesEXT:
+---------------------------------------------
+	shaderBufferFloat32Atomics   = true
+	shaderBufferFloat32AtomicAdd = true
+	shaderBufferFloat64Atomics   = true
+	shaderBufferFloat64AtomicAdd = false
+	shaderSharedFloat32Atomics   = true
+	shaderSharedFloat32AtomicAdd = true
+	shaderSharedFloat64Atomics   = true
+	shaderSharedFloat64AtomicAdd = false
+	shaderImageFloat32Atomics    = true
+	shaderImageFloat32AtomicAdd  = false
+	sparseImageFloat32Atomics    = true
+	sparseImageFloat32AtomicAdd  = false
+
+VkPhysicalDeviceShaderClockFeaturesKHR:
+---------------------------------------
+	shaderSubgroupClock = true
+	shaderDeviceClock   = true
+
+VkPhysicalDeviceShaderConstantDataFeaturesKHR:
+----------------------------------------------
+	shaderConstantData = true
+
+VkPhysicalDeviceShaderFmaFeaturesKHR:
+-------------------------------------
+	shaderFmaFloat16 = true
+	shaderFmaFloat32 = true
+	shaderFmaFloat64 = true
+
+VkPhysicalDeviceShaderImageAtomicInt64FeaturesEXT:
+--------------------------------------------------
+	shaderImageInt64Atomics = true
+	sparseImageInt64Atomics = true
+
+VkPhysicalDeviceShaderMaximalReconvergenceFeaturesKHR:
+------------------------------------------------------
+	shaderMaximalReconvergence = true
+
+VkPhysicalDeviceShaderModuleIdentifierFeaturesEXT:
+--------------------------------------------------
+	shaderModuleIdentifier = true
+
+VkPhysicalDeviceShaderObjectFeaturesEXT:
+----------------------------------------
+	shaderObject = true
+
+VkPhysicalDeviceShaderQuadControlFeaturesKHR:
+---------------------------------------------
+	shaderQuadControl = true
+
+VkPhysicalDeviceShaderRelaxedExtendedInstructionFeaturesKHR:
+------------------------------------------------------------
+	shaderRelaxedExtendedInstruction = true
+
+VkPhysicalDeviceShaderReplicatedCompositesFeaturesEXT:
+------------------------------------------------------
+	shaderReplicatedComposites = true
+
+VkPhysicalDeviceShaderSubgroupUniformControlFlowFeaturesKHR:
+------------------------------------------------------------
+	shaderSubgroupUniformControlFlow = true
+
+VkPhysicalDeviceShaderUniformBufferUnsizedArrayFeaturesEXT:
+-----------------------------------------------------------
+	shaderUniformBufferUnsizedArray = true
+
+VkPhysicalDeviceShaderUntypedPointersFeaturesKHR:
+-------------------------------------------------
+	shaderUntypedPointers = true
+
+VkPhysicalDeviceSwapchainMaintenance1FeaturesKHR:
+-------------------------------------------------
+	swapchainMaintenance1 = true
+
+VkPhysicalDeviceTexelBufferAlignmentFeaturesEXT:
+------------------------------------------------
+	texelBufferAlignment = true
+
+VkPhysicalDeviceTransformFeedbackFeaturesEXT:
+---------------------------------------------
+	transformFeedback = true
+	geometryStreams   = true
+
+VkPhysicalDeviceUnifiedImageLayoutsFeaturesKHR:
+-----------------------------------------------
+	unifiedImageLayouts      = true
+	unifiedImageLayoutsVideo = true
+
+VkPhysicalDeviceVertexInputDynamicStateFeaturesEXT:
+---------------------------------------------------
+	vertexInputDynamicState = true
+
+VkPhysicalDeviceVideoDecodeVP9FeaturesKHR:
+------------------------------------------
+	videoDecodeVP9 = true
+
+VkPhysicalDeviceVideoEncodeAV1FeaturesKHR:
+------------------------------------------
+	videoEncodeAV1 = true
+
+VkPhysicalDeviceVideoEncodeIntraRefreshFeaturesKHR:
+---------------------------------------------------
+	videoEncodeIntraRefresh = true
+
+VkPhysicalDeviceVideoEncodeQuantizationMapFeaturesKHR:
+------------------------------------------------------
+	videoEncodeQuantizationMap = true
+
+VkPhysicalDeviceVideoMaintenance1FeaturesKHR:
+---------------------------------------------
+	videoMaintenance1 = true
+
+VkPhysicalDeviceVideoMaintenance2FeaturesKHR:
+---------------------------------------------
+	videoMaintenance2 = true
+
+VkPhysicalDeviceVulkan11Features:
+---------------------------------
+	storageBuffer16BitAccess           = true
+	uniformAndStorageBuffer16BitAccess = true
+	storagePushConstant16              = true
+	storageInputOutput16               = true
+	multiview                          = true
+	multiviewGeometryShader            = true
+	multiviewTessellationShader        = true
+	variablePointersStorageBuffer      = true
+	variablePointers                   = true
+	protectedMemory                    = false
+	samplerYcbcrConversion             = true
+	shaderDrawParameters               = true
+
+VkPhysicalDeviceVulkan12Features:
+---------------------------------
+	samplerMirrorClampToEdge                           = true
+	drawIndirectCount                                  = true
+	storageBuffer8BitAccess                            = true
+	uniformAndStorageBuffer8BitAccess                  = true
+	storagePushConstant8                               = true
+	shaderBufferInt64Atomics                           = true
+	shaderSharedInt64Atomics                           = true
+	shaderFloat16                                      = true
+	shaderInt8                                         = true
+	descriptorIndexing                                 = true
+	shaderInputAttachmentArrayDynamicIndexing          = true
+	shaderUniformTexelBufferArrayDynamicIndexing       = true
+	shaderStorageTexelBufferArrayDynamicIndexing       = true
+	shaderUniformBufferArrayNonUniformIndexing         = true
+	shaderSampledImageArrayNonUniformIndexing          = true
+	shaderStorageBufferArrayNonUniformIndexing         = true
+	shaderStorageImageArrayNonUniformIndexing          = true
+	shaderInputAttachmentArrayNonUniformIndexing       = true
+	shaderUniformTexelBufferArrayNonUniformIndexing    = true
+	shaderStorageTexelBufferArrayNonUniformIndexing    = true
+	descriptorBindingUniformBufferUpdateAfterBind      = true
+	descriptorBindingSampledImageUpdateAfterBind       = true
+	descriptorBindingStorageImageUpdateAfterBind       = true
+	descriptorBindingStorageBufferUpdateAfterBind      = true
+	descriptorBindingUniformTexelBufferUpdateAfterBind = true
+	descriptorBindingStorageTexelBufferUpdateAfterBind = true
+	descriptorBindingUpdateUnusedWhilePending          = true
+	descriptorBindingPartiallyBound                    = true
+	descriptorBindingVariableDescriptorCount           = true
+	runtimeDescriptorArray                             = true
+	samplerFilterMinmax                                = true
+	scalarBlockLayout                                  = true
+	imagelessFramebuffer                               = true
+	uniformBufferStandardLayout                        = true
+	shaderSubgroupExtendedTypes                        = true
+	separateDepthStencilLayouts                        = true
+	hostQueryReset                                     = true
+	timelineSemaphore                                  = true
+	bufferDeviceAddress                                = true
+	bufferDeviceAddressCaptureReplay                   = true
+	bufferDeviceAddressMultiDevice                     = false
+	vulkanMemoryModel                                  = true
+	vulkanMemoryModelDeviceScope                       = true
+	vulkanMemoryModelAvailabilityVisibilityChains      = false
+	shaderOutputViewportIndex                          = true
+	shaderOutputLayer                                  = true
+	subgroupBroadcastDynamicId                         = true
+
+VkPhysicalDeviceVulkan13Features:
+---------------------------------
+	robustImageAccess                                  = true
+	inlineUniformBlock                                 = true
+	descriptorBindingInlineUniformBlockUpdateAfterBind = true
+	pipelineCreationCacheControl                       = true
+	privateData                                        = true
+	shaderDemoteToHelperInvocation                     = true
+	shaderTerminateInvocation                          = true
+	subgroupSizeControl                                = true
+	computeFullSubgroups                               = true
+	synchronization2                                   = true
+	textureCompressionASTC_HDR                         = false
+	shaderZeroInitializeWorkgroupMemory                = true
+	dynamicRendering                                   = true
+	shaderIntegerDotProduct                            = true
+	maintenance4                                       = true
+
+VkPhysicalDeviceVulkan14Features:
+---------------------------------
+	globalPriorityQuery                    = true
+	shaderSubgroupRotate                   = true
+	shaderSubgroupRotateClustered          = true
+	shaderFloatControls2                   = true
+	shaderExpectAssume                     = true
+	rectangularLines                       = true
+	bresenhamLines                         = true
+	smoothLines                            = true
+	stippledRectangularLines               = false
+	stippledBresenhamLines                 = true
+	stippledSmoothLines                    = false
+	vertexAttributeInstanceRateDivisor     = true
+	vertexAttributeInstanceRateZeroDivisor = true
+	indexTypeUint8                         = true
+	dynamicRenderingLocalRead              = true
+	maintenance5                           = true
+	maintenance6                           = true
+	pipelineProtectedAccess                = false
+	pipelineRobustness                     = true
+	hostImageCopy                          = true
+	pushDescriptor                         = true
+
+VkPhysicalDeviceWorkgroupMemoryExplicitLayoutFeaturesKHR:
+---------------------------------------------------------
+	workgroupMemoryExplicitLayout                  = true
+	workgroupMemoryExplicitLayoutScalarBlockLayout = true
+	workgroupMemoryExplicitLayout8BitAccess        = true
+	workgroupMemoryExplicitLayout16BitAccess       = true
+
+VkPhysicalDeviceYcbcr2Plane444FormatsFeaturesEXT:
+-------------------------------------------------
+	ycbcr2plane444Formats = true
+
+VkPhysicalDeviceYcbcrImageArraysFeaturesEXT:
+--------------------------------------------
+	ycbcrImageArrays = true
+
+VkPhysicalDeviceZeroInitializeDeviceMemoryFeaturesEXT:
+------------------------------------------------------
+	zeroInitializeDeviceMemory = true
+
+Video Profiles: count = 34
+==========================
+placeholder = H.264 Decode (4:2:0 8-bit) Baseline progressive
+placeholder = H.264 Decode (4:2:0 8-bit) Main progressive
+placeholder = H.264 Decode (4:2:0 8-bit) High progressive
+placeholder = H.264 Decode (4:2:0 8-bit) Main interlaced (interleaved lines)
+placeholder = H.264 Decode (4:2:0 8-bit) High interlaced (interleaved lines)
+placeholder = H.264 Decode (monochrome 8-bit) High progressive
+placeholder = H.264 Decode (monochrome 8-bit) High interlaced (interleaved lines)
+placeholder = H.265 Decode (4:2:0 8-bit) Main
+placeholder = H.265 Decode (4:2:0 8-bit) Main 10
+placeholder = H.265 Decode (4:2:0 8-bit) Main Still Picture
+placeholder = H.265 Decode (4:2:0 10-bit) Main 10
+placeholder = VP9 Decode (4:2:0 8-bit) Profile 0
+placeholder = VP9 Decode (4:2:0 10-bit) Profile 2
+placeholder = AV1 Decode (4:2:0 8-bit) Main with film grain support
+placeholder = AV1 Decode (4:2:0 8-bit) Main without film grain support
+placeholder = AV1 Decode (4:2:0 10-bit) Main with film grain support
+placeholder = AV1 Decode (4:2:0 10-bit) Main without film grain support
+placeholder = AV1 Decode (4:2:0 12-bit) Professional with film grain support
+placeholder = AV1 Decode (4:2:0 12-bit) Professional without film grain support
+placeholder = AV1 Decode (monochrome 8-bit) Main with film grain support
+placeholder = AV1 Decode (monochrome 8-bit) Main without film grain support
+placeholder = AV1 Decode (monochrome 10-bit) Main with film grain support
+placeholder = AV1 Decode (monochrome 10-bit) Main without film grain support
+placeholder = AV1 Decode (monochrome 12-bit) Professional with film grain support
+placeholder = AV1 Decode (monochrome 12-bit) Professional without film grain support
+placeholder = H.264 Encode (4:2:0 8-bit) Baseline
+placeholder = H.264 Encode (4:2:0 8-bit) Main
+placeholder = H.264 Encode (4:2:0 8-bit) High
+placeholder = H.265 Encode (4:2:0 8-bit) Main
+placeholder = H.265 Encode (4:2:0 8-bit) Main 10
+placeholder = H.265 Encode (4:2:0 8-bit) Main Still Picture
+placeholder = H.265 Encode (4:2:0 10-bit) Main 10
+placeholder = AV1 Encode (4:2:0 8-bit) Main
+placeholder = AV1 Encode (4:2:0 10-bit) Main
+
+
+'DISPLAY' environment variable not set... skipping surface info
+["lscpu"]
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           43 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  24
+On-line CPU(s) list:                     0-23
+Vendor ID:                               AuthenticAMD
+Model name:                              AMD Ryzen 9 3900X 12-Core Processor
+CPU family:                              23
+Model:                                   113
+Thread(s) per core:                      2
+Core(s) per socket:                      12
+Socket(s):                               1
+Stepping:                                0
+Microcode version:                       0x8701034
+Frequency boost:                         enabled
+CPU(s) scaling MHz:                      79%
+CPU max MHz:                             4673.8232
+CPU min MHz:                             563.1120
+BogoMIPS:                                7585.30
+Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpb cat_l3 cdp_l3 hw_pstate ssbd mba ibpb stibp vmmcall fsgsbase bmi1 avx2 smep bmi2 cqm rdt_a rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local clzero irperf xsaveerptr rdpru wbnoinvd arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif v_spec_ctrl umip rdpid overflow_recov succor smca sev sev_es
+Virtualization:                          AMD-V
+L1d cache:                               384 KiB (12 instances)
+L1i cache:                               384 KiB (12 instances)
+L2 cache:                                6 MiB (12 instances)
+L3 cache:                                64 MiB (4 instances)
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-23
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Ghostwrite:                Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Old microcode:             Not affected
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Mitigation; untrained return thunk; SMT enabled with STIBP protection
+Vulnerability Spec rstack overflow:      Mitigation; Safe RET
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; Retpolines; IBPB conditional; STIBP always-on; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Mitigation; IBPB before exit to userspace
+["/home/USER/projects/zerv/third_party/gpu-driver-bench/2026-09-22-gpu-driver-run1/native"]
+{"kind":"affine","count":1,"bytes":260,"input_sha256":"9bc0e6c4cdc1cbadf6bb68e489d7694a64299319455a8de53fce6bef6fb163c8","output_sha256":"cda8e3b36b98f86f75a38b19879000a04f691142a1c191330efdce1446ef1cdd"}
+{"kind":"affine","count":63,"bytes":508,"input_sha256":"155f0d252ab3e4d26fbdd744a180a5fa4b1c90b9e33c1890b2489fff60dc1674","output_sha256":"28752db314ce132a2aae0343e572270882b4d55c6be65a2c1b51863f6223b34c"}
+{"kind":"affine","count":64,"bytes":512,"input_sha256":"1f4cf4211090322e87f727a10f2f380926ef9908074c1741edd9c80b12f8d79b","output_sha256":"c945021a4a8e4cc1b2aa0444d36104f07c068231da5ec1071cfb8cf37e6ea61c"}
+{"kind":"affine","count":65,"bytes":516,"input_sha256":"78b283c5676c9aba54bac9b113e8caa8af3ed172b43da040b5ca75fed309ffc1","output_sha256":"485c8870fc2d776d500c41358484cb1eaf959362595fd11003e5585b59e0cfcb"}
+{"kind":"affine","count":5120,"bytes":20736,"input_sha256":"6ecd43bf71a20dc0101331f0953bcb54c249e0da7eee9bbec149076fcb635722","output_sha256":"e37414073d68cf5b25d6345030cb56890a0d3fb0340b736633380b688ed066f7"}
+{"kind":"affine","count":65537,"bytes":262404,"input_sha256":"b5d47639beaf36bd730c191a9d6723049c3fbf5bc1e349167e93ffb805bbd50a","output_sha256":"69a5edfd7c8820d94e24b0b0c5e621eb6dea43f29069bc5a6313587eff8c15d0"}
+{"kind":"affine","count":1048576,"bytes":4194560,"input_sha256":"d9a82eef69b9a41279821c3a86d19a14179225bf7a04047e08b5be96217a8381","output_sha256":"d0c3554fe6140173577e460c7ac231ac37be1b0fb1a4063b9126426810c92872"}
+{"kind":"roundtrip","count":256,"bytes":256,"input_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb","output_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb"}
+{"kind":"roundtrip","count":1048576,"bytes":1048576,"input_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4","output_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4"}
+{"kind":"roundtrip","count":67108864,"bytes":67108864,"input_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6","output_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6"}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation kind=affine count=1 bytes=260 allocation_sizes=272,272,272,272 memory_types=10,10,0,0
+allocation kind=affine count=63 bytes=508 allocation_sizes=512,512,512,512 memory_types=10,10,0,0
+allocation kind=affine count=64 bytes=512 allocation_sizes=512,512,512,512 memory_types=10,10,0,0
+allocation kind=affine count=65 bytes=516 allocation_sizes=528,528,528,528 memory_types=10,10,0,0
+allocation kind=affine count=5120 bytes=20736 allocation_sizes=20736,20736,20736,20736 memory_types=10,10,0,0
+allocation kind=affine count=65537 bytes=262404 allocation_sizes=262416,262416,262416,262416 memory_types=10,10,0,0
+allocation kind=affine count=1048576 bytes=4194560 allocation_sizes=4194560,4194560,4194560,4194560 memory_types=10,10,0,0
+allocation kind=roundtrip count=256 bytes=256 allocation_sizes=256,256,256,256 memory_types=10,10,0,0
+allocation kind=roundtrip count=1048576 bytes=1048576 allocation_sizes=1048576,1048576,1048576,1048576 memory_types=10,10,0,0
+allocation kind=roundtrip count=67108864 bytes=67108864 allocation_sizes=67108864,67108864,67108864,67108864 memory_types=10,10,0,0
+["/home/USER/projects/zerv/third_party/gpu-driver-bench/2026-09-22-gpu-driver-run1/reference", "/home/USER/projects/zerv/tests/fixtures/gpu/affine.spv"]
+{"kind":"affine","count":1,"bytes":260,"input_sha256":"9bc0e6c4cdc1cbadf6bb68e489d7694a64299319455a8de53fce6bef6fb163c8","output_sha256":"cda8e3b36b98f86f75a38b19879000a04f691142a1c191330efdce1446ef1cdd"}
+{"kind":"affine","count":63,"bytes":508,"input_sha256":"155f0d252ab3e4d26fbdd744a180a5fa4b1c90b9e33c1890b2489fff60dc1674","output_sha256":"28752db314ce132a2aae0343e572270882b4d55c6be65a2c1b51863f6223b34c"}
+{"kind":"affine","count":64,"bytes":512,"input_sha256":"1f4cf4211090322e87f727a10f2f380926ef9908074c1741edd9c80b12f8d79b","output_sha256":"c945021a4a8e4cc1b2aa0444d36104f07c068231da5ec1071cfb8cf37e6ea61c"}
+{"kind":"affine","count":65,"bytes":516,"input_sha256":"78b283c5676c9aba54bac9b113e8caa8af3ed172b43da040b5ca75fed309ffc1","output_sha256":"485c8870fc2d776d500c41358484cb1eaf959362595fd11003e5585b59e0cfcb"}
+{"kind":"affine","count":5120,"bytes":20736,"input_sha256":"6ecd43bf71a20dc0101331f0953bcb54c249e0da7eee9bbec149076fcb635722","output_sha256":"e37414073d68cf5b25d6345030cb56890a0d3fb0340b736633380b688ed066f7"}
+{"kind":"affine","count":65537,"bytes":262404,"input_sha256":"b5d47639beaf36bd730c191a9d6723049c3fbf5bc1e349167e93ffb805bbd50a","output_sha256":"69a5edfd7c8820d94e24b0b0c5e621eb6dea43f29069bc5a6313587eff8c15d0"}
+{"kind":"affine","count":1048576,"bytes":4194560,"input_sha256":"d9a82eef69b9a41279821c3a86d19a14179225bf7a04047e08b5be96217a8381","output_sha256":"d0c3554fe6140173577e460c7ac231ac37be1b0fb1a4063b9126426810c92872"}
+{"kind":"roundtrip","count":256,"bytes":256,"input_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb","output_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb"}
+{"kind":"roundtrip","count":1048576,"bytes":1048576,"input_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4","output_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4"}
+{"kind":"roundtrip","count":67108864,"bytes":67108864,"input_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6","output_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6"}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation kind=affine count=1 bytes=260 allocation_sizes=272,272,272,272 memory_types=10,10,0,0
+allocation kind=affine count=63 bytes=508 allocation_sizes=512,512,512,512 memory_types=10,10,0,0
+allocation kind=affine count=64 bytes=512 allocation_sizes=512,512,512,512 memory_types=10,10,0,0
+allocation kind=affine count=65 bytes=516 allocation_sizes=528,528,528,528 memory_types=10,10,0,0
+allocation kind=affine count=5120 bytes=20736 allocation_sizes=20736,20736,20736,20736 memory_types=10,10,0,0
+allocation kind=affine count=65537 bytes=262404 allocation_sizes=262416,262416,262416,262416 memory_types=10,10,0,0
+allocation kind=affine count=1048576 bytes=4194560 allocation_sizes=4194560,4194560,4194560,4194560 memory_types=10,10,0,0
+allocation kind=roundtrip count=256 bytes=256 allocation_sizes=256,256,256,256 memory_types=10,10,0,0
+allocation kind=roundtrip count=1048576 bytes=1048576 allocation_sizes=1048576,1048576,1048576,1048576 memory_types=10,10,0,0
+allocation kind=roundtrip count=67108864 bytes=67108864 allocation_sizes=67108864,67108864,67108864,67108864 memory_types=10,10,0,0
+["/home/USER/projects/zerv/third_party/gpu-driver-bench/2026-09-22-gpu-driver-run1/native", "--bench"]
+{"kind":"timing","workload":"affine","count":65,"trial":0,"iterations":1000,"elapsed_ns":51319911}
+{"kind":"timing","workload":"affine","count":65,"trial":1,"iterations":1000,"elapsed_ns":51619649}
+{"kind":"timing","workload":"affine","count":65,"trial":2,"iterations":1000,"elapsed_ns":50440214}
+{"kind":"timing","workload":"affine","count":65,"trial":3,"iterations":1000,"elapsed_ns":50486993}
+{"kind":"timing","workload":"affine","count":65,"trial":4,"iterations":1000,"elapsed_ns":50329655}
+{"kind":"timing","workload":"affine","count":65,"trial":5,"iterations":1000,"elapsed_ns":50137922}
+{"kind":"timing","workload":"affine","count":65,"trial":6,"iterations":1000,"elapsed_ns":48865450}
+{"kind":"affine","count":65,"bytes":516,"input_sha256":"78b283c5676c9aba54bac9b113e8caa8af3ed172b43da040b5ca75fed309ffc1","output_sha256":"485c8870fc2d776d500c41358484cb1eaf959362595fd11003e5585b59e0cfcb"}
+{"kind":"timing","workload":"affine","count":5120,"trial":0,"iterations":1000,"elapsed_ns":48244504}
+{"kind":"timing","workload":"affine","count":5120,"trial":1,"iterations":1000,"elapsed_ns":48326589}
+{"kind":"timing","workload":"affine","count":5120,"trial":2,"iterations":1000,"elapsed_ns":48659280}
+{"kind":"timing","workload":"affine","count":5120,"trial":3,"iterations":1000,"elapsed_ns":52965951}
+{"kind":"timing","workload":"affine","count":5120,"trial":4,"iterations":1000,"elapsed_ns":50074952}
+{"kind":"timing","workload":"affine","count":5120,"trial":5,"iterations":1000,"elapsed_ns":50612921}
+{"kind":"timing","workload":"affine","count":5120,"trial":6,"iterations":1000,"elapsed_ns":49718126}
+{"kind":"affine","count":5120,"bytes":20736,"input_sha256":"6ecd43bf71a20dc0101331f0953bcb54c249e0da7eee9bbec149076fcb635722","output_sha256":"e37414073d68cf5b25d6345030cb56890a0d3fb0340b736633380b688ed066f7"}
+{"kind":"timing","workload":"affine","count":1048576,"trial":0,"iterations":100,"elapsed_ns":5942811}
+{"kind":"timing","workload":"affine","count":1048576,"trial":1,"iterations":100,"elapsed_ns":5999918}
+{"kind":"timing","workload":"affine","count":1048576,"trial":2,"iterations":100,"elapsed_ns":5973789}
+{"kind":"timing","workload":"affine","count":1048576,"trial":3,"iterations":100,"elapsed_ns":5980994}
+{"kind":"timing","workload":"affine","count":1048576,"trial":4,"iterations":100,"elapsed_ns":5977956}
+{"kind":"timing","workload":"affine","count":1048576,"trial":5,"iterations":100,"elapsed_ns":5943382}
+{"kind":"timing","workload":"affine","count":1048576,"trial":6,"iterations":100,"elapsed_ns":5932891}
+{"kind":"affine","count":1048576,"bytes":4194560,"input_sha256":"d9a82eef69b9a41279821c3a86d19a14179225bf7a04047e08b5be96217a8381","output_sha256":"d0c3554fe6140173577e460c7ac231ac37be1b0fb1a4063b9126426810c92872"}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":0,"iterations":1000,"elapsed_ns":60420174}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":1,"iterations":1000,"elapsed_ns":60807588}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":2,"iterations":1000,"elapsed_ns":61061770}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":3,"iterations":1000,"elapsed_ns":61238645}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":4,"iterations":1000,"elapsed_ns":59770424}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":5,"iterations":1000,"elapsed_ns":59759713}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":6,"iterations":1000,"elapsed_ns":59884189}
+{"kind":"roundtrip","count":256,"bytes":256,"input_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb","output_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb"}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":0,"iterations":100,"elapsed_ns":40738873}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":1,"iterations":100,"elapsed_ns":37888952}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":2,"iterations":100,"elapsed_ns":33014026}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":3,"iterations":100,"elapsed_ns":30664473}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":4,"iterations":100,"elapsed_ns":28798528}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":5,"iterations":100,"elapsed_ns":27823469}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":6,"iterations":100,"elapsed_ns":26889360}
+{"kind":"roundtrip","count":1048576,"bytes":1048576,"input_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4","output_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4"}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":0,"iterations":10,"elapsed_ns":139884183}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":1,"iterations":10,"elapsed_ns":120190368}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":2,"iterations":10,"elapsed_ns":120171752}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":3,"iterations":10,"elapsed_ns":120203152}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":4,"iterations":10,"elapsed_ns":120489234}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":5,"iterations":10,"elapsed_ns":120178655}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":6,"iterations":10,"elapsed_ns":120196469}
+{"kind":"roundtrip","count":67108864,"bytes":67108864,"input_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6","output_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6"}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation kind=affine count=65 bytes=516 allocation_sizes=528,528,528,528 memory_types=10,10,0,0
+allocation kind=affine count=5120 bytes=20736 allocation_sizes=20736,20736,20736,20736 memory_types=10,10,0,0
+allocation kind=affine count=1048576 bytes=4194560 allocation_sizes=4194560,4194560,4194560,4194560 memory_types=10,10,0,0
+allocation kind=roundtrip count=256 bytes=256 allocation_sizes=256,256,256,256 memory_types=10,10,0,0
+allocation kind=roundtrip count=1048576 bytes=1048576 allocation_sizes=1048576,1048576,1048576,1048576 memory_types=10,10,0,0
+allocation kind=roundtrip count=67108864 bytes=67108864 allocation_sizes=67108864,67108864,67108864,67108864 memory_types=10,10,0,0
+["/home/USER/projects/zerv/third_party/gpu-driver-bench/2026-09-22-gpu-driver-run1/reference", "/home/USER/projects/zerv/tests/fixtures/gpu/affine.spv", "--bench"]
+{"kind":"timing","workload":"affine","count":65,"trial":0,"iterations":1000,"elapsed_ns":50225147}
+{"kind":"timing","workload":"affine","count":65,"trial":1,"iterations":1000,"elapsed_ns":50197925}
+{"kind":"timing","workload":"affine","count":65,"trial":2,"iterations":1000,"elapsed_ns":50510317}
+{"kind":"timing","workload":"affine","count":65,"trial":3,"iterations":1000,"elapsed_ns":50296522}
+{"kind":"timing","workload":"affine","count":65,"trial":4,"iterations":1000,"elapsed_ns":50310288}
+{"kind":"timing","workload":"affine","count":65,"trial":5,"iterations":1000,"elapsed_ns":49338918}
+{"kind":"timing","workload":"affine","count":65,"trial":6,"iterations":1000,"elapsed_ns":48863347}
+{"kind":"affine","count":65,"bytes":516,"input_sha256":"78b283c5676c9aba54bac9b113e8caa8af3ed172b43da040b5ca75fed309ffc1","output_sha256":"485c8870fc2d776d500c41358484cb1eaf959362595fd11003e5585b59e0cfcb"}
+{"kind":"timing","workload":"affine","count":5120,"trial":0,"iterations":1000,"elapsed_ns":49039621}
+{"kind":"timing","workload":"affine","count":5120,"trial":1,"iterations":1000,"elapsed_ns":50104619}
+{"kind":"timing","workload":"affine","count":5120,"trial":2,"iterations":1000,"elapsed_ns":49429780}
+{"kind":"timing","workload":"affine","count":5120,"trial":3,"iterations":1000,"elapsed_ns":48959429}
+{"kind":"timing","workload":"affine","count":5120,"trial":4,"iterations":1000,"elapsed_ns":50681211}
+{"kind":"timing","workload":"affine","count":5120,"trial":5,"iterations":1000,"elapsed_ns":48762105}
+{"kind":"timing","workload":"affine","count":5120,"trial":6,"iterations":1000,"elapsed_ns":48934472}
+{"kind":"affine","count":5120,"bytes":20736,"input_sha256":"6ecd43bf71a20dc0101331f0953bcb54c249e0da7eee9bbec149076fcb635722","output_sha256":"e37414073d68cf5b25d6345030cb56890a0d3fb0340b736633380b688ed066f7"}
+{"kind":"timing","workload":"affine","count":1048576,"trial":0,"iterations":100,"elapsed_ns":6285370}
+{"kind":"timing","workload":"affine","count":1048576,"trial":1,"iterations":100,"elapsed_ns":6204086}
+{"kind":"timing","workload":"affine","count":1048576,"trial":2,"iterations":100,"elapsed_ns":6283897}
+{"kind":"timing","workload":"affine","count":1048576,"trial":3,"iterations":100,"elapsed_ns":6287063}
+{"kind":"timing","workload":"affine","count":1048576,"trial":4,"iterations":100,"elapsed_ns":6215908}
+{"kind":"timing","workload":"affine","count":1048576,"trial":5,"iterations":100,"elapsed_ns":6251024}
+{"kind":"timing","workload":"affine","count":1048576,"trial":6,"iterations":100,"elapsed_ns":6211290}
+{"kind":"affine","count":1048576,"bytes":4194560,"input_sha256":"d9a82eef69b9a41279821c3a86d19a14179225bf7a04047e08b5be96217a8381","output_sha256":"d0c3554fe6140173577e460c7ac231ac37be1b0fb1a4063b9126426810c92872"}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":0,"iterations":1000,"elapsed_ns":62504795}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":1,"iterations":1000,"elapsed_ns":62856671}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":2,"iterations":1000,"elapsed_ns":61170606}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":3,"iterations":1000,"elapsed_ns":61149607}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":4,"iterations":1000,"elapsed_ns":60243199}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":5,"iterations":1000,"elapsed_ns":61796222}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":6,"iterations":1000,"elapsed_ns":62480649}
+{"kind":"roundtrip","count":256,"bytes":256,"input_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb","output_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb"}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":0,"iterations":100,"elapsed_ns":40891100}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":1,"iterations":100,"elapsed_ns":38291836}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":2,"iterations":100,"elapsed_ns":33066935}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":3,"iterations":100,"elapsed_ns":30866065}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":4,"iterations":100,"elapsed_ns":29165774}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":5,"iterations":100,"elapsed_ns":28228738}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":6,"iterations":100,"elapsed_ns":27451465}
+{"kind":"roundtrip","count":1048576,"bytes":1048576,"input_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4","output_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4"}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":0,"iterations":10,"elapsed_ns":123717271}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":1,"iterations":10,"elapsed_ns":121067209}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":2,"iterations":10,"elapsed_ns":121059324}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":3,"iterations":10,"elapsed_ns":121207264}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":4,"iterations":10,"elapsed_ns":120710173}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":5,"iterations":10,"elapsed_ns":120269047}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":6,"iterations":10,"elapsed_ns":120281110}
+{"kind":"roundtrip","count":67108864,"bytes":67108864,"input_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6","output_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6"}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation kind=affine count=65 bytes=516 allocation_sizes=528,528,528,528 memory_types=10,10,0,0
+allocation kind=affine count=5120 bytes=20736 allocation_sizes=20736,20736,20736,20736 memory_types=10,10,0,0
+allocation kind=affine count=1048576 bytes=4194560 allocation_sizes=4194560,4194560,4194560,4194560 memory_types=10,10,0,0
+allocation kind=roundtrip count=256 bytes=256 allocation_sizes=256,256,256,256 memory_types=10,10,0,0
+allocation kind=roundtrip count=1048576 bytes=1048576 allocation_sizes=1048576,1048576,1048576,1048576 memory_types=10,10,0,0
+allocation kind=roundtrip count=67108864 bytes=67108864 allocation_sizes=67108864,67108864,67108864,67108864 memory_types=10,10,0,0
+["/home/USER/projects/zerv/third_party/gpu-driver-bench/2026-09-22-gpu-driver-run1/reference", "/home/USER/projects/zerv/tests/fixtures/gpu/affine.spv", "--bench"]
+{"kind":"timing","workload":"affine","count":65,"trial":0,"iterations":1000,"elapsed_ns":49023200}
+{"kind":"timing","workload":"affine","count":65,"trial":1,"iterations":1000,"elapsed_ns":49042566}
+{"kind":"timing","workload":"affine","count":65,"trial":2,"iterations":1000,"elapsed_ns":48963587}
+{"kind":"timing","workload":"affine","count":65,"trial":3,"iterations":1000,"elapsed_ns":49664244}
+{"kind":"timing","workload":"affine","count":65,"trial":4,"iterations":1000,"elapsed_ns":49835359}
+{"kind":"timing","workload":"affine","count":65,"trial":5,"iterations":1000,"elapsed_ns":50152699}
+{"kind":"timing","workload":"affine","count":65,"trial":6,"iterations":1000,"elapsed_ns":49112048}
+{"kind":"affine","count":65,"bytes":516,"input_sha256":"78b283c5676c9aba54bac9b113e8caa8af3ed172b43da040b5ca75fed309ffc1","output_sha256":"485c8870fc2d776d500c41358484cb1eaf959362595fd11003e5585b59e0cfcb"}
+{"kind":"timing","workload":"affine","count":5120,"trial":0,"iterations":1000,"elapsed_ns":48739843}
+{"kind":"timing","workload":"affine","count":5120,"trial":1,"iterations":1000,"elapsed_ns":49590214}
+{"kind":"timing","workload":"affine","count":5120,"trial":2,"iterations":1000,"elapsed_ns":51253115}
+{"kind":"timing","workload":"affine","count":5120,"trial":3,"iterations":1000,"elapsed_ns":50701690}
+{"kind":"timing","workload":"affine","count":5120,"trial":4,"iterations":1000,"elapsed_ns":50879657}
+{"kind":"timing","workload":"affine","count":5120,"trial":5,"iterations":1000,"elapsed_ns":50836155}
+{"kind":"timing","workload":"affine","count":5120,"trial":6,"iterations":1000,"elapsed_ns":49891855}
+{"kind":"affine","count":5120,"bytes":20736,"input_sha256":"6ecd43bf71a20dc0101331f0953bcb54c249e0da7eee9bbec149076fcb635722","output_sha256":"e37414073d68cf5b25d6345030cb56890a0d3fb0340b736633380b688ed066f7"}
+{"kind":"timing","workload":"affine","count":1048576,"trial":0,"iterations":100,"elapsed_ns":6323161}
+{"kind":"timing","workload":"affine","count":1048576,"trial":1,"iterations":100,"elapsed_ns":6213213}
+{"kind":"timing","workload":"affine","count":1048576,"trial":2,"iterations":100,"elapsed_ns":6087664}
+{"kind":"timing","workload":"affine","count":1048576,"trial":3,"iterations":100,"elapsed_ns":5927421}
+{"kind":"timing","workload":"affine","count":1048576,"trial":4,"iterations":100,"elapsed_ns":5976113}
+{"kind":"timing","workload":"affine","count":1048576,"trial":5,"iterations":100,"elapsed_ns":6117352}
+{"kind":"timing","workload":"affine","count":1048576,"trial":6,"iterations":100,"elapsed_ns":6173548}
+{"kind":"affine","count":1048576,"bytes":4194560,"input_sha256":"d9a82eef69b9a41279821c3a86d19a14179225bf7a04047e08b5be96217a8381","output_sha256":"d0c3554fe6140173577e460c7ac231ac37be1b0fb1a4063b9126426810c92872"}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":0,"iterations":1000,"elapsed_ns":61002448}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":1,"iterations":1000,"elapsed_ns":60644119}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":2,"iterations":1000,"elapsed_ns":61110773}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":3,"iterations":1000,"elapsed_ns":59935235}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":4,"iterations":1000,"elapsed_ns":59704789}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":5,"iterations":1000,"elapsed_ns":60336436}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":6,"iterations":1000,"elapsed_ns":61758451}
+{"kind":"roundtrip","count":256,"bytes":256,"input_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb","output_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb"}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":0,"iterations":100,"elapsed_ns":41096259}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":1,"iterations":100,"elapsed_ns":37735983}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":2,"iterations":100,"elapsed_ns":33013894}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":3,"iterations":100,"elapsed_ns":30764563}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":4,"iterations":100,"elapsed_ns":29095320}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":5,"iterations":100,"elapsed_ns":27772273}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":6,"iterations":100,"elapsed_ns":26981685}
+{"kind":"roundtrip","count":1048576,"bytes":1048576,"input_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4","output_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4"}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":0,"iterations":10,"elapsed_ns":151125874}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":1,"iterations":10,"elapsed_ns":120472953}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":2,"iterations":10,"elapsed_ns":120611675}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":3,"iterations":10,"elapsed_ns":120491157}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":4,"iterations":10,"elapsed_ns":120655449}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":5,"iterations":10,"elapsed_ns":120298713}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":6,"iterations":10,"elapsed_ns":120301318}
+{"kind":"roundtrip","count":67108864,"bytes":67108864,"input_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6","output_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6"}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation kind=affine count=65 bytes=516 allocation_sizes=528,528,528,528 memory_types=10,10,0,0
+allocation kind=affine count=5120 bytes=20736 allocation_sizes=20736,20736,20736,20736 memory_types=10,10,0,0
+allocation kind=affine count=1048576 bytes=4194560 allocation_sizes=4194560,4194560,4194560,4194560 memory_types=10,10,0,0
+allocation kind=roundtrip count=256 bytes=256 allocation_sizes=256,256,256,256 memory_types=10,10,0,0
+allocation kind=roundtrip count=1048576 bytes=1048576 allocation_sizes=1048576,1048576,1048576,1048576 memory_types=10,10,0,0
+allocation kind=roundtrip count=67108864 bytes=67108864 allocation_sizes=67108864,67108864,67108864,67108864 memory_types=10,10,0,0
+["/home/USER/projects/zerv/third_party/gpu-driver-bench/2026-09-22-gpu-driver-run1/native", "--bench"]
+{"kind":"timing","workload":"affine","count":65,"trial":0,"iterations":1000,"elapsed_ns":49549156}
+{"kind":"timing","workload":"affine","count":65,"trial":1,"iterations":1000,"elapsed_ns":48936695}
+{"kind":"timing","workload":"affine","count":65,"trial":2,"iterations":1000,"elapsed_ns":50715335}
+{"kind":"timing","workload":"affine","count":65,"trial":3,"iterations":1000,"elapsed_ns":50435335}
+{"kind":"timing","workload":"affine","count":65,"trial":4,"iterations":1000,"elapsed_ns":50563538}
+{"kind":"timing","workload":"affine","count":65,"trial":5,"iterations":1000,"elapsed_ns":50143673}
+{"kind":"timing","workload":"affine","count":65,"trial":6,"iterations":1000,"elapsed_ns":49345320}
+{"kind":"affine","count":65,"bytes":516,"input_sha256":"78b283c5676c9aba54bac9b113e8caa8af3ed172b43da040b5ca75fed309ffc1","output_sha256":"485c8870fc2d776d500c41358484cb1eaf959362595fd11003e5585b59e0cfcb"}
+{"kind":"timing","workload":"affine","count":5120,"trial":0,"iterations":1000,"elapsed_ns":50491422}
+{"kind":"timing","workload":"affine","count":5120,"trial":1,"iterations":1000,"elapsed_ns":49474985}
+{"kind":"timing","workload":"affine","count":5120,"trial":2,"iterations":1000,"elapsed_ns":50847997}
+{"kind":"timing","workload":"affine","count":5120,"trial":3,"iterations":1000,"elapsed_ns":50179981}
+{"kind":"timing","workload":"affine","count":5120,"trial":4,"iterations":1000,"elapsed_ns":51059147}
+{"kind":"timing","workload":"affine","count":5120,"trial":5,"iterations":1000,"elapsed_ns":50013125}
+{"kind":"timing","workload":"affine","count":5120,"trial":6,"iterations":1000,"elapsed_ns":49781396}
+{"kind":"affine","count":5120,"bytes":20736,"input_sha256":"6ecd43bf71a20dc0101331f0953bcb54c249e0da7eee9bbec149076fcb635722","output_sha256":"e37414073d68cf5b25d6345030cb56890a0d3fb0340b736633380b688ed066f7"}
+{"kind":"timing","workload":"affine","count":1048576,"trial":0,"iterations":100,"elapsed_ns":6411278}
+{"kind":"timing","workload":"affine","count":1048576,"trial":1,"iterations":100,"elapsed_ns":6257266}
+{"kind":"timing","workload":"affine","count":1048576,"trial":2,"iterations":100,"elapsed_ns":6209807}
+{"kind":"timing","workload":"affine","count":1048576,"trial":3,"iterations":100,"elapsed_ns":6267837}
+{"kind":"timing","workload":"affine","count":1048576,"trial":4,"iterations":100,"elapsed_ns":6225697}
+{"kind":"timing","workload":"affine","count":1048576,"trial":5,"iterations":100,"elapsed_ns":6277044}
+{"kind":"timing","workload":"affine","count":1048576,"trial":6,"iterations":100,"elapsed_ns":5958150}
+{"kind":"affine","count":1048576,"bytes":4194560,"input_sha256":"d9a82eef69b9a41279821c3a86d19a14179225bf7a04047e08b5be96217a8381","output_sha256":"d0c3554fe6140173577e460c7ac231ac37be1b0fb1a4063b9126426810c92872"}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":0,"iterations":1000,"elapsed_ns":61756938}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":1,"iterations":1000,"elapsed_ns":62421837}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":2,"iterations":1000,"elapsed_ns":62140224}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":3,"iterations":1000,"elapsed_ns":61823092}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":4,"iterations":1000,"elapsed_ns":61714687}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":5,"iterations":1000,"elapsed_ns":62225847}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":6,"iterations":1000,"elapsed_ns":62490307}
+{"kind":"roundtrip","count":256,"bytes":256,"input_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb","output_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb"}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":0,"iterations":100,"elapsed_ns":41167966}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":1,"iterations":100,"elapsed_ns":38295733}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":2,"iterations":100,"elapsed_ns":33275410}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":3,"iterations":100,"elapsed_ns":30506735}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":4,"iterations":100,"elapsed_ns":28643504}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":5,"iterations":100,"elapsed_ns":27377946}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":6,"iterations":100,"elapsed_ns":26511324}
+{"kind":"roundtrip","count":1048576,"bytes":1048576,"input_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4","output_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4"}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":0,"iterations":10,"elapsed_ns":123261567}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":1,"iterations":10,"elapsed_ns":120410424}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":2,"iterations":10,"elapsed_ns":120328329}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":3,"iterations":10,"elapsed_ns":120432716}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":4,"iterations":10,"elapsed_ns":120292571}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":5,"iterations":10,"elapsed_ns":120179367}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":6,"iterations":10,"elapsed_ns":120784904}
+{"kind":"roundtrip","count":67108864,"bytes":67108864,"input_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6","output_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6"}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation kind=affine count=65 bytes=516 allocation_sizes=528,528,528,528 memory_types=10,10,0,0
+allocation kind=affine count=5120 bytes=20736 allocation_sizes=20736,20736,20736,20736 memory_types=10,10,0,0
+allocation kind=affine count=1048576 bytes=4194560 allocation_sizes=4194560,4194560,4194560,4194560 memory_types=10,10,0,0
+allocation kind=roundtrip count=256 bytes=256 allocation_sizes=256,256,256,256 memory_types=10,10,0,0
+allocation kind=roundtrip count=1048576 bytes=1048576 allocation_sizes=1048576,1048576,1048576,1048576 memory_types=10,10,0,0
+allocation kind=roundtrip count=67108864 bytes=67108864 allocation_sizes=67108864,67108864,67108864,67108864 memory_types=10,10,0,0
+["/home/USER/projects/zerv/third_party/gpu-driver-bench/2026-09-22-gpu-driver-run1/native", "--bench"]
+{"kind":"timing","workload":"affine","count":65,"trial":0,"iterations":1000,"elapsed_ns":51066632}
+{"kind":"timing","workload":"affine","count":65,"trial":1,"iterations":1000,"elapsed_ns":51278824}
+{"kind":"timing","workload":"affine","count":65,"trial":2,"iterations":1000,"elapsed_ns":51793208}
+{"kind":"timing","workload":"affine","count":65,"trial":3,"iterations":1000,"elapsed_ns":50599546}
+{"kind":"timing","workload":"affine","count":65,"trial":4,"iterations":1000,"elapsed_ns":48878586}
+{"kind":"timing","workload":"affine","count":65,"trial":5,"iterations":1000,"elapsed_ns":50595158}
+{"kind":"timing","workload":"affine","count":65,"trial":6,"iterations":1000,"elapsed_ns":49434058}
+{"kind":"affine","count":65,"bytes":516,"input_sha256":"78b283c5676c9aba54bac9b113e8caa8af3ed172b43da040b5ca75fed309ffc1","output_sha256":"485c8870fc2d776d500c41358484cb1eaf959362595fd11003e5585b59e0cfcb"}
+{"kind":"timing","workload":"affine","count":5120,"trial":0,"iterations":1000,"elapsed_ns":50659520}
+{"kind":"timing","workload":"affine","count":5120,"trial":1,"iterations":1000,"elapsed_ns":50641155}
+{"kind":"timing","workload":"affine","count":5120,"trial":2,"iterations":1000,"elapsed_ns":52011672}
+{"kind":"timing","workload":"affine","count":5120,"trial":3,"iterations":1000,"elapsed_ns":50072779}
+{"kind":"timing","workload":"affine","count":5120,"trial":4,"iterations":1000,"elapsed_ns":50637769}
+{"kind":"timing","workload":"affine","count":5120,"trial":5,"iterations":1000,"elapsed_ns":50564770}
+{"kind":"timing","workload":"affine","count":5120,"trial":6,"iterations":1000,"elapsed_ns":64459619}
+{"kind":"affine","count":5120,"bytes":20736,"input_sha256":"6ecd43bf71a20dc0101331f0953bcb54c249e0da7eee9bbec149076fcb635722","output_sha256":"e37414073d68cf5b25d6345030cb56890a0d3fb0340b736633380b688ed066f7"}
+{"kind":"timing","workload":"affine","count":1048576,"trial":0,"iterations":100,"elapsed_ns":7450768}
+{"kind":"timing","workload":"affine","count":1048576,"trial":1,"iterations":100,"elapsed_ns":8356424}
+{"kind":"timing","workload":"affine","count":1048576,"trial":2,"iterations":100,"elapsed_ns":6360602}
+{"kind":"timing","workload":"affine","count":1048576,"trial":3,"iterations":100,"elapsed_ns":6341786}
+{"kind":"timing","workload":"affine","count":1048576,"trial":4,"iterations":100,"elapsed_ns":6251535}
+{"kind":"timing","workload":"affine","count":1048576,"trial":5,"iterations":100,"elapsed_ns":6221779}
+{"kind":"timing","workload":"affine","count":1048576,"trial":6,"iterations":100,"elapsed_ns":6313012}
+{"kind":"affine","count":1048576,"bytes":4194560,"input_sha256":"d9a82eef69b9a41279821c3a86d19a14179225bf7a04047e08b5be96217a8381","output_sha256":"d0c3554fe6140173577e460c7ac231ac37be1b0fb1a4063b9126426810c92872"}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":0,"iterations":1000,"elapsed_ns":62439681}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":1,"iterations":1000,"elapsed_ns":62633078}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":2,"iterations":1000,"elapsed_ns":62139341}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":3,"iterations":1000,"elapsed_ns":62314024}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":4,"iterations":1000,"elapsed_ns":62712608}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":5,"iterations":1000,"elapsed_ns":64111388}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":6,"iterations":1000,"elapsed_ns":66236435}
+{"kind":"roundtrip","count":256,"bytes":256,"input_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb","output_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb"}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":0,"iterations":100,"elapsed_ns":40875030}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":1,"iterations":100,"elapsed_ns":38361518}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":2,"iterations":100,"elapsed_ns":33220608}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":3,"iterations":100,"elapsed_ns":29609384}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":4,"iterations":100,"elapsed_ns":27881389}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":5,"iterations":100,"elapsed_ns":26425812}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":6,"iterations":100,"elapsed_ns":30567850}
+{"kind":"roundtrip","count":1048576,"bytes":1048576,"input_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4","output_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4"}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":0,"iterations":10,"elapsed_ns":123223966}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":1,"iterations":10,"elapsed_ns":120409383}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":2,"iterations":10,"elapsed_ns":120215896}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":3,"iterations":10,"elapsed_ns":120323991}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":4,"iterations":10,"elapsed_ns":120532546}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":5,"iterations":10,"elapsed_ns":122223500}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":6,"iterations":10,"elapsed_ns":122610012}
+{"kind":"roundtrip","count":67108864,"bytes":67108864,"input_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6","output_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6"}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation kind=affine count=65 bytes=516 allocation_sizes=528,528,528,528 memory_types=10,10,0,0
+allocation kind=affine count=5120 bytes=20736 allocation_sizes=20736,20736,20736,20736 memory_types=10,10,0,0
+allocation kind=affine count=1048576 bytes=4194560 allocation_sizes=4194560,4194560,4194560,4194560 memory_types=10,10,0,0
+allocation kind=roundtrip count=256 bytes=256 allocation_sizes=256,256,256,256 memory_types=10,10,0,0
+allocation kind=roundtrip count=1048576 bytes=1048576 allocation_sizes=1048576,1048576,1048576,1048576 memory_types=10,10,0,0
+allocation kind=roundtrip count=67108864 bytes=67108864 allocation_sizes=67108864,67108864,67108864,67108864 memory_types=10,10,0,0
+["/home/USER/projects/zerv/third_party/gpu-driver-bench/2026-09-22-gpu-driver-run1/reference", "/home/USER/projects/zerv/tests/fixtures/gpu/affine.spv", "--bench"]
+{"kind":"timing","workload":"affine","count":65,"trial":0,"iterations":1000,"elapsed_ns":50810967}
+{"kind":"timing","workload":"affine","count":65,"trial":1,"iterations":1000,"elapsed_ns":51418599}
+{"kind":"timing","workload":"affine","count":65,"trial":2,"iterations":1000,"elapsed_ns":49962569}
+{"kind":"timing","workload":"affine","count":65,"trial":3,"iterations":1000,"elapsed_ns":50305399}
+{"kind":"timing","workload":"affine","count":65,"trial":4,"iterations":1000,"elapsed_ns":50057770}
+{"kind":"timing","workload":"affine","count":65,"trial":5,"iterations":1000,"elapsed_ns":50393957}
+{"kind":"timing","workload":"affine","count":65,"trial":6,"iterations":1000,"elapsed_ns":50990437}
+{"kind":"affine","count":65,"bytes":516,"input_sha256":"78b283c5676c9aba54bac9b113e8caa8af3ed172b43da040b5ca75fed309ffc1","output_sha256":"485c8870fc2d776d500c41358484cb1eaf959362595fd11003e5585b59e0cfcb"}
+{"kind":"timing","workload":"affine","count":5120,"trial":0,"iterations":1000,"elapsed_ns":53307096}
+{"kind":"timing","workload":"affine","count":5120,"trial":1,"iterations":1000,"elapsed_ns":51411114}
+{"kind":"timing","workload":"affine","count":5120,"trial":2,"iterations":1000,"elapsed_ns":50228533}
+{"kind":"timing","workload":"affine","count":5120,"trial":3,"iterations":1000,"elapsed_ns":50622079}
+{"kind":"timing","workload":"affine","count":5120,"trial":4,"iterations":1000,"elapsed_ns":50552037}
+{"kind":"timing","workload":"affine","count":5120,"trial":5,"iterations":1000,"elapsed_ns":51306186}
+{"kind":"timing","workload":"affine","count":5120,"trial":6,"iterations":1000,"elapsed_ns":53100124}
+{"kind":"affine","count":5120,"bytes":20736,"input_sha256":"6ecd43bf71a20dc0101331f0953bcb54c249e0da7eee9bbec149076fcb635722","output_sha256":"e37414073d68cf5b25d6345030cb56890a0d3fb0340b736633380b688ed066f7"}
+{"kind":"timing","workload":"affine","count":1048576,"trial":0,"iterations":100,"elapsed_ns":6516307}
+{"kind":"timing","workload":"affine","count":1048576,"trial":1,"iterations":100,"elapsed_ns":6317179}
+{"kind":"timing","workload":"affine","count":1048576,"trial":2,"iterations":100,"elapsed_ns":6240975}
+{"kind":"timing","workload":"affine","count":1048576,"trial":3,"iterations":100,"elapsed_ns":6340745}
+{"kind":"timing","workload":"affine","count":1048576,"trial":4,"iterations":100,"elapsed_ns":6276263}
+{"kind":"timing","workload":"affine","count":1048576,"trial":5,"iterations":100,"elapsed_ns":6278837}
+{"kind":"timing","workload":"affine","count":1048576,"trial":6,"iterations":100,"elapsed_ns":6420346}
+{"kind":"affine","count":1048576,"bytes":4194560,"input_sha256":"d9a82eef69b9a41279821c3a86d19a14179225bf7a04047e08b5be96217a8381","output_sha256":"d0c3554fe6140173577e460c7ac231ac37be1b0fb1a4063b9126426810c92872"}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":0,"iterations":1000,"elapsed_ns":65715618}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":1,"iterations":1000,"elapsed_ns":64519301}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":2,"iterations":1000,"elapsed_ns":62219966}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":3,"iterations":1000,"elapsed_ns":62497080}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":4,"iterations":1000,"elapsed_ns":62527878}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":5,"iterations":1000,"elapsed_ns":62444130}
+{"kind":"timing","workload":"roundtrip","count":256,"trial":6,"iterations":1000,"elapsed_ns":62445553}
+{"kind":"roundtrip","count":256,"bytes":256,"input_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb","output_sha256":"3f719c386c8359386210617f8a2cf4032f25ee08aa23f5adc65979674149dbbb"}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":0,"iterations":100,"elapsed_ns":40976743}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":1,"iterations":100,"elapsed_ns":38294671}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":2,"iterations":100,"elapsed_ns":33459308}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":3,"iterations":100,"elapsed_ns":31009127}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":4,"iterations":100,"elapsed_ns":29336377}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":5,"iterations":100,"elapsed_ns":28048025}
+{"kind":"timing","workload":"roundtrip","count":1048576,"trial":6,"iterations":100,"elapsed_ns":27403264}
+{"kind":"roundtrip","count":1048576,"bytes":1048576,"input_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4","output_sha256":"5f0b6c695294e5d3cba1308af8c31b06b685e5632ce6909daa0dc6283447a4b4"}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":0,"iterations":10,"elapsed_ns":124370248}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":1,"iterations":10,"elapsed_ns":121446758}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":2,"iterations":10,"elapsed_ns":121318876}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":3,"iterations":10,"elapsed_ns":121231150}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":4,"iterations":10,"elapsed_ns":120551882}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":5,"iterations":10,"elapsed_ns":120846711}
+{"kind":"timing","workload":"roundtrip","count":67108864,"trial":6,"iterations":10,"elapsed_ns":120285157}
+{"kind":"roundtrip","count":67108864,"bytes":67108864,"input_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6","output_sha256":"63d262ed906deeecfa9820dda3542c36da141feefa5b10a19a450520159481c6"}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation kind=affine count=65 bytes=516 allocation_sizes=528,528,528,528 memory_types=10,10,0,0
+allocation kind=affine count=5120 bytes=20736 allocation_sizes=20736,20736,20736,20736 memory_types=10,10,0,0
+allocation kind=affine count=1048576 bytes=4194560 allocation_sizes=4194560,4194560,4194560,4194560 memory_types=10,10,0,0
+allocation kind=roundtrip count=256 bytes=256 allocation_sizes=256,256,256,256 memory_types=10,10,0,0
+allocation kind=roundtrip count=1048576 bytes=1048576 allocation_sizes=1048576,1048576,1048576,1048576 memory_types=10,10,0,0
+allocation kind=roundtrip count=67108864 bytes=67108864 allocation_sizes=67108864,67108864,67108864,67108864 memory_types=10,10,0,0

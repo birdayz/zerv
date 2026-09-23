@@ -1,0 +1,222 @@
+["/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig", "version"]
+0.16.0
+["/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig", "build", "test", "--summary", "all"]
+Build Summary: 3/3 steps succeeded; 29/29 tests passed
+test success
++- run test 29 pass (29 total) 12s MaxRSS:48M
+   +- compile test Debug native cached 13ms MaxRSS:40M
+
+["/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig", "build", "test", "model-quant-bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native", "--summary", "all"]
+Build Summary: 6/6 steps succeeded; 29/29 tests passed
+test success
++- run test 29 pass (29 total) 1s MaxRSS:45M
+   +- compile test ReleaseFast native cached 10ms MaxRSS:38M
+model-quant-bench-build success
++- install zerv-model-quant-bench success
+   +- compile exe zerv-model-quant-bench ReleaseFast native success 20s MaxRSS:458M
+
+["readelf", "-d", "/home/USER/projects/zerv/third_party/model-quant-bench/2026-09-22-q4_1/native"]
+
+There is no dynamic section in this file.
+["/usr/bin/gcc", "--version"]
+gcc (GCC) 16.2.1 20260810
+Copyright (C) 2026 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+["/usr/bin/gcc", "-std=c11", "-O3", "-march=native", "-Wall", "-Wextra", "-Werror", "/home/USER/projects/zerv/tests/reference/model_quant_bench.c", "/usr/lib/libggml-base.so.0.24.0", "-lcrypto", "-o", "/home/USER/projects/zerv/third_party/model-quant-bench/2026-09-22-q4_1/reference"]
+["ldd", "/home/USER/projects/zerv/third_party/model-quant-bench/2026-09-22-q4_1/reference"]
+	linux-vdso.so.1 (0x00007f9db5f87000)
+	libggml-base.so.0 => /usr/lib/libggml-base.so.0 (0x00007f9db5e7d000)
+	libcrypto.so.3 => /usr/lib/libcrypto.so.3 (0x00007f9db5800000)
+	libc.so.6 => /usr/lib/libc.so.6 (0x00007f9db5400000)
+	libgomp.so.1 => /usr/lib/libgomp.so.1 (0x00007f9db5e23000)
+	libstdc++.so.6 => /usr/lib/libstdc++.so.6 (0x00007f9db5000000)
+	libm.so.6 => /usr/lib/libm.so.6 (0x00007f9db56c9000)
+	libgcc_s.so.1 => /usr/lib/libgcc_s.so.1 (0x00007f9db5df4000)
+	libz.so.1 => /usr/lib/libz.so.1 (0x00007f9db5dd9000)
+	libbrotlienc.so.1 => /usr/lib/libbrotlienc.so.1 (0x00007f9db5340000)
+	libbrotlidec.so.1 => /usr/lib/libbrotlidec.so.1 (0x00007f9db5dca000)
+	libzstd.so.1 => /usr/lib/libzstd.so.1 (0x00007f9db4f1a000)
+	/lib64/ld-linux-x86-64.so.2 => /usr/lib64/ld-linux-x86-64.so.2 (0x00007f9db5f89000)
+	libbrotlicommon.so.1 => /usr/lib/libbrotlicommon.so.1 (0x00007f9db56a6000)
+["lscpu"]
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           43 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  24
+On-line CPU(s) list:                     0-23
+Vendor ID:                               AuthenticAMD
+Model name:                              AMD Ryzen 9 3900X 12-Core Processor
+CPU family:                              23
+Model:                                   113
+Thread(s) per core:                      2
+Core(s) per socket:                      12
+Socket(s):                               1
+Stepping:                                0
+Microcode version:                       0x8701034
+Frequency boost:                         enabled
+CPU(s) scaling MHz:                      86%
+CPU max MHz:                             4673.8232
+CPU min MHz:                             563.1120
+BogoMIPS:                                7585.30
+Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpb cat_l3 cdp_l3 hw_pstate ssbd mba ibpb stibp vmmcall fsgsbase bmi1 avx2 smep bmi2 cqm rdt_a rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local clzero irperf xsaveerptr rdpru wbnoinvd arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif v_spec_ctrl umip rdpid overflow_recov succor smca sev sev_es
+Virtualization:                          AMD-V
+L1d cache:                               384 KiB (12 instances)
+L1i cache:                               384 KiB (12 instances)
+L2 cache:                                6 MiB (12 instances)
+L3 cache:                                64 MiB (4 instances)
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-23
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Ghostwrite:                Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Old microcode:             Not affected
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Mitigation; untrained return thunk; SMT enabled with STIBP protection
+Vulnerability Spec rstack overflow:      Mitigation; Safe RET
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; Retpolines; IBPB conditional; STIBP always-on; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Mitigation; IBPB before exit to userspace
+["/home/USER/projects/zerv/third_party/model-quant-bench/2026-09-22-q4_1/native", "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf", "blk.0.ffn_down.weight"]
+{"format":"q4_1","rows":1,"values":17408,"trial":0,"iterations":10000,"elapsed_ns":23191413,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":1,"iterations":10000,"elapsed_ns":23502563,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":2,"iterations":10000,"elapsed_ns":24097391,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":3,"iterations":10000,"elapsed_ns":23413965,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":4,"iterations":10000,"elapsed_ns":24120745,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":5,"iterations":10000,"elapsed_ns":24658495,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":6,"iterations":10000,"elapsed_ns":24586357,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":0,"iterations":256,"elapsed_ns":37852736,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":1,"iterations":256,"elapsed_ns":42716746,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":2,"iterations":256,"elapsed_ns":43230030,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":3,"iterations":256,"elapsed_ns":39925956,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":4,"iterations":256,"elapsed_ns":39798454,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":5,"iterations":256,"elapsed_ns":44665089,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":6,"iterations":256,"elapsed_ns":39513944,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":0,"iterations":4,"elapsed_ns":273691556,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":1,"iterations":4,"elapsed_ns":263077735,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":2,"iterations":4,"elapsed_ns":269775632,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":3,"iterations":4,"elapsed_ns":260817981,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":4,"iterations":4,"elapsed_ns":249809513,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":5,"iterations":4,"elapsed_ns":251834983,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":6,"iterations":4,"elapsed_ns":252575807,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+["/home/USER/projects/zerv/third_party/model-quant-bench/2026-09-22-q4_1/reference", "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf", "1816329184"]
+{"format":"q4_1","rows":1,"values":17408,"trial":0,"iterations":10000,"elapsed_ns":39732369,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":1,"iterations":10000,"elapsed_ns":39135197,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":2,"iterations":10000,"elapsed_ns":36172149,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":3,"iterations":10000,"elapsed_ns":37463748,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":4,"iterations":10000,"elapsed_ns":34767338,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":5,"iterations":10000,"elapsed_ns":34408847,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":6,"iterations":10000,"elapsed_ns":35836002,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":0,"iterations":256,"elapsed_ns":63633447,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":1,"iterations":256,"elapsed_ns":61712004,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":2,"iterations":256,"elapsed_ns":57287768,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":3,"iterations":256,"elapsed_ns":58505847,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":4,"iterations":256,"elapsed_ns":70437576,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":5,"iterations":256,"elapsed_ns":56651411,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":6,"iterations":256,"elapsed_ns":57935175,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":0,"iterations":4,"elapsed_ns":231805242,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":1,"iterations":4,"elapsed_ns":246270974,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":2,"iterations":4,"elapsed_ns":242873353,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":3,"iterations":4,"elapsed_ns":260739030,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":4,"iterations":4,"elapsed_ns":236501965,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":5,"iterations":4,"elapsed_ns":255278990,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":6,"iterations":4,"elapsed_ns":223799075,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+["/home/USER/projects/zerv/third_party/model-quant-bench/2026-09-22-q4_1/reference", "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf", "1816329184"]
+{"format":"q4_1","rows":1,"values":17408,"trial":0,"iterations":10000,"elapsed_ns":36180896,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":1,"iterations":10000,"elapsed_ns":39942487,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":2,"iterations":10000,"elapsed_ns":36303839,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":3,"iterations":10000,"elapsed_ns":35389165,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":4,"iterations":10000,"elapsed_ns":32093137,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":5,"iterations":10000,"elapsed_ns":34976713,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":6,"iterations":10000,"elapsed_ns":32256126,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":0,"iterations":256,"elapsed_ns":63141765,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":1,"iterations":256,"elapsed_ns":62909734,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":2,"iterations":256,"elapsed_ns":68268813,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":3,"iterations":256,"elapsed_ns":58490888,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":4,"iterations":256,"elapsed_ns":54865486,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":5,"iterations":256,"elapsed_ns":58485428,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":6,"iterations":256,"elapsed_ns":56737505,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":0,"iterations":4,"elapsed_ns":220781744,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":1,"iterations":4,"elapsed_ns":218842739,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":2,"iterations":4,"elapsed_ns":228525223,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":3,"iterations":4,"elapsed_ns":255820355,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":4,"iterations":4,"elapsed_ns":246292664,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":5,"iterations":4,"elapsed_ns":182498563,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":6,"iterations":4,"elapsed_ns":157024824,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+["/home/USER/projects/zerv/third_party/model-quant-bench/2026-09-22-q4_1/native", "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf", "blk.0.ffn_down.weight"]
+{"format":"q4_1","rows":1,"values":17408,"trial":0,"iterations":10000,"elapsed_ns":20242362,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":1,"iterations":10000,"elapsed_ns":23590359,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":2,"iterations":10000,"elapsed_ns":22430801,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":3,"iterations":10000,"elapsed_ns":20907503,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":4,"iterations":10000,"elapsed_ns":20591944,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":5,"iterations":10000,"elapsed_ns":24294815,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":6,"iterations":10000,"elapsed_ns":21926866,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":0,"iterations":256,"elapsed_ns":34865573,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":1,"iterations":256,"elapsed_ns":41223385,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":2,"iterations":256,"elapsed_ns":36693147,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":3,"iterations":256,"elapsed_ns":34189071,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":4,"iterations":256,"elapsed_ns":39875921,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":5,"iterations":256,"elapsed_ns":36869111,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":6,"iterations":256,"elapsed_ns":39989055,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":0,"iterations":4,"elapsed_ns":168912308,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":1,"iterations":4,"elapsed_ns":171245200,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":2,"iterations":4,"elapsed_ns":170784136,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":3,"iterations":4,"elapsed_ns":174631770,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":4,"iterations":4,"elapsed_ns":193650993,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":5,"iterations":4,"elapsed_ns":206005192,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":6,"iterations":4,"elapsed_ns":200317791,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+["/home/USER/projects/zerv/third_party/model-quant-bench/2026-09-22-q4_1/native", "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf", "blk.0.ffn_down.weight"]
+{"format":"q4_1","rows":1,"values":17408,"trial":0,"iterations":10000,"elapsed_ns":21722418,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":1,"iterations":10000,"elapsed_ns":21701388,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":2,"iterations":10000,"elapsed_ns":22525079,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":3,"iterations":10000,"elapsed_ns":26790025,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":4,"iterations":10000,"elapsed_ns":23551925,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":5,"iterations":10000,"elapsed_ns":21633981,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":6,"iterations":10000,"elapsed_ns":21775127,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":0,"iterations":256,"elapsed_ns":37618160,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":1,"iterations":256,"elapsed_ns":37256845,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":2,"iterations":256,"elapsed_ns":38542623,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":3,"iterations":256,"elapsed_ns":39092154,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":4,"iterations":256,"elapsed_ns":38512375,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":5,"iterations":256,"elapsed_ns":39152099,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":6,"iterations":256,"elapsed_ns":36138376,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":0,"iterations":4,"elapsed_ns":188065745,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":1,"iterations":4,"elapsed_ns":188924573,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":2,"iterations":4,"elapsed_ns":156899074,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":3,"iterations":4,"elapsed_ns":169900791,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":4,"iterations":4,"elapsed_ns":168827135,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":5,"iterations":4,"elapsed_ns":157942401,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":6,"iterations":4,"elapsed_ns":170144031,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+["/home/USER/projects/zerv/third_party/model-quant-bench/2026-09-22-q4_1/reference", "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf", "1816329184"]
+{"format":"q4_1","rows":1,"values":17408,"trial":0,"iterations":10000,"elapsed_ns":29975863,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":1,"iterations":10000,"elapsed_ns":30165032,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":2,"iterations":10000,"elapsed_ns":33172753,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":3,"iterations":10000,"elapsed_ns":30674859,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":4,"iterations":10000,"elapsed_ns":46934992,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":5,"iterations":10000,"elapsed_ns":31572790,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":1,"values":17408,"trial":6,"iterations":10000,"elapsed_ns":31737132,"input_sha256":"e57a84d44118783c61a68887e7765b0d036ec81e245b0dfff03b031299137bf3","output_sha256":"0db44997fcae1cc487b0dfe393cf7d2d73c6d6d3c3903c6cc9211edde64e91c6"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":0,"iterations":256,"elapsed_ns":54359786,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":1,"iterations":256,"elapsed_ns":53915425,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":2,"iterations":256,"elapsed_ns":56229220,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":3,"iterations":256,"elapsed_ns":53181683,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":4,"iterations":256,"elapsed_ns":50536428,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":5,"iterations":256,"elapsed_ns":48790429,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":64,"values":1114112,"trial":6,"iterations":256,"elapsed_ns":48616880,"input_sha256":"7f9e2e5cfdce96cdd84c20965ea09293c99bb7a76335ae3be6d43bad37707b2d","output_sha256":"42b3802ba858c6ba29050d97d4a964be5a401b50f3bd2a17d672580c8d1b4047"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":0,"iterations":4,"elapsed_ns":157818617,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":1,"iterations":4,"elapsed_ns":161361163,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":2,"iterations":4,"elapsed_ns":152527747,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":3,"iterations":4,"elapsed_ns":160999115,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":4,"iterations":4,"elapsed_ns":163727968,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":5,"iterations":4,"elapsed_ns":164782317,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}
+{"format":"q4_1","rows":5120,"values":89128960,"trial":6,"iterations":4,"elapsed_ns":172793343,"input_sha256":"9254249ff8fe5ebded980f04e430dee337fc4f8b237e02320d23228d69e8eca7","output_sha256":"1f84d9ad4047d18424a564fb7252b58a03039791e8a9616db0ade652bfe117ca"}

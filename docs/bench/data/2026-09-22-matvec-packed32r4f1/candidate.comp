@@ -1,0 +1,170 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : enable
+#ifndef LANES
+#define LANES 64
+#endif
+#ifndef ROWS
+#define ROWS 4
+#endif
+#ifndef ACC_FMA
+#define ACC_FMA 0
+#endif
+layout(local_size_x=LANES*ROWS) in;
+layout(set=0,binding=0,std430) readonly buffer W { uint weights[]; };
+layout(set=0,binding=1,std430) readonly buffer X { float input_values[]; };
+layout(set=0,binding=2,std430) writeonly buffer Y { float output_values[]; };
+layout(push_constant) uniform Params {
+ uint columns, rows, row_bytes, weight_offset, input_offset, output_offset, groups_x;
+} p;
+shared float partials[LANES*ROWS];
+uint byte_at(uint b) { return (weights[b>>2] >> (8*(b&3))) & 255; }
+float half_at(uint b) { return unpackHalf2x16(weights[b>>2] >> (8*(b&2))).x; }
+int signed_byte(uint b) { return int(b ^ 128)-128; }
+float accum(float s, float w, float x) {
+#if ACC_FMA
+ return fma(w,x,s);
+#else
+ precise float product=w*x;
+ precise float added=s+product;
+ return added;
+#endif
+}
+uint word_at(uint b) {
+ uint lo=weights[b>>2];
+ if((b&2)==0) return lo;
+ return (lo>>16)|(weights[(b>>2)+1]<<16);
+}
+vec4 accum4(vec4 s, vec4 w, vec4 x) {
+#if ACC_FMA
+ return fma(w,x,s);
+#else
+ precise vec4 product=w*x;
+ precise vec4 added=s+product;
+ return added;
+#endif
+}
+vec4 input4(uint c) { return vec4(input_values[c],input_values[c+1],input_values[c+2],input_values[c+3]); }
+vec4 coeff4(uint w,uint mask,uint bias) {
+ return vec4(ivec4(uvec4(w,w>>8,w>>16,w>>24)&mask)-int(bias));
+}
+void main() {
+ uint tid=gl_LocalInvocationID.x, lane=tid%LANES;
+ uint row=(gl_WorkGroupID.y*p.groups_x+gl_WorkGroupID.x)*ROWS+tid/LANES;
+ vec4 a=vec4(0),z=vec4(0);
+ if(row<p.rows) {
+ uint row_start=p.weight_offset+row*p.row_bytes;
+#if FORMAT==0
+ for(uint c=lane*4;c<p.columns;c+=LANES*4) {
+  for(uint k=0;k<4 && c+k<p.columns;k++) a[k]=accum(a[k],uintBitsToFloat(weights[(row_start>>2)+c+k]),input_values[p.input_offset+c+k]);
+ }
+#elif FORMAT==2 || FORMAT==3
+ for(uint block=lane/4;block<p.columns/32;block+=LANES/4) {
+  uint b=row_start+block*BLOCK_BYTES,j=(lane%4)*4;
+  uint q=word_at(b+PAYLOAD_OFFSET+j);
+  float d=half_at(b);
+#if FORMAT==2
+  precise vec4 w0=d*coeff4(q,15,8),w1=d*coeff4(q>>4,15,8);
+#else
+  float minimum=half_at(b+2);
+  precise vec4 prod0=d*coeff4(q,15,0),prod1=d*coeff4(q>>4,15,0);
+  precise vec4 w0=prod0+minimum,w1=prod1+minimum;
+#endif
+  a=accum4(a,w0,input4(p.input_offset+block*32+j));
+  z=accum4(z,w1,input4(p.input_offset+block*32+j+16));
+ }
+#elif FORMAT==13 || FORMAT==14
+ for(uint block=lane/8;block<p.columns/256;block+=LANES/8) {
+  uint b=row_start+block*BLOCK_BYTES,j=(lane%8)*4;
+#if FORMAT==13
+  float d=half_at(b),minimum=half_at(b+2);
+  uint high=word_at(b+16+j);
+  uint q0=((word_at(b+48+j)>>0)&0x0f0f0f0f)|(((high>>0)&0x01010101)<<4);
+  uint sc0=byte_at(b+4)&63,mn0=byte_at(b+8)&63;
+  precise float scale0=d*float(sc0),bias0=minimum*float(mn0);
+  precise vec4 prod0=scale0*coeff4(q0,31,0),w0=prod0-bias0;
+  a=accum4(a,w0,input4(p.input_offset+block*256+0+j));
+  uint q1=((word_at(b+48+j)>>4)&0x0f0f0f0f)|(((high>>1)&0x01010101)<<4);
+  uint sc1=byte_at(b+5)&63,mn1=byte_at(b+9)&63;
+  precise float scale1=d*float(sc1),bias1=minimum*float(mn1);
+  precise vec4 prod1=scale1*coeff4(q1,31,0),w1=prod1-bias1;
+  z=accum4(z,w1,input4(p.input_offset+block*256+32+j));
+  uint q2=((word_at(b+80+j)>>0)&0x0f0f0f0f)|(((high>>2)&0x01010101)<<4);
+  uint sc2=byte_at(b+6)&63,mn2=byte_at(b+10)&63;
+  precise float scale2=d*float(sc2),bias2=minimum*float(mn2);
+  precise vec4 prod2=scale2*coeff4(q2,31,0),w2=prod2-bias2;
+  a=accum4(a,w2,input4(p.input_offset+block*256+64+j));
+  uint q3=((word_at(b+80+j)>>4)&0x0f0f0f0f)|(((high>>3)&0x01010101)<<4);
+  uint sc3=byte_at(b+7)&63,mn3=byte_at(b+11)&63;
+  precise float scale3=d*float(sc3),bias3=minimum*float(mn3);
+  precise vec4 prod3=scale3*coeff4(q3,31,0),w3=prod3-bias3;
+  z=accum4(z,w3,input4(p.input_offset+block*256+96+j));
+  uint q4=((word_at(b+112+j)>>0)&0x0f0f0f0f)|(((high>>4)&0x01010101)<<4);
+  uint sc4=(byte_at(b+12)&15)|((byte_at(b+4)>>6)<<4),mn4=(byte_at(b+12)>>4)|((byte_at(b+8)>>6)<<4);
+  precise float scale4=d*float(sc4),bias4=minimum*float(mn4);
+  precise vec4 prod4=scale4*coeff4(q4,31,0),w4=prod4-bias4;
+  a=accum4(a,w4,input4(p.input_offset+block*256+128+j));
+  uint q5=((word_at(b+112+j)>>4)&0x0f0f0f0f)|(((high>>5)&0x01010101)<<4);
+  uint sc5=(byte_at(b+13)&15)|((byte_at(b+5)>>6)<<4),mn5=(byte_at(b+13)>>4)|((byte_at(b+9)>>6)<<4);
+  precise float scale5=d*float(sc5),bias5=minimum*float(mn5);
+  precise vec4 prod5=scale5*coeff4(q5,31,0),w5=prod5-bias5;
+  z=accum4(z,w5,input4(p.input_offset+block*256+160+j));
+  uint q6=((word_at(b+144+j)>>0)&0x0f0f0f0f)|(((high>>6)&0x01010101)<<4);
+  uint sc6=(byte_at(b+14)&15)|((byte_at(b+6)>>6)<<4),mn6=(byte_at(b+14)>>4)|((byte_at(b+10)>>6)<<4);
+  precise float scale6=d*float(sc6),bias6=minimum*float(mn6);
+  precise vec4 prod6=scale6*coeff4(q6,31,0),w6=prod6-bias6;
+  a=accum4(a,w6,input4(p.input_offset+block*256+192+j));
+  uint q7=((word_at(b+144+j)>>4)&0x0f0f0f0f)|(((high>>7)&0x01010101)<<4);
+  uint sc7=(byte_at(b+15)&15)|((byte_at(b+7)>>6)<<4),mn7=(byte_at(b+15)>>4)|((byte_at(b+11)>>6)<<4);
+  precise float scale7=d*float(sc7),bias7=minimum*float(mn7);
+  precise vec4 prod7=scale7*coeff4(q7,31,0),w7=prod7-bias7;
+  z=accum4(z,w7,input4(p.input_offset+block*256+224+j));
+#else
+  float d=half_at(b+208);
+  uint lo0=word_at(b+j),lo1=word_at(b+32+j),lo2=word_at(b+64+j),lo3=word_at(b+96+j);
+  uint hi0=word_at(b+128+j),hi1=word_at(b+160+j);
+  uint q0=((lo0>>0)&0x0f0f0f0f)|(((hi0>>0)&0x03030303)<<4);
+  precise float scale0=d*float(signed_byte(byte_at(b+192+j/16)));
+  precise vec4 w0=scale0*coeff4(q0,63,32);
+  a=accum4(a,w0,input4(p.input_offset+block*256+0+j));
+  uint q1=((lo1>>0)&0x0f0f0f0f)|(((hi0>>2)&0x03030303)<<4);
+  precise float scale1=d*float(signed_byte(byte_at(b+194+j/16)));
+  precise vec4 w1=scale1*coeff4(q1,63,32);
+  z=accum4(z,w1,input4(p.input_offset+block*256+32+j));
+  uint q2=((lo0>>4)&0x0f0f0f0f)|(((hi0>>4)&0x03030303)<<4);
+  precise float scale2=d*float(signed_byte(byte_at(b+196+j/16)));
+  precise vec4 w2=scale2*coeff4(q2,63,32);
+  a=accum4(a,w2,input4(p.input_offset+block*256+64+j));
+  uint q3=((lo1>>4)&0x0f0f0f0f)|(((hi0>>6)&0x03030303)<<4);
+  precise float scale3=d*float(signed_byte(byte_at(b+198+j/16)));
+  precise vec4 w3=scale3*coeff4(q3,63,32);
+  z=accum4(z,w3,input4(p.input_offset+block*256+96+j));
+  uint q4=((lo2>>0)&0x0f0f0f0f)|(((hi1>>0)&0x03030303)<<4);
+  precise float scale4=d*float(signed_byte(byte_at(b+200+j/16)));
+  precise vec4 w4=scale4*coeff4(q4,63,32);
+  a=accum4(a,w4,input4(p.input_offset+block*256+128+j));
+  uint q5=((lo3>>0)&0x0f0f0f0f)|(((hi1>>2)&0x03030303)<<4);
+  precise float scale5=d*float(signed_byte(byte_at(b+202+j/16)));
+  precise vec4 w5=scale5*coeff4(q5,63,32);
+  z=accum4(z,w5,input4(p.input_offset+block*256+160+j));
+  uint q6=((lo2>>4)&0x0f0f0f0f)|(((hi1>>4)&0x03030303)<<4);
+  precise float scale6=d*float(signed_byte(byte_at(b+204+j/16)));
+  precise vec4 w6=scale6*coeff4(q6,63,32);
+  a=accum4(a,w6,input4(p.input_offset+block*256+192+j));
+  uint q7=((lo3>>4)&0x0f0f0f0f)|(((hi1>>6)&0x03030303)<<4);
+  precise float scale7=d*float(signed_byte(byte_at(b+206+j/16)));
+  precise vec4 w7=scale7*coeff4(q7,63,32);
+  z=accum4(z,w7,input4(p.input_offset+block*256+224+j));
+#endif
+ }
+#endif
+ }
+ precise vec4 v=a+z;
+ precise float sum=(v.x+v.y)+(v.z+v.w);
+ partials[tid]=sum;
+ barrier();
+ for(uint stride=LANES/2;stride>0;stride>>=1) {
+  if(lane<stride) { precise float value=partials[tid]+partials[tid+stride]; partials[tid]=value; }
+  barrier();
+ }
+ if(lane==0 && row<p.rows) output_values[p.output_offset+row]=partials[tid];
+}

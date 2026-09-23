@@ -1,0 +1,121 @@
+["/usr/bin/python3", "/home/USER/projects/zerv/tools/compile_matvec.py", "--output-dir", "/home/USER/projects/zerv/.tools/matvec-optimized-replay/shaders"]
+{
+  "source_sha256": "614d211b96e50fa2b2de56a5b80aaabeb643a2923f298bcd549f01318f87f837",
+  "tools": {
+    "glslc": "4a4743cde357af0949cdbc07668802297327e993e548f80f4e2ee67ba9b6c74d",
+    "spirv-val": "02fae2475ba0f3cb4987aca3c9eb938e8543cf269244bfcb856d8e0c252c753b"
+  },
+  "modules": {
+    "f32": {
+      "sha256": "a997a1ce4e10b4835381ef3bfd27f0f8f3f70e14c3466f0a9bf96595b601cfc9",
+      "bytes": 4720,
+      "lanes": 256,
+      "rows_per_group": 1
+    },
+    "f32_small": {
+      "sha256": "870d71e85e9084c16edbf527f3c2b9e02e55ca6cc2fc3280e6288863674aa8d7",
+      "bytes": 4720,
+      "lanes": 64,
+      "rows_per_group": 1
+    },
+    "q4_0": {
+      "sha256": "3369262cd90577a1f351c90558d9956eabcbcf28a3cc0412a5aca9a493bde9e1",
+      "bytes": 5272,
+      "lanes": 64,
+      "rows_per_group": 1
+    },
+    "q4_1": {
+      "sha256": "26f9d94f1e5237e29abd8ce7bd31995b34df924223aff46d9595c478e1716267",
+      "bytes": 5508,
+      "lanes": 64,
+      "rows_per_group": 1
+    },
+    "q5_k": {
+      "sha256": "6f51ad92b415975b88b4eead18947fe2064b09ec67cde7bf0e3f51570b6192c1",
+      "bytes": 16092,
+      "lanes": 64,
+      "rows_per_group": 1
+    },
+    "q6_k": {
+      "sha256": "dd35847dc55562070e9b1762df3214a117d333524a97583eb93465bd1ca78c11",
+      "bytes": 14444,
+      "lanes": 64,
+      "rows_per_group": 1
+    }
+  }
+}
+["/usr/bin/python3", "/home/USER/projects/zerv/tests/reference/generate_gpu_matvec.py", "--model", "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf", "--work-dir", "/home/USER/projects/zerv/.tools/matvec-optimized-replay/oracle", "--output", "/home/USER/projects/zerv/.tools/matvec-optimized-replay/matvec.json"]
+f32-isolated-columns {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+f32-seeded-17 {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+f32-seeded-5120 {'max_abs': 4.0531158447265625e-06, 'max_relative': 6.710909455738532e-07, 'max_error_over_sumabs': 3.1486657077415134e-09, 'normalized_l2': 9.359821065713824e-08, 'nonfinite': 0}
+f32-seeded-17408 {'max_abs': 2.574920654296875e-05, 'max_relative': 2.92412702624404e-06, 'max_error_over_sumabs': 5.928916223376862e-09, 'normalized_l2': 3.3675241724500944e-07, 'nonfinite': 0}
+f32-cancellation {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+f32-zero-input {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q4_0-isolated-columns {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q4_0-seeded-32 {'max_abs': 7.152557373046875e-07, 'max_relative': 5.1349318889796915e-08, 'max_error_over_sumabs': 2.9641947505593064e-08, 'normalized_l2': 5.134931192182134e-08, 'nonfinite': 0}
+q4_0-seeded-5120 {'max_abs': 5.386827979236841e-06, 'max_relative': 2.457783929827907e-06, 'max_error_over_sumabs': 5.419123151531637e-09, 'normalized_l2': 4.820039754248371e-08, 'nonfinite': 0}
+q4_0-seeded-17408 {'max_abs': 1.4643126633018255e-05, 'max_relative': 1.4561687172029322e-07, 'max_error_over_sumabs': 4.656696359930244e-09, 'normalized_l2': 8.964853429942688e-08, 'nonfinite': 0}
+q4_0-cancellation {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q4_0-zero-input {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q4_0-half-0 {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q4_1-isolated-columns {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q4_1-seeded-32 {'max_abs': 1.7462298274040222e-10, 'max_relative': 5.062871583131255e-07, 'max_error_over_sumabs': 1.0357319692347419e-08, 'normalized_l2': 1.6057566254453729e-09, 'nonfinite': 0}
+q4_1-seeded-5120 {'max_abs': 1.5915546100586653e-05, 'max_relative': 1.2711022648997857e-06, 'max_error_over_sumabs': 9.056712719772185e-09, 'normalized_l2': 1.056642148572277e-07, 'nonfinite': 0}
+q4_1-seeded-17408 {'max_abs': 3.947236109524965e-06, 'max_relative': 7.05688494685074e-08, 'max_error_over_sumabs': 5.657585463738312e-10, 'normalized_l2': 2.2597469465952177e-08, 'nonfinite': 0}
+q4_1-cancellation {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q4_1-zero-input {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q4_1-half-0 {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q4_1-half-2 {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q5_k-isolated-columns {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q5_k-seeded-256 {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q5_k-seeded-5120 {'max_abs': 0.000811590813100338, 'max_relative': 4.930962332382661e-07, 'max_error_over_sumabs': 7.535999317310202e-09, 'normalized_l2': 6.834150355652945e-08, 'nonfinite': 0}
+q5_k-seeded-6144 {'max_abs': 0.0007659316761419177, 'max_relative': 9.08180798768021e-07, 'max_error_over_sumabs': 7.335145517546343e-09, 'normalized_l2': 7.486462845944674e-08, 'nonfinite': 0}
+q5_k-cancellation {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q5_k-zero-input {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q5_k-half-0 {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q5_k-half-2 {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q6_k-isolated-columns {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q6_k-seeded-256 {'max_abs': 0.0004467964172363281, 'max_relative': 5.855849709851431e-08, 'max_error_over_sumabs': 8.992604630852612e-09, 'normalized_l2': 5.2704210199973203e-08, 'nonfinite': 0}
+q6_k-seeded-5120 {'max_abs': 0.0010318977292627096, 'max_relative': 3.3492631183386953e-07, 'max_error_over_sumabs': 4.488368671207565e-09, 'normalized_l2': 4.839819568722748e-08, 'nonfinite': 0}
+q6_k-seeded-17408 {'max_abs': 0.0015392543864436448, 'max_relative': 1.2495274709801606e-07, 'max_error_over_sumabs': 2.067035131583992e-09, 'normalized_l2': 6.555927634096894e-08, 'nonfinite': 0}
+q6_k-cancellation {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q6_k-zero-input {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+q6_k-half-208 {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+f32-dispatch-tail {'max_abs': 0.0, 'max_relative': 0.0, 'max_error_over_sumabs': 0.0, 'normalized_l2': 0.0, 'nonfinite': 0}
+model-q6_k-5120-248320 {'max_abs': 4.988396540284157e-08, 'max_relative': 1.4678082780478435e-06, 'max_error_over_sumabs': 5.343136969859167e-09, 'normalized_l2': 1.6492527989338093e-07, 'nonfinite': 0}
+model-q4_0-5120-6144 {'max_abs': 1.1175870895385742e-07, 'max_relative': 1.744464816046127e-07, 'max_error_over_sumabs': 3.383100760342423e-09, 'normalized_l2': 8.505554728121955e-08, 'nonfinite': 0}
+model-q4_0-5120-10240 {'max_abs': 6.332993507385254e-08, 'max_relative': 3.373498329387402e-07, 'max_error_over_sumabs': 1.8762470371773298e-09, 'normalized_l2': 9.29201355331705e-08, 'nonfinite': 0}
+model-q4_1-17408-5120 {'max_abs': 8.66129994392395e-08, 'max_relative': 5.407260531051243e-07, 'max_error_over_sumabs': 1.1918528471406156e-09, 'normalized_l2': 8.493026754237944e-08, 'nonfinite': 0}
+model-q4_0-5120-17408 {'max_abs': 4.0978193283081055e-08, 'max_relative': 2.254847034559446e-07, 'max_error_over_sumabs': 1.825762749364392e-09, 'normalized_l2': 1.2187496999076297e-07, 'nonfinite': 0}
+model-f32-5120-48 {'max_abs': 9.557697921991348e-08, 'max_relative': 2.072382350720124e-06, 'max_error_over_sumabs': 1.7040109916795233e-09, 'normalized_l2': 8.915705805019984e-08, 'nonfinite': 0}
+model-q5_k-6144-5120 {'max_abs': 5.640322342514992e-08, 'max_relative': 1.663579834187851e-07, 'max_error_over_sumabs': 1.3787694104799395e-09, 'normalized_l2': 1.503177380691626e-07, 'nonfinite': 0}
+model-q4_0-5120-1024 {'max_abs': 1.30385160446167e-07, 'max_relative': 4.347872482266612e-07, 'max_error_over_sumabs': 4.35436941193564e-09, 'normalized_l2': 2.634203738045717e-07, 'nonfinite': 0}
+model-q4_0-6144-5120 {'max_abs': 4.284083843231201e-08, 'max_relative': 8.249141258967875e-08, 'max_error_over_sumabs': 1.1773898909497977e-09, 'normalized_l2': 6.285718564788892e-08, 'nonfinite': 0}
+model-q4_0-5120-12288 {'max_abs': 7.82310962677002e-08, 'max_relative': 3.1581097257553157e-07, 'max_error_over_sumabs': 2.4130669533555674e-09, 'normalized_l2': 9.580543853101316e-08, 'nonfinite': 0}
+model-q4_0-17408-5120 {'max_abs': 1.601874828338623e-07, 'max_relative': 1.4032918943412581e-06, 'max_error_over_sumabs': 2.19833322215826e-09, 'normalized_l2': 1.0778713314886516e-07, 'nonfinite': 0}
+wrote /home/USER/projects/zerv/.tools/matvec-optimized-replay/matvec.json 724ceb2946f9341c95f4d3381b2d804fc759f453a7cbe7698c13a1534304f670
+["/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig", "fmt", "--check", "/home/USER/projects/zerv/build.zig", "/home/USER/projects/zerv/src", "/home/USER/projects/zerv/bench/chat.zig", "/home/USER/projects/zerv/bench/gguf.zig", "/home/USER/projects/zerv/bench/gpu_driver.zig", "/home/USER/projects/zerv/bench/gpu_matvec.zig", "/home/USER/projects/zerv/bench/model_quant.zig", "/home/USER/projects/zerv/bench/nfc.zig", "/home/USER/projects/zerv/bench/quant.zig", "/home/USER/projects/zerv/bench/split.zig", "/home/USER/projects/zerv/bench/tokenizer.zig", "/home/USER/projects/zerv/tools/inspect.zig", "/home/USER/projects/zerv/tests/chat.zig", "/home/USER/projects/zerv/tests/gguf.zig", "/home/USER/projects/zerv/tests/gpu.zig", "/home/USER/projects/zerv/tests/gpu_abi.zig", "/home/USER/projects/zerv/tests/gpu_workload.zig", "/home/USER/projects/zerv/tests/matvec.zig", "/home/USER/projects/zerv/tests/matvec_gpu.zig", "/home/USER/projects/zerv/tests/matvec_workload.zig", "/home/USER/projects/zerv/tests/nfc.zig", "/home/USER/projects/zerv/tests/q4_1.zig", "/home/USER/projects/zerv/tests/q5_k.zig", "/home/USER/projects/zerv/tests/q6_k.zig", "/home/USER/projects/zerv/tests/root.zig", "/home/USER/projects/zerv/tests/tokenizer.zig", "/home/USER/projects/zerv/tests/tokenizer_split.zig"]
+["/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig", "build", "test", "gpu-test", "--summary", "all"]
+Build Summary: 6/6 steps succeeded; 50/50 tests passed
+test success
++- run test 42 pass (42 total) 17s MaxRSS:50M
+   +- compile test Debug native cached 8ms MaxRSS:41M
+gpu-test success
++- run test 8 pass (8 total) 2s MaxRSS:59M
+   +- compile test Debug native cached 17ms MaxRSS:42M
+
+["/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig", "build", "test", "gpu-test", "-Doptimize=ReleaseFast", "--summary", "all"]
+Build Summary: 6/6 steps succeeded; 50/50 tests passed
+test success
++- run test 42 pass (42 total) 2s MaxRSS:45M
+   +- compile test ReleaseFast native cached 9ms MaxRSS:38M
+gpu-test success
++- run test 8 pass (8 total) 611ms MaxRSS:58M
+   +- compile test ReleaseFast native cached 17ms MaxRSS:39M
+
+["/usr/bin/python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"]
+................................................
+----------------------------------------------------------------------
+Ran 48 tests in 0.431s
+
+OK

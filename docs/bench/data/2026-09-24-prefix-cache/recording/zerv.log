@@ -1,0 +1,33 @@
+zerv: loading models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf on AMD Radeon RX 7900 XTX (RADV NAVI31) (context 29504, prefill chunk 512, prefill precision f16, prefix cache slots 8 = 1197 MiB)
+zerv: serving qwen3.8-27b at http://127.0.0.1:18080/v1/chat/completions
+info: prefix cache: reset, reused 0 of 12423 prompt tokens
+info: prefix cache: restore, reused 12418 of 12671 prompt tokens
+info: prefix cache: restore, reused 12666 of 12947 prompt tokens
+info: prefix cache: restore, reused 12942 of 13219 prompt tokens
+info: prefix cache: restore, reused 12386 of 12418 prompt tokens
+info: prefix cache: restore, reused 12413 of 12608 prompt tokens
+info: prefix cache: restore, reused 12386 of 12397 prompt tokens
+info: prefix cache: restore, reused 12392 of 12425 prompt tokens
+info: prefix cache: restore, reused 12386 of 12402 prompt tokens
+info: prefix cache: restore, reused 12397 of 12904 prompt tokens
+info: prefix cache: restore, reused 12899 of 12950 prompt tokens
+info: prefix cache: restore, reused 12945 of 13114 prompt tokens
+info: prefix cache: restore, reused 13109 of 15329 prompt tokens
+info: prefix cache: restore, reused 15324 of 15659 prompt tokens
+info: prefix cache: restore, reused 12386 of 12397 prompt tokens
+info: prefix cache: restore, reused 12392 of 12424 prompt tokens
+info: shutting down: draining 0 admitted request(s)
+zerv: stopped
+thread 584034 panic: snapshot store in use
+/home/USER/projects/zerv/src/model/runtime.zig:420:73: 0x112da0a in cleanup (zerv)
+        if (self.snapshot_slots > 0) self.snapshot_store.deinit() catch @panic("snapshot store in use");
+                                                                        ^
+/home/USER/projects/zerv/src/model/runtime.zig:416:21: 0x10e2d7d in deinit (zerv)
+        self.cleanup();
+                    ^
+/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/lib/std/start.zig:737:30: 0x10e4387 in callMain (zerv)
+    return wrapMain(root.main(.{
+                             ^
+???:?:?: 0x7fe865a27780 in ??? (/usr/lib/libc.so.6)
+???:?:?: 0x7fe865a278b8 in ??? (/usr/lib/libc.so.6)
+???:?:?: 0x10dcc64 in ??? (???)

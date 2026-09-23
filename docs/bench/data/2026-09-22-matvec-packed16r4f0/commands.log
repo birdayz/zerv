@@ -1,0 +1,123 @@
+["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", "-DFORMAT=0", "-DBLOCK_BYTES=4", "-DPAYLOAD_OFFSET=2", "-DLANES=16", "-DROWS=4", "-DACC_FMA=0", "/home/USER/projects/zerv/docs/bench/data/2026-09-22-matvec-packed16r4f0/candidate.comp", "-o", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/f32.spv"]
+["spirv-val", "--target-env", "vulkan1.1", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/f32.spv"]
+["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", "-DFORMAT=2", "-DBLOCK_BYTES=18", "-DPAYLOAD_OFFSET=2", "-DLANES=16", "-DROWS=4", "-DACC_FMA=0", "/home/USER/projects/zerv/docs/bench/data/2026-09-22-matvec-packed16r4f0/candidate.comp", "-o", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0.spv"]
+["spirv-val", "--target-env", "vulkan1.1", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0.spv"]
+["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", "-DFORMAT=3", "-DBLOCK_BYTES=20", "-DPAYLOAD_OFFSET=4", "-DLANES=16", "-DROWS=4", "-DACC_FMA=0", "/home/USER/projects/zerv/docs/bench/data/2026-09-22-matvec-packed16r4f0/candidate.comp", "-o", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_1.spv"]
+["spirv-val", "--target-env", "vulkan1.1", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_1.spv"]
+["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", "-DFORMAT=13", "-DBLOCK_BYTES=176", "-DPAYLOAD_OFFSET=2", "-DLANES=16", "-DROWS=4", "-DACC_FMA=0", "/home/USER/projects/zerv/docs/bench/data/2026-09-22-matvec-packed16r4f0/candidate.comp", "-o", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q5_k.spv"]
+["spirv-val", "--target-env", "vulkan1.1", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q5_k.spv"]
+["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", "-DFORMAT=14", "-DBLOCK_BYTES=210", "-DPAYLOAD_OFFSET=2", "-DLANES=16", "-DROWS=4", "-DACC_FMA=0", "/home/USER/projects/zerv/docs/bench/data/2026-09-22-matvec-packed16r4f0/candidate.comp", "-o", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q6_k.spv"]
+["spirv-val", "--target-env", "vulkan1.1", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q6_k.spv"]
+["/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig", "build", "gpu-matvec-bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native"]
+["/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/native", "--fixtures", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0", "4"]
+verified 48 independent cases, replay, guards and changed input
+["/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/native", "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q6_k-5120-248320.case", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q6_k-5120-248320.output", "10", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q6_k.spv", "4"]
+{"trial":0,"iterations":10,"elapsed_ns":12459568}
+{"trial":1,"iterations":10,"elapsed_ns":12393914}
+{"trial":2,"iterations":10,"elapsed_ns":12501448}
+{"trial":3,"iterations":10,"elapsed_ns":12473825}
+{"trial":4,"iterations":10,"elapsed_ns":12474607}
+{"trial":5,"iterations":10,"elapsed_ns":12477242}
+{"trial":6,"iterations":10,"elapsed_ns":12457524}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation_bytes=2088909104 sizes=1043957872,1043957872,993360 memory_types=5,0,5 groups=62080,1,1
+["/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/native", "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_0-5120-6144.case", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0-5120-6144.output", "64", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0.spv", "4"]
+{"trial":0,"iterations":64,"elapsed_ns":6069430}
+{"trial":1,"iterations":64,"elapsed_ns":6003466}
+{"trial":2,"iterations":64,"elapsed_ns":6014637}
+{"trial":3,"iterations":64,"elapsed_ns":6078468}
+{"trial":4,"iterations":64,"elapsed_ns":6040224}
+{"trial":5,"iterations":64,"elapsed_ns":6137509}
+{"trial":6,"iterations":64,"elapsed_ns":6030677}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation_bytes=35504432 sizes=17739888,17739888,24656 memory_types=5,0,5 groups=1536,1,1
+["/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/native", "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_0-5120-10240.case", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0-5120-10240.output", "64", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0.spv", "4"]
+{"trial":0,"iterations":64,"elapsed_ns":7695491}
+{"trial":1,"iterations":64,"elapsed_ns":7668189}
+{"trial":2,"iterations":64,"elapsed_ns":7676796}
+{"trial":3,"iterations":64,"elapsed_ns":7677126}
+{"trial":4,"iterations":64,"elapsed_ns":7668129}
+{"trial":5,"iterations":64,"elapsed_ns":7513576}
+{"trial":6,"iterations":64,"elapsed_ns":7655866}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation_bytes=59146544 sizes=29552752,29552752,41040 memory_types=5,0,5 groups=2560,1,1
+["/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/native", "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_1-17408-5120.case", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_1-17408-5120.output", "64", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_1.spv", "4"]
+{"trial":0,"iterations":64,"elapsed_ns":11746357}
+{"trial":1,"iterations":64,"elapsed_ns":10634201}
+{"trial":2,"iterations":64,"elapsed_ns":10258197}
+{"trial":3,"iterations":64,"elapsed_ns":9924144}
+{"trial":4,"iterations":64,"elapsed_ns":9873589}
+{"trial":5,"iterations":64,"elapsed_ns":10044742}
+{"trial":6,"iterations":64,"elapsed_ns":9843782}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation_bytes=111612208 sizes=55795824,55795824,20560 memory_types=5,0,5 groups=1280,1,1
+["/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/native", "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_0-5120-17408.case", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0-5120-17408.output", "64", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0.spv", "4"]
+{"trial":0,"iterations":64,"elapsed_ns":10160292}
+{"trial":1,"iterations":64,"elapsed_ns":9374352}
+{"trial":2,"iterations":64,"elapsed_ns":9084694}
+{"trial":3,"iterations":64,"elapsed_ns":8890775}
+{"trial":4,"iterations":64,"elapsed_ns":8931734}
+{"trial":5,"iterations":64,"elapsed_ns":8916204}
+{"trial":6,"iterations":64,"elapsed_ns":8901005}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation_bytes=100520240 sizes=50225264,50225264,69712 memory_types=5,0,5 groups=4352,1,1
+["/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/native", "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/f32-5120-48.case", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/f32-5120-48.output", "256", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/f32.spv", "4"]
+{"trial":0,"iterations":256,"elapsed_ns":31123223}
+{"trial":1,"iterations":256,"elapsed_ns":30755425}
+{"trial":2,"iterations":256,"elapsed_ns":30643463}
+{"trial":3,"iterations":256,"elapsed_ns":31338319}
+{"trial":4,"iterations":256,"elapsed_ns":30684721}
+{"trial":5,"iterations":256,"elapsed_ns":30686344}
+{"trial":6,"iterations":256,"elapsed_ns":30655686}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation_bytes=2007920 sizes=1003824,1003824,272 memory_types=5,0,5 groups=12,1,1
+["/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/native", "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q5_k-6144-5120.case", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q5_k-6144-5120.output", "64", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q5_k.spv", "4"]
+{"trial":0,"iterations":64,"elapsed_ns":7062862}
+{"trial":1,"iterations":64,"elapsed_ns":7060027}
+{"trial":2,"iterations":64,"elapsed_ns":7119831}
+{"trial":3,"iterations":64,"elapsed_ns":7074315}
+{"trial":4,"iterations":64,"elapsed_ns":7038036}
+{"trial":5,"iterations":64,"elapsed_ns":7119240}
+{"trial":6,"iterations":64,"elapsed_ns":7090596}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation_bytes=43364656 sizes=21672048,21672048,20560 memory_types=5,0,5 groups=1280,1,1
+["/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/native", "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_0-5120-1024.case", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0-5120-1024.output", "64", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0.spv", "4"]
+{"trial":0,"iterations":64,"elapsed_ns":4076073}
+{"trial":1,"iterations":64,"elapsed_ns":4014256}
+{"trial":2,"iterations":64,"elapsed_ns":3999339}
+{"trial":3,"iterations":64,"elapsed_ns":4017242}
+{"trial":4,"iterations":64,"elapsed_ns":4010669}
+{"trial":5,"iterations":64,"elapsed_ns":4063951}
+{"trial":6,"iterations":64,"elapsed_ns":4040456}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation_bytes=5951792 sizes=2973808,2973808,4176 memory_types=5,0,5 groups=256,1,1
+["/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/native", "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_0-6144-5120.case", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0-6144-5120.output", "64", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0.spv", "4"]
+{"trial":0,"iterations":64,"elapsed_ns":6170191}
+{"trial":1,"iterations":64,"elapsed_ns":6160332}
+{"trial":2,"iterations":64,"elapsed_ns":6117301}
+{"trial":3,"iterations":64,"elapsed_ns":6301631}
+{"trial":4,"iterations":64,"elapsed_ns":6202393}
+{"trial":5,"iterations":64,"elapsed_ns":6154101}
+{"trial":6,"iterations":64,"elapsed_ns":6154641}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation_bytes=35500336 sizes=17739888,17739888,20560 memory_types=5,0,5 groups=1280,1,1
+["/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/native", "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_0-5120-12288.case", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0-5120-12288.output", "64", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0.spv", "4"]
+{"trial":0,"iterations":64,"elapsed_ns":8349150}
+{"trial":1,"iterations":64,"elapsed_ns":8317540}
+{"trial":2,"iterations":64,"elapsed_ns":8275941}
+{"trial":3,"iterations":64,"elapsed_ns":7935235}
+{"trial":4,"iterations":64,"elapsed_ns":7884179}
+{"trial":5,"iterations":64,"elapsed_ns":7877998}
+{"trial":6,"iterations":64,"elapsed_ns":7911089}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation_bytes=70967600 sizes=35459184,35459184,49232 memory_types=5,0,5 groups=3072,1,1
+["/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/native", "/home/USER/projects/zerv/third_party/gpu-matvec-bench/2026-09-22-gpu-matvec-repeat/q4_0-17408-5120.case", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0-17408-5120.output", "64", "/home/USER/projects/zerv/third_party/matvec-dfs/2026-09-22-matvec-packed16r4f0/q4_0.spv", "4"]
+{"trial":0,"iterations":64,"elapsed_ns":11988796}
+{"trial":1,"iterations":64,"elapsed_ns":10887900}
+{"trial":2,"iterations":64,"elapsed_ns":10541864}
+{"trial":3,"iterations":64,"elapsed_ns":10304775}
+{"trial":4,"iterations":64,"elapsed_ns":10070371}
+{"trial":5,"iterations":64,"elapsed_ns":10283826}
+{"trial":6,"iterations":64,"elapsed_ns":10318592}
+device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1
+allocation_bytes=100471088 sizes=50225264,50225264,20560 memory_types=5,0,5 groups=1280,1,1

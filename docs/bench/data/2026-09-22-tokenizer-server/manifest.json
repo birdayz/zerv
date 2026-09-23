@@ -1,0 +1,22 @@
+{
+  "version": "version: 0.4.1-dev (build 10964, commit b29c606e28)\nbuilt with GNU 16.2.1 for Linux x86_64\n",
+  "binaries": {
+    "/usr/bin/llama-server": "0f401589a34aabc75a2371cb39d92d717212e27d9a0c6e2bf30a8d643bf77d85",
+    "/usr/lib/libllama-server-impl.so": "a978095de9e7b0e34bd70c169f8ead0501b01aec51643e56b1cb2daee2e3f752",
+    "/usr/lib/libllama.so.0.4.1": "c352cb4b1f5456dffbc4483ba1e0be7a547b21a0f7e63462ab8fb333f51245e1",
+    "/usr/lib/libggml-base.so.0.24.0": "7d9065538f5df6342613b4fa92e661d5ad8fd811c2dbe16ff0e4b62a77777073",
+    "/usr/lib/libllama-common.so.0.4.1": "5acfdac0fe84c936dd007f71e93e638bf2a26a0d222f4a69293f7addb683ab4f"
+  },
+  "command": "taskset -c 2 llama-server -m models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --host 127.0.0.1 --port 18081 -c 2048 -np 1 -b 256 -ub 256 -ngl 0 -t 1 -tb 1 -fa on -ctk f16 -ctv f16 --spec-type none --no-context-shift --no-webui --no-warmup --jinja --chat-template-file third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/official-template.jinja",
+  "cpu": 2,
+  "threads": 1,
+  "threads_batch": 1,
+  "ngl": 0,
+  "context": 2048,
+  "parallel": 1,
+  "warmup": false,
+  "purpose": "Actual tokenizer HTTP comparison only; no generation or serving-speed claim",
+  "model": "models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+  "stopped_after_benchmark": true,
+  "server_log_sha256": "8936892c554c7b47155aa91d9478951b624e73ab0eb687e79ce2f4975d4c30c4"
+}

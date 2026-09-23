@@ -1,0 +1,31 @@
+#version 450
+// Research probe (block 13g): one 16x16x16 WMMA per workgroup, D = A*B + C.
+// A f16 row-major, B f16 column-major, C/D f32 row-major; case = workgroup id.
+#extension GL_KHR_cooperative_matrix : require
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
+// INT8: A/B are int8 and C/D int32 (s8 x s8 -> s32) instead of f16/f32.
+#if INT8
+#define ET int8_t
+#define AT int
+#else
+#define ET float16_t
+#define AT float
+#endif
+layout(local_size_x = 64) in;
+layout(std430, binding = 0) readonly buffer A { ET a[]; };
+layout(std430, binding = 1) readonly buffer B { ET b[]; };
+layout(std430, binding = 2) readonly buffer C { AT c[]; };
+layout(std430, binding = 3) writeonly buffer D { AT d[]; };
+void main() {
+    const uint base = gl_WorkGroupID.x * 256u;
+    coopmat<ET, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> ma;
+    coopmat<ET, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB> mb;
+    coopmat<AT, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> acc;
+    coopMatLoad(ma, a, base, 16, gl_CooperativeMatrixLayoutRowMajor);
+    coopMatLoad(mb, b, base, 16, gl_CooperativeMatrixLayoutColumnMajor);
+    coopMatLoad(acc, c, base, 16, gl_CooperativeMatrixLayoutRowMajor);
+    acc = coopMatMulAdd(ma, mb, acc);
+    coopMatStore(acc, d, base, 16, gl_CooperativeMatrixLayoutRowMajor);
+}

@@ -1,0 +1,588 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : require
+// Qwen3.8 (qwen35) non-projection operators. FP32 throughout. One module per KERNEL.
+// Bindings (all kernels): 0 = weight bank 0 (small FP32 params + token embedding),
+// 1 = activation arena, 2 = state arena (KV cache, recurrent, conv), 3 = host io block.
+// Offsets are in 32-bit words; the host validates every region before recording.
+
+#define K_EMBED 1
+#define K_NORM 2
+#define K_QKPREP 3
+#define K_CONV 5
+#define K_DELTA 6
+#define K_SWIGLU 7
+#define K_ZERO 8
+#define K_REDUCE 9
+#define K_EMBEDB 10
+#define K_QKB 11
+#define K_SOFTMAX 12
+#define K_GATE 13
+#define K_CONVB 14
+#define K_DELTAB 15
+#define K_GNORMB 19
+#define K_ASCORE 16
+#define K_APV 17
+#define K_ACOMB 18
+
+#if KERNEL == K_EMBED || KERNEL == K_NORM || KERNEL == K_QKPREP || KERNEL == K_ZERO || KERNEL == K_REDUCE || KERNEL == K_EMBEDB || KERNEL == K_QKB || KERNEL == K_SOFTMAX || KERNEL == K_GATE || KERNEL == K_APV || KERNEL == K_ACOMB
+layout(local_size_x=256) in;
+#define WG 256
+#elif KERNEL == K_ASCORE
+layout(local_size_x=64) in;
+#define WG 64
+#else
+layout(local_size_x=128) in;
+#define WG 128
+#endif
+
+layout(set=0,binding=0,std430) readonly buffer Params { uint params[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=2,std430) buffer State { float state[]; };
+layout(set=0,binding=3,std430) buffer Io { uint io[]; };
+
+// io layout (words): 0 token, 1 position, 2 prefill count, 3 prefill first position,
+// 4..35 cos[32], 36..67 sin[32] (decode); prefill token ids and per-row RoPE tables at
+// offsets given by push constants.
+#define HIDDEN 5120u // model width (checked against config.hidden on the host)
+#define IO_TOKEN 0
+#define IO_POSITION 1
+#define IO_COUNT 2
+#define IO_P0 3
+#define IO_COS 4
+#define IO_SIN 36
+
+float param(uint word) { return uintBitsToFloat(params[word]); }
+float sigmoid_(float x) { return 1.0/(1.0+exp(-x)); }
+float silu(float x) { return x/(1.0+exp(-x)); }
+
+shared float red[WG];
+// Workgroup sum; every invocation must call it (uniform control flow).
+float wg_sum(float v) {
+    uint t=gl_LocalInvocationID.x;
+    red[t]=v;
+    barrier();
+    for (uint s=WG/2;s>0;s>>=1) {
+        if (t<s) red[t]+=red[t+s];
+        barrier();
+    }
+    float r=red[0];
+    barrier();
+    return r;
+}
+float wg_max(float v) {
+    uint t=gl_LocalInvocationID.x;
+    red[t]=v;
+    barrier();
+    for (uint s=WG/2;s>0;s>>=1) {
+        if (t<s) red[t]=max(red[t],red[t+s]);
+        barrier();
+    }
+    float r=red[0];
+    barrier();
+    return r;
+}
+
+#if KERNEL == K_EMBED
+// act[out + c] = Q4_0 row `token` of the embedding (bank 0, byte offset `tensor`).
+layout(push_constant) uniform P { uint tensor, row_bytes, out_, columns; } p;
+uint byte_at(uint b) { return (params[b>>2] >> (8*(b&3))) & 255u; }
+void main() {
+    uint c=gl_GlobalInvocationID.x;
+    if (c>=p.columns) return;
+    uint base=p.tensor+io[IO_TOKEN]*p.row_bytes+(c/32)*18;
+    float d=unpackHalf2x16(params[base>>2]>>(8*(base&2))).x;
+    uint j=c%32;
+    uint q=(byte_at(base+2+(j%16))>>(4*(j/16)))&15u;
+    act[p.out_+c]=d*float(int(q)-8); // exact: <=15 significant bits
+}
+
+#elif KERNEL == K_NORM
+// Row r (one workgroup): v = x[r] (+ a[r], stored to sum[r] when ADD);
+// y[r] = v * rsqrt(mean(v^2) + eps) * w (w shared by rows; words in bank 0).
+// Rows are HIDDEN == p.width wide (compile-time loop: straight-line code; bounds branches
+// made the compiler reload buffer descriptors inside each branch, ~2.5x slower).
+layout(push_constant) uniform P { uint x, a, sum, y, w, width, stride, flags; float eps; } p;
+#define ADD 1u
+#define ROWS_IO 2u  // workgroup r handles row r < io count
+#define LAST_ONLY 4u // only row count-1 writes y, to y (no stride); sums for all rows
+#define NORM_N (HIDDEN/WG) // values per thread
+void main() {
+    uint r=gl_WorkGroupID.x, t=gl_LocalInvocationID.x;
+    if ((p.flags&ROWS_IO)!=0u && r>=io[IO_COUNT]) return; // uniform per workgroup
+    bool write_y=(p.flags&LAST_ONLY)==0u || r==io[IO_COUNT]-1u;
+    uint yrow=(p.flags&LAST_ONLY)!=0u ? 0u : r*p.stride;
+    // All loads first (activation stores would order later loads behind them; the
+    // weights are read-only and loaded up front); same values and summation order.
+    float v[NORM_N], wv[NORM_N];
+    [[unroll]] for (uint k=0u;k<NORM_N;k++) { v[k]=act[p.x+r*p.stride+t+k*WG]; wv[k]=param(p.w+t+k*WG); }
+    if ((p.flags&ADD)!=0u) {
+        [[unroll]] for (uint k=0u;k<NORM_N;k++) v[k]+=act[p.a+r*p.stride+t+k*WG];
+        [[unroll]] for (uint k=0u;k<NORM_N;k++) act[p.sum+r*p.stride+t+k*WG]=v[k];
+    }
+    // fma chain in element order, as the pre-13c loop compiled (one v_fmac per element,
+    // accumulator starting at +0). Unrolled from a literal 0.0, the first term folds to
+    // v0*v0 and the compiler may fuse either product of v0^2+v1^2, changing the rounding
+    // (found by bitwise comparison); a run-time +0 (flags bit 31 is never set) keeps
+    // every step a single-product fma.
+    float ss=uintBitsToFloat(p.flags&0x80000000u);
+    [[unroll]] for (uint k=0u;k<NORM_N;k++) ss=fma(v[k],v[k],ss);
+    // Divide by the run-time width (== HIDDEN, host-checked): a constant divisor would be
+    // folded to an exactly rounded reciprocal and change the last bit versus v_rcp.
+    float inv=1.0/sqrt(wg_sum(ss)/float(p.width)+p.eps);
+    if (!write_y) return; // after the last barrier
+    [[unroll]] for (uint k=0u;k<NORM_N;k++) act[p.y+yrow+t+k*WG]=(v[k]*inv)*wv[k];
+}
+
+#elif KERNEL == K_QKPREP
+// Workgroups 0..23: query heads; 24..27: KV heads. Head width 256 (one thread per dim).
+// q/k RMS norm * weight, NEOX RoPE on dims 0..63 with host cos/sin; K stored
+// transposed [kvh][dim][ctx] and V as [kvh][ctx][dim] at the current position.
+layout(push_constant) uniform P { uint qf, kc, vc, qn, qr, kn, kr, qw, kw, kcache, vcache, ctx; float eps; } p;
+shared float head[256];
+void main() {
+    uint h=gl_WorkGroupID.x, d=gl_LocalInvocationID.x;
+    bool is_q=h<24u;
+    uint kh=h-24u;
+    float v=is_q ? act[p.qf+h*512u+d] : act[p.kc+kh*256u+d];
+    float inv=1.0/sqrt(wg_sum(v*v)/256.0+p.eps);
+    float n=(v*inv)*param((is_q ? p.qw : p.kw)+d);
+    if (is_q) act[p.qn+h*256u+d]=n; else act[p.kn+kh*256u+d]=n;
+    head[d]=n;
+    barrier();
+    float o=n;
+    if (d<32u) {
+        float c=uintBitsToFloat(io[IO_COS+d]), s=uintBitsToFloat(io[IO_SIN+d]);
+        o=head[d]*c-head[d+32u]*s;
+    } else if (d<64u) {
+        float c=uintBitsToFloat(io[IO_COS+d-32u]), s=uintBitsToFloat(io[IO_SIN+d-32u]);
+        o=head[d-32u]*s+head[d]*c;
+    }
+    uint pos=io[IO_POSITION];
+    if (is_q) {
+        act[p.qr+h*256u+d]=o;
+    } else {
+        act[p.kr+kh*256u+d]=o;
+        state[p.kcache+(kh*256u+d)*p.ctx+pos]=o;
+        state[p.vcache+(kh*p.ctx+pos)*256u+d]=act[p.vc+kh*256u+d];
+    }
+}
+
+#elif KERNEL == K_ASCORE
+// Split-K decode attention, pass 1 of 3. Workgroup (chunk c, KV head g), one key
+// j = 64c + t per thread, for query heads 6g..6g+5: scores[h][j] = (q_h . k_j) * scale
+// in d order, and the chunk maximum amax[h][c]. Chunks at or past the live key count
+// (position + 1) exit; keys >= position + 1 are never read.
+layout(push_constant) uniform P { uint qr, scores, amax, kcache, ctx, chunks; float scale; } p;
+shared float qs[6*256];
+void main() {
+    uint c=gl_WorkGroupID.x, g=gl_WorkGroupID.y, t=gl_LocalInvocationID.x;
+    uint n=io[IO_POSITION]+1u;
+    if (c*64u>=n) return; // uniform per workgroup
+    for (uint i=t;i<6u*256u;i+=64u) qs[i]=act[p.qr+g*6u*256u+i];
+    barrier();
+    uint j=c*64u+t;
+    bool live=j<n;
+    uint col=p.kcache+g*256u*p.ctx+(live ? j : c*64u); // K cache is [kvh][d][ctx]
+    // Two-level accumulation as in the prefill GEMM: each 32-d part is an fma chain in
+    // d order, parts added in order to the total (3.5x lower attention error than one
+    // 256-term chain on real Q/K/V; docs/specs/decode-attention.md, block 13f).
+    float s[6];
+    [[unroll]] for (uint hh=0u;hh<6u;hh++) s[hh]=0.0;
+    for (uint d0=0u;d0<256u;d0+=32u) {
+        float k[32];
+        [[unroll]] for (uint i=0u;i<32u;i++) k[i]=state[col+(d0+i)*p.ctx];
+        float part[6];
+        [[unroll]] for (uint hh=0u;hh<6u;hh++) part[hh]=0.0;
+        [[unroll]] for (uint i=0u;i<32u;i++) [[unroll]] for (uint hh=0u;hh<6u;hh++) part[hh]=fma(qs[hh*256u+d0+i],k[i],part[hh]);
+        [[unroll]] for (uint hh=0u;hh<6u;hh++) s[hh]+=part[hh];
+    }
+    [[unroll]] for (uint hh=0u;hh<6u;hh++) {
+        float v=s[hh]*p.scale;
+        uint h=g*6u+hh;
+        if (live) act[p.scores+h*p.ctx+j]=v;
+        float m=wg_max(live ? v : -3.402823466e38);
+        if (t==0u) act[p.amax+h*p.chunks+c]=m;
+    }
+}
+
+#elif KERNEL == K_APV
+// Pass 2 of 3. Workgroup (chunk c, KV head g), thread t = output dimension. Global
+// maximum m_h over the live chunk maxima (exact: max is order-free); e_j = exp(s_j - m_h)
+// for the chunk's keys (0 past the live keys). apart[h][c][t] = sum_j e_j v_j[t] with
+// four interleaved accumulators (key j into lane j%4, each in key order, then
+// (l0+l1)+(l2+l3)); asum[h][c] = halving-tree sum of the 64 e_j. Each V row is read
+// once for the 6 query heads; rows past the live keys are never read.
+layout(push_constant) uniform P { uint scores, amax, apart, asum, vcache, ctx, chunks; } p;
+shared float e[6*64];
+shared float es[6*64];
+shared float mh[6];
+void main() {
+    uint c=gl_WorkGroupID.x, g=gl_WorkGroupID.y, t=gl_LocalInvocationID.x;
+    uint n=io[IO_POSITION]+1u;
+    if (c*64u>=n) return; // uniform per workgroup
+    uint live=(n+63u)/64u;
+    // Threads 0..191: head t/32, lanes stride 32 over the live chunk maxima.
+    float m=-3.402823466e38;
+    if (t<192u) for (uint k=t%32u;k<live;k+=32u) m=max(m,act[p.amax+(g*6u+t/32u)*p.chunks+k]);
+    red[t]=m;
+    barrier();
+    for (uint s=16u;s>0u;s>>=1) {
+        if (t<192u && (t%32u)<s) red[t]=max(red[t],red[t+s]);
+        barrier();
+    }
+    if (t<6u) mh[t]=red[t*32u];
+    barrier();
+    for (uint i=t;i<384u;i+=256u) {
+        uint hh=i/64u, j=c*64u+i%64u;
+        float v=j<n ? exp(act[p.scores+(g*6u+hh)*p.ctx+j]-mh[hh]) : 0.0;
+        e[i]=v;
+        es[i]=v;
+    }
+    barrier();
+    for (uint s=32u;s>0u;s>>=1) {
+        for (uint i=t;i<6u*s;i+=256u) {
+            uint k=(i/s)*64u+i%s;
+            es[k]+=es[k+s];
+        }
+        barrier();
+    }
+    uint keys=min(64u,n-c*64u);
+    float l0[6], l1[6], l2[6], l3[6];
+    [[unroll]] for (uint hh=0u;hh<6u;hh++) { l0[hh]=0.0; l1[hh]=0.0; l2[hh]=0.0; l3[hh]=0.0; }
+    uint row=p.vcache+(g*p.ctx+c*64u)*256u+t; // V cache is [kvh][ctx][d]
+    for (uint jj=0u;jj<keys;jj+=4u) {
+        float v0=state[row+jj*256u];
+        [[unroll]] for (uint hh=0u;hh<6u;hh++) l0[hh]+=e[hh*64u+jj]*v0;
+        if (jj+1u<keys) {
+            float v1=state[row+(jj+1u)*256u];
+            [[unroll]] for (uint hh=0u;hh<6u;hh++) l1[hh]+=e[hh*64u+jj+1u]*v1;
+        }
+        if (jj+2u<keys) {
+            float v2=state[row+(jj+2u)*256u];
+            [[unroll]] for (uint hh=0u;hh<6u;hh++) l2[hh]+=e[hh*64u+jj+2u]*v2;
+        }
+        if (jj+3u<keys) {
+            float v3=state[row+(jj+3u)*256u];
+            [[unroll]] for (uint hh=0u;hh<6u;hh++) l3[hh]+=e[hh*64u+jj+3u]*v3;
+        }
+    }
+    [[unroll]] for (uint hh=0u;hh<6u;hh++) act[p.apart+((g*6u+hh)*p.chunks+c)*256u+t]=(l0[hh]+l1[hh])+(l2[hh]+l3[hh]);
+    if (t<6u) act[p.asum+(g*6u+t)*p.chunks+c]=es[t*64u];
+}
+
+#elif KERNEL == K_ACOMB
+// Pass 3 of 3. Workgroup h (query head), thread t: o = (sum_c apart) / (sum_c asum), each
+// summed in chunk order in blocks of 8 (block sums, then the running total); writes the
+// pre-gate output, sigmoid(gate) and the gated product.
+layout(push_constant) uniform P { uint apart, asum, qf, pregate, gates, gated, chunks; } p;
+void main() {
+    uint h=gl_WorkGroupID.x, t=gl_LocalInvocationID.x;
+    uint live=(io[IO_POSITION]+64u)/64u;
+    float acc=0.0, total=0.0;
+    for (uint c0=0u;c0<live;c0+=8u) {
+        float ga=0.0, gt=0.0;
+        for (uint c=c0;c<min(live,c0+8u);c++) {
+            ga+=act[p.apart+(h*p.chunks+c)*256u+t];
+            gt+=act[p.asum+h*p.chunks+c];
+        }
+        acc+=ga;
+        total+=gt;
+    }
+    float o=acc/total;
+    float g=sigmoid_(act[p.qf+h*512u+256u+t]);
+    act[p.pregate+h*256u+t]=o;
+    act[p.gates+h*256u+t]=g;
+    act[p.gated+h*256u+t]=o*g;
+}
+
+#elif KERNEL == K_CONV
+// Workgroup per 128-channel segment (80): segments 0..15 q heads, 16..31 k heads,
+// 32..79 v heads. Causal depthwise conv (kernel 4, tap 3 = current), SiLU, then
+// L2 normalization for q/k heads. Conv state per channel: 3 inputs, oldest first.
+layout(push_constant) uniform P { uint mixed, raw, silu_, out_, w, conv; } p;
+void main() {
+    uint seg=gl_WorkGroupID.x, t=gl_LocalInvocationID.x, c=seg*128u+t;
+    float x=act[p.mixed+c];
+    uint sb=p.conv+c*3u, wb=p.w+c*4u;
+    float s0=state[sb], s1=state[sb+1u], s2=state[sb+2u];
+    float y=s0*param(wb);
+    y+=s1*param(wb+1u);
+    y+=s2*param(wb+2u);
+    y+=x*param(wb+3u);
+    state[sb]=s1; state[sb+1u]=s2; state[sb+2u]=x;
+    act[p.raw+c]=y;
+    float a=silu(y);
+    act[p.silu_+c]=a;
+    float ss=wg_sum(a*a); // uniform: every segment participates
+    act[p.out_+c]=seg<32u ? a/sqrt(ss+1e-6) : a;
+}
+
+#elif KERNEL == K_DELTA
+// Workgroup per value head hv (48), thread j = value dim. K head = hv % 16 (the
+// converter's tiled V-head order). State [hv][i key][j value].
+// S <- S*exp(g); d = (v - S^T k)*beta; S += k d^T; o = S^T (q/sqrt(128));
+// then gated RMS norm: y = rmsnorm(o)*ssm_norm*silu(z).
+layout(push_constant) uniform P { uint qk, v, z, beta_raw, alpha, beta_out, softplus_out, g_out, o, y, ssm, a_w, dt_w, norm_w; float eps; } p;
+shared float qs[128];
+shared float ks[128];
+float softplus(float x) {
+    float e=exp(-abs(x)), u=1.0+e;
+    float l=(u==1.0) ? e : log(u)*(e/(u-1.0)); // log1p(e) without cancellation
+    return max(x,0.0)+l;
+}
+void main() {
+    uint hv=gl_WorkGroupID.x, j=gl_LocalInvocationID.x, kh=hv%16u;
+    float beta=sigmoid_(act[p.beta_raw+hv]);
+    float sp=softplus(act[p.alpha+hv]+param(p.dt_w+hv));
+    float g=param(p.a_w+hv)*sp;
+    if (j==0u) { act[p.beta_out+hv]=beta; act[p.softplus_out+hv]=sp; act[p.g_out+hv]=g; }
+    float decay=exp(g);
+    qs[j]=act[p.qk+kh*128u+j]*0.08838834764831845;
+    ks[j]=act[p.qk+2048u+kh*128u+j];
+    barrier();
+    uint base=p.ssm+hv*16384u+j;
+    // The state column in registers: one batch of loads, then the same arithmetic in
+    // the same order, then one batch of stores (loads/stores to one buffer serialize).
+    float col[128];
+    [[unroll]] for (uint i=0u;i<128u;i++) col[i]=state[base+i*128u];
+    float kv=0.0;
+    [[unroll]] for (uint i=0u;i<128u;i++) kv+=(col[i]*decay)*ks[i];
+    float delta=(act[p.v+hv*128u+j]-kv)*beta;
+    memoryBarrierShared();
+    float o=0.0;
+    [[unroll]] for (uint i=0u;i<128u;i++) {
+        float s=col[i]*decay+ks[i]*delta;
+        col[i]=s;
+        o+=s*qs[i];
+    }
+    [[unroll]] for (uint i=0u;i<128u;i++) state[base+i*128u]=col[i];
+    act[p.o+hv*128u+j]=o;
+    float inv=1.0/sqrt(wg_sum(o*o)/128.0+p.eps);
+    act[p.y+hv*128u+j]=((o*inv)*param(p.norm_w+j))*silu(act[p.z+hv*128u+j]);
+}
+
+#elif KERNEL == K_SWIGLU
+layout(push_constant) uniform P { uint g, u, y, n, rows_io; } p;
+void main() {
+    uint n=p.rows_io!=0u ? p.n*io[IO_COUNT] : p.n;
+    for (uint i=gl_GlobalInvocationID.x;i<n;i+=gl_NumWorkGroups.x*WG) act[p.y+i]=silu(act[p.g+i])*act[p.u+i];
+}
+
+#elif KERNEL == K_REDUCE
+// Split-K reduction in fixed split order: y[t][m] = sum_s part[s][t][m], rows t < io count.
+layout(push_constant) uniform P { uint part, splits, part_bs, y, y_rs, m; } p;
+void main() {
+    uint rows=io[2];
+    for (uint i=gl_GlobalInvocationID.x;i<rows*p.m;i+=gl_NumWorkGroups.x*WG) {
+        uint t=i/p.m, mm=i%p.m;
+        float s=act[p.part+t*p.m+mm];
+        for (uint z=1u;z<p.splits;z++) s+=act[p.part+z*p.part_bs+t*p.m+mm];
+        act[p.y+t*p.y_rs+mm]=s;
+    }
+}
+
+#elif KERNEL == K_EMBEDB
+// Row r < count: act[out + r*out_rs + c] = Q4_0 embedding row of io[tokens + r].
+layout(push_constant) uniform P { uint tensor, row_bytes, out_, columns, tokens, out_rs; } p;
+uint byte_at(uint b) { return (params[b>>2] >> (8*(b&3))) & 255; }
+void main() {
+    uint c=gl_GlobalInvocationID.x, r=gl_WorkGroupID.y;
+    if (c>=p.columns || r>=io[IO_COUNT]) return;
+    uint base=p.tensor+io[p.tokens+r]*p.row_bytes+(c/32)*18;
+    float d=unpackHalf2x16(params[base>>2]>>(8*(base&2))).x;
+    uint j=c%32;
+    uint q=(byte_at(base+2+(j%16))>>(4*(j/16)))&15;
+    act[p.out_+r*p.out_rs+c]=d*float(int(q)-8);
+}
+
+#elif KERNEL == K_QKB
+// Batched QK prep: workgroup (head h < 28, row r). Same arithmetic as K_QKPREP.
+// RoPE row r: cos at io[rope + r*64 + i], sin at io[rope + r*64 + 32 + i].
+layout(push_constant) uniform P { uint qf, kc, vc, qn, qr, kn, kr, qw, kw, kcache, vcache, ctx, rope; float eps; } p;
+shared float head[256];
+void main() {
+    uint h=gl_WorkGroupID.x, r=gl_WorkGroupID.y, d=gl_LocalInvocationID.x;
+    if (r>=io[IO_COUNT]) return;
+    bool is_q=h<24u;
+    uint kh=h-24u;
+    float v=is_q ? act[p.qf+r*12288u+h*512u+d] : act[p.kc+r*1024u+kh*256u+d];
+    float inv=1.0/sqrt(wg_sum(v*v)/256.0+p.eps);
+    float n=(v*inv)*param((is_q ? p.qw : p.kw)+d);
+    if (is_q) act[p.qn+r*6144u+h*256u+d]=n; else act[p.kn+r*1024u+kh*256u+d]=n;
+    head[d]=n;
+    barrier();
+    float o=n;
+    uint rb=p.rope+r*64u;
+    if (d<32u) {
+        float c=uintBitsToFloat(io[rb+d]), s=uintBitsToFloat(io[rb+32u+d]);
+        o=head[d]*c-head[d+32u]*s;
+    } else if (d<64u) {
+        float c=uintBitsToFloat(io[rb+d-32u]), s=uintBitsToFloat(io[rb+32u+d-32u]);
+        o=head[d-32u]*s+head[d]*c;
+    }
+    uint pos=io[IO_P0]+r;
+    if (is_q) {
+        act[p.qr+r*6144u+h*256u+d]=o;
+    } else {
+        act[p.kr+r*1024u+kh*256u+d]=o;
+        state[p.kcache+(kh*256u+d)*p.ctx+pos]=o;
+        state[p.vcache+(kh*p.ctx+pos)*256u+d]=act[p.vc+r*1024u+kh*256u+d];
+    }
+}
+
+#elif KERNEL == K_SOFTMAX
+// Causal softmax over raw scores of row (head h, token r): keys j <= p0+r get
+// exp(s*scale - max)/sum; keys p0+r < j < p0+count get exactly 0.
+layout(push_constant) uniform P { uint scores, ctx, head_stride; float scale; } p;
+void main() {
+    uint r=gl_WorkGroupID.x, h=gl_WorkGroupID.y, t=gl_LocalInvocationID.x;
+    uint count=io[IO_COUNT];
+    if (r>=count) return;
+    uint valid=io[IO_P0]+r+1u, keys=io[IO_P0]+count;
+    uint row=p.scores+h*p.head_stride+r*p.ctx;
+    float local_max=-3.402823466e38;
+    for (uint j=t;j<valid;j+=WG) local_max=max(local_max,act[row+j]*p.scale);
+    float m=wg_max(local_max);
+    float local_sum=0.0;
+    for (uint j=t;j<valid;j+=WG) {
+        float e=exp(act[row+j]*p.scale-m);
+        act[row+j]=e;
+        local_sum+=e;
+    }
+    float total=wg_sum(local_sum);
+    memoryBarrierBuffer();
+    barrier();
+    for (uint j=t;j<keys;j+=WG) act[row+j]=j<valid ? act[row+j]/total : 0.0;
+}
+
+#elif KERNEL == K_GATE
+// gated = pregate * sigmoid(gate part of Qcur_full); also stores the sigmoid.
+layout(push_constant) uniform P { uint pregate, qf, gates, gated; } p;
+void main() {
+    uint n=io[IO_COUNT]*6144u;
+    for (uint i=gl_GlobalInvocationID.x;i<n;i+=gl_NumWorkGroups.x*WG) {
+        uint r=i/6144u, c=i%6144u, h=c/256u, d=c%256u;
+        float g=sigmoid_(act[p.qf+r*12288u+h*512u+256u+d]);
+        act[p.gates+i]=g;
+        act[p.gated+i]=act[p.pregate+i]*g;
+    }
+}
+
+#elif KERNEL == K_CONVB
+// Batched conv: workgroup per 128-channel segment scans rows 0..count-1 sequentially.
+layout(push_constant) uniform P { uint mixed, raw, silu_, out_, w, conv; } p;
+void main() {
+    uint seg=gl_WorkGroupID.x, t=gl_LocalInvocationID.x, c=seg*128u+t;
+    uint sb=p.conv+c*3u, wb=p.w+c*4u;
+    float w0=param(wb), w1=param(wb+1u), w2=param(wb+2u), w3=param(wb+3u);
+    float s0=state[sb], s1=state[sb+1u], s2=state[sb+2u];
+    uint count=io[IO_COUNT];
+    for (uint r=0u;r<count;r++) {
+        uint at=r*10240u+c;
+        float x=act[p.mixed+at];
+        float y=s0*w0;
+        y+=s1*w1;
+        y+=s2*w2;
+        y+=x*w3;
+        s0=s1; s1=s2; s2=x;
+        act[p.raw+at]=y;
+        float a=silu(y);
+        act[p.silu_+at]=a;
+        float ss=wg_sum(a*a); // uniform: count is uniform
+        act[p.out_+at]=seg<32u ? a/sqrt(ss+1e-6) : a;
+    }
+    state[sb]=s0; state[sb+1u]=s1; state[sb+2u]=s2;
+}
+
+#elif KERNEL == K_DELTAB
+// Batched GatedDeltaNet: workgroup per value head scans rows sequentially; thread j
+// keeps its state column S[i][j] (i = key dim) in registers. Per-row arithmetic is
+// identical to K_DELTA. Block 13j scheduling: the gate scalars of up to SEG rows are
+// computed in a parallel prologue; q/k are double-buffered in LDS with the next row
+// prefetched into registers (one barrier per row); the gated RMS norm (y) is K_GNORMB.
+layout(push_constant) uniform P { uint qk, v, z, beta_raw, alpha, beta_out, softplus_out, g_out, o, y, ssm, a_w, dt_w, norm_w; float eps; } p;
+#define SEG 512u
+shared float qs[2][128];
+shared float ks[2][128];
+shared float seg_beta[SEG];
+shared float seg_decay[SEG];
+float softplus(float x) {
+    float e=exp(-abs(x)), u=1.0+e;
+    float l=(u==1.0) ? e : log(u)*(e/(u-1.0));
+    return max(x,0.0)+l;
+}
+void main() {
+    uint hv=gl_WorkGroupID.x, j=gl_LocalInvocationID.x, kh=hv%16u;
+    uint base=p.ssm+hv*16384u+j;
+    float s[128];
+    [[unroll]] for (uint i=0u;i<128u;i++) s[i]=state[base+i*128u];
+    float a_w=param(p.a_w+hv), dt=param(p.dt_w+hv);
+    uint count=io[IO_COUNT];
+    // Row 0's inputs; later rows are loaded one row ahead.
+    float qn=0.0, kn=0.0, vn=0.0;
+    if (count>0u) {
+        qn=act[p.qk+kh*128u+j]*0.08838834764831845;
+        kn=act[p.qk+2048u+kh*128u+j];
+        vn=act[p.v+hv*128u+j];
+    }
+    for (uint seg0=0u;seg0<count;seg0+=SEG) {
+        uint seg_n=min(SEG,count-seg0);
+        barrier(); // previous segment's readers of seg_beta/seg_decay are done
+        for (uint rr=j;rr<seg_n;rr+=128u) {
+            uint r=seg0+rr;
+            float beta=sigmoid_(act[p.beta_raw+r*48u+hv]);
+            float sp=softplus(act[p.alpha+r*48u+hv]+dt);
+            float g=a_w*sp;
+            act[p.beta_out+r*48u+hv]=beta; act[p.softplus_out+r*48u+hv]=sp; act[p.g_out+r*48u+hv]=g;
+            seg_beta[rr]=beta;
+            seg_decay[rr]=exp(g);
+        }
+        for (uint rr=0u;rr<seg_n;rr++) {
+            uint r=seg0+rr, b=r&1u;
+            // Buffer b was last read at row r-2; every thread has passed row r-1's
+            // barrier, hence finished row r-2.
+            qs[b][j]=qn;
+            ks[b][j]=kn;
+            float v=vn;
+            barrier(); // this row's q/k (and, at rr = 0, the segment's gate scalars)
+            if (r+1u<count) {
+                qn=act[p.qk+(r+1u)*10240u+kh*128u+j]*0.08838834764831845;
+                kn=act[p.qk+(r+1u)*10240u+2048u+kh*128u+j];
+                vn=act[p.v+(r+1u)*10240u+hv*128u+j];
+            }
+            float beta=seg_beta[rr], decay=seg_decay[rr];
+            float kv=0.0;
+            [[unroll]] for (uint i=0u;i<128u;i++) kv+=(s[i]*decay)*ks[b][i];
+            float delta=(v-kv)*beta;
+            memoryBarrierShared();
+            float o=0.0;
+            [[unroll]] for (uint i=0u;i<128u;i++) {
+                s[i]=s[i]*decay+ks[b][i]*delta;
+                o+=s[i]*qs[b][i];
+            }
+            act[p.o+r*6144u+hv*128u+j]=o;
+        }
+    }
+    [[unroll]] for (uint i=0u;i<128u;i++) state[base+i*128u]=s[i];
+}
+
+#elif KERNEL == K_GNORMB
+// Gated RMS norm of the batched GatedDeltaNet output (split out of K_DELTAB, block 13j):
+// workgroup (hv, r), thread j: y = rmsnorm(o)*ssm_norm*silu(z), the same expressions
+// and reduction tree as K_DELTA.
+layout(push_constant) uniform P { uint o, y, z, norm_w; float eps; } p;
+void main() {
+    uint hv=gl_WorkGroupID.x, r=gl_WorkGroupID.y, j=gl_LocalInvocationID.x;
+    if (r>=io[IO_COUNT]) return; // uniform per workgroup
+    uint at=r*6144u+hv*128u+j;
+    float o=act[p.o+at];
+    float inv=1.0/sqrt(wg_sum(o*o)/128.0+p.eps);
+    act[p.y+at]=((o*inv)*param(p.norm_w+j))*silu(act[p.z+at]);
+}
+
+#elif KERNEL == K_ZERO
+layout(push_constant) uniform P { uint first, count; } p;
+void main() {
+    for (uint i=gl_GlobalInvocationID.x;i<p.count;i+=gl_NumWorkGroups.x*WG) state[p.first+i]=0.0;
+}
+#endif

@@ -1,0 +1,65 @@
+{
+ "started_at": "2026-09-23T12:33:59.267577+00:00",
+ "argv": [
+  "tools/check_tool_parity.py",
+  "--engines",
+  "llama-fp32-full",
+  "--output",
+  "docs/bench/data/2026-09-24-tool-parity/llama-reference"
+ ],
+ "workload_sha256": "cdb5b83ff64aafbd9a2abbdc7d39a9f5e539d1ea319598199d3a166b84c3bded",
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "zerv_sha256": "40c1dcef67f2ce061cbb11afb2a674e9f588f602afe087d2e5cbeec6735e1a86",
+ "llama_server_sha256": "0f401589a34aabc75a2371cb39d92d717212e27d9a0c6e2bf30a8d643bf77d85",
+ "llama_version": "version: 0.4.1-dev (build 10964, commit b29c606e28)\nbuilt with GNU 16.2.1 for Linux x86_64",
+ "engines": {
+  "llama-fp32-full": {
+   "cmd": [
+    "/usr/bin/llama-server",
+    "-m",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "18093",
+    "-c",
+    "8192",
+    "-np",
+    "1",
+    "-ngl",
+    "99",
+    "--spec-type",
+    "none",
+    "--no-context-shift",
+    "--no-webui",
+    "--jinja",
+    "--chat-template-file",
+    "/home/USER/projects/zerv/third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/official-template.jinja",
+    "--reasoning-format",
+    "deepseek",
+    "--cache-ram",
+    "0",
+    "-a",
+    "qwen3.8-27b",
+    "-fa",
+    "on",
+    "-b",
+    "2048",
+    "-ub",
+    "512",
+    "-ctk",
+    "f32",
+    "-ctv",
+    "f32"
+   ],
+   "env": {
+    "GGML_VK_DISABLE_MMVQ": "1",
+    "GGML_VK_DISABLE_INTEGER_DOT_PRODUCT": "1",
+    "GGML_VK_DISABLE_COOPMAT": "1",
+    "GGML_VK_DISABLE_F16": "1"
+   }
+  }
+ },
+ "cases": [],
+ "finished_at": "2026-09-23T12:35:00.140890+00:00"
+}

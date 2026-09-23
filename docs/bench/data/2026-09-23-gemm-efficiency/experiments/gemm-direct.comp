@@ -1,0 +1,113 @@
+#version 450
+// EXPERIMENT (block 13h): Q4_0 prefill GEMM without LDS. Same bindings, push constants,
+// tile (256 M x 32 rows, 256 threads, 4 M rows per lane, 8 X rows per wave) and the same
+// per-element arithmetic and summation order as src/model/gemm.comp (FORMAT 2):
+//   a = fma(d, float(q), -8d); part = fma chain over the 32 k of a tile in k order;
+//   total += part per tile.
+// Each lane decodes its own 4 rows' blocks from registers (raw words prefetched one tile
+// ahead through VMEM). X comes through SMEM one kb (4 k) ahead. With no LDS traffic,
+// lgkmcnt only tracks the scalar X loads, so the prefetch is not serialized by LDS waits.
+// Quant formats only: K is a multiple of 32 (validated on the host).
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#define TM 4
+#define XW 8
+#define BM 256
+#define BN 32
+#define BK 32
+layout(local_size_x=256) in;
+layout(set=0,binding=0,std430) readonly buffer A { uint aw[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=2,std430) readonly buffer Io { uint io[]; };
+layout(set=0,binding=3,std430) readonly restrict buffer ActX { vec4 xin4[]; };
+layout(push_constant) uniform P {
+    uint a_base, a_rs, a_cs, a_bs, a_group;
+    uint x_base, x_rs, x_bs;
+    uint y_base, y_rs, y_bs;
+    uint m, k;
+    uint flags;
+    uint k_chunk;
+} p;
+#define IO_COUNT 2
+
+struct Raw { uint w0, w1, w2, w3, w4; };
+Raw load_block(uint b) {
+    uint wb=b>>2u;
+    Raw r; r.w0=aw[wb]; r.w1=aw[wb+1u]; r.w2=aw[wb+2u]; r.w3=aw[wb+3u]; r.w4=aw[wb+4u];
+    return r;
+}
+
+void main() {
+    uint tid=gl_LocalInvocationID.x, z=gl_WorkGroupID.z;
+    uint n=io[IO_COUNT];
+    uint M=p.m, K=p.k;
+    uint m0=gl_WorkGroupID.x*BM, t0=gl_WorkGroupID.y*BN;
+    if (m0>=M || t0>=n) return;
+    uint batch=p.k_chunk!=0u ? 0u : z;
+    uint k_begin=p.k_chunk!=0u ? z*p.k_chunk : 0u;
+    uint k_end=p.k_chunk!=0u ? min(K,k_begin+p.k_chunk) : K;
+    uint abase=p.a_base+(batch/p.a_group)*p.a_bs;
+    uint xbase=p.x_base+batch*p.x_bs;
+    uint lane=tid%64u, trow=t0+XW*subgroupBroadcastFirst(tid/64u);
+    uint rb[TM]; bool live[TM];
+    [[unroll]] for (uint i=0;i<TM;i++) {
+        uint row=m0+TM*lane+i;
+        live[i]=row<M;
+        rb[i]=abase+min(row,M-1u)*p.a_rs;
+    }
+    uint xrow[XW];
+    [[unroll]] for (uint j=0;j<XW;j++) xrow[j]=(xbase+min(trow+j,n-1u)*p.x_rs)/4u;
+    float total[TM][XW], part[TM][XW];
+    [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<XW;j++) total[i][j]=0.0;
+    Raw raw[TM];
+    [[unroll]] for (uint i=0;i<TM;i++) raw[i]=load_block(rb[i]+(k_begin/32u)*18u);
+    vec4 xv[XW];
+    [[unroll]] for (uint j=0;j<XW;j++) xv[j]=xin4[xrow[j]+k_begin/4u];
+    for (uint k0=k_begin;k0<k_end;k0+=BK) {
+        // Decode this tile's scales and payload words; prefetch the next tile's blocks.
+        float d[TM], c[TM]; uint qw[TM][4];
+        [[unroll]] for (uint i=0;i<TM;i++) {
+            uint b=rb[i]+(k0/32u)*18u;
+            bool odd=(b&2u)!=0u;
+            Raw r=raw[i];
+            d[i]=live[i] ? unpackHalf2x16(odd ? r.w0>>16u : r.w0).x : 0.0;
+            c[i]=-8.0*d[i];
+            qw[i][0]=odd ? r.w1 : (r.w0>>16u)|(r.w1<<16u);
+            qw[i][1]=odd ? r.w2 : (r.w1>>16u)|(r.w2<<16u);
+            qw[i][2]=odd ? r.w3 : (r.w2>>16u)|(r.w3<<16u);
+            qw[i][3]=odd ? r.w4 : (r.w3>>16u)|(r.w4<<16u);
+        }
+        uint kn=min(k0+BK,k_end-BK); // next tile (or this one again at the end: in range)
+        [[unroll]] for (uint i=0;i<TM;i++) raw[i]=load_block(rb[i]+(kn/32u)*18u);
+        [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<XW;j++) part[i][j]=0.0;
+        [[DIRECT_UNROLL]] for (uint kb=0;kb<BK/4;kb++) {
+            // Next kb's X (the first kb of the next tile after the last): issued first.
+            uint nk=kb+1u<BK/4u ? k0/4u+kb+1u : kn/4u;
+            vec4 xn[XW];
+            [[unroll]] for (uint j=0;j<XW;j++) xn[j]=xin4[xrow[j]+nk];
+            // k = 4kb..4kb+3: low nibbles of payload bytes k (k < 16), high nibbles of
+            // bytes k-16 (k >= 16).
+            vec4 a[TM];
+            [[unroll]] for (uint i=0;i<TM;i++) {
+                uint q=qw[i][kb%4u]>>(kb>=4u ? 4u : 0u);
+                a[i]=vec4(fma(d[i],float(q&15u),c[i]),fma(d[i],float((q>>8u)&15u),c[i]),
+                          fma(d[i],float((q>>16u)&15u),c[i]),fma(d[i],float((q>>24u)&15u),c[i]));
+            }
+            [[unroll]] for (uint kq=0;kq<4;kq++)
+                [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<XW;j++)
+                    part[i][j]=fma(a[i][kq],xv[j][kq],part[i][j]);
+            [[unroll]] for (uint j=0;j<XW;j++) xv[j]=xn[j];
+        }
+        [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<XW;j++) total[i][j]+=part[i][j];
+    }
+    uint ybase=p.y_base+z*p.y_bs;
+    [[unroll]] for (uint j=0;j<XW;j++) {
+        uint t=trow+j;
+        if (t>=n) continue;
+        [[unroll]] for (uint i=0;i<TM;i++) {
+            uint mm=m0+TM*lane+i;
+            if (mm<M) act[ybase+t*p.y_rs+mm]=total[i][j];
+        }
+    }
+}

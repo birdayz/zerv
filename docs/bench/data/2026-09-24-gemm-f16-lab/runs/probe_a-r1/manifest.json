@@ -1,0 +1,67 @@
+{
+ "started_at": "2026-09-23T15:55:25.961094+00:00",
+ "argv": [
+  "bench/run_gemm_f16.py",
+  "--output",
+  "third_party/gemm-lab/runs/probe_a-r1",
+  "--spv-dir",
+  "third_party/gemm-lab/v2",
+  "--spv-pattern",
+  "probe_a-{fmt}.spv",
+  "--grid",
+  "128x256",
+  "--wave",
+  "32",
+  "--x-f16",
+  "--rows",
+  "512",
+  "--warmup-ms",
+  "500",
+  "--only",
+  "blk.3.attn_output.weight",
+  "--dump",
+  "--reference-dump",
+  "third_party/gemm-lab/runs/baseline-r1/dump"
+ ],
+ "env": {},
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "tool_sha256": "916548c2165055d6a82c315e33a235172aec2a8e9f880b0a890e0f10bd75bd61",
+ "spv": {
+  "q4_0": "5b8123ccbf9233bd2c0f536ad3b40bc32bb9ebcfeb4bd88a35289448ae81ad11"
+ },
+ "power_cap_w": 339.0,
+ "performance_level": "auto",
+ "runs": [
+  {
+   "tensor": "blk.3.attn_output.weight",
+   "cmd": [
+    "/home/USER/projects/zerv/zig-out/bin/zerv-gemm-bench",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--coopmat",
+    "1",
+    "--variant",
+    "q4_0",
+    "--spv",
+    "third_party/gemm-lab/v2/probe_a-q4_0.spv",
+    "--grid",
+    "128x256",
+    "--k-chunk",
+    "0",
+    "--tensor",
+    "blk.3.attn_output.weight",
+    "--samples",
+    "200",
+    "--warmup-ms",
+    "500",
+    "--wave",
+    "32",
+    "--x-f16",
+    "1",
+    "--dump",
+    "/home/USER/projects/zerv/third_party/gemm-lab/runs/probe_a-r1/dump",
+    "512"
+   ]
+  }
+ ],
+ "finished_at": "2026-09-23T15:55:26.729617+00:00"
+}

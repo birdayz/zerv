@@ -1,0 +1,63 @@
+{
+ "started_at": "2026-09-23T17:13:50.054904+00:00",
+ "argv": [
+  "run_long_context.py",
+  "--output",
+  "../docs/bench/data/2026-09-24-gemm-f16x/serving-p12k-old",
+  "--zerv-binary",
+  "../third_party/serving-fixes/zerv-fd3f6770",
+  "--engines",
+  "zerv-f16",
+  "--paragraphs",
+  "60"
+ ],
+ "host": {
+  "system": "Linux",
+  "node": "benchmark-host",
+  "release": "7.2.6-arch2-1",
+  "version": "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000",
+  "machine": "x86_64",
+  "processor": ""
+ },
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "zerv_sha256": "fd3f677088ca675fdfa9dc0677750b3b8d24f0890dbe6a784d95c7b095122e91",
+ "llama_server_sha256": "0f401589a34aabc75a2371cb39d92d717212e27d9a0c6e2bf30a8d643bf77d85",
+ "llama_version": "version: 0.4.1-dev (build 10964, commit b29c606e28)\nbuilt with GNU 16.2.1 for Linux x86_64",
+ "template_sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041",
+ "context": 29504,
+ "repeats": 2,
+ "paragraphs": 60,
+ "max_tokens": 128,
+ "prompt_sha256": [
+  "3af9a60d53baa32c192f32b3c9fcc92d284b1a0bb69bb352b66c079f56d1eb94",
+  "71a83de26d2b9ad9180b61062f40cab57a5806c3095136d48457bfac9e00d724",
+  "fe1c55ea1f9fe07ce483e4816a35279f037f152552edbf6b1ca9378b501d2420"
+ ],
+ "engines": {
+  "zerv-f16": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/serving-fixes/zerv-fd3f6770",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18090",
+    "--context",
+    "29504",
+    "--prefill-precision",
+    "f16"
+   ],
+   "env": {},
+   "load_s": 7.508790565014351,
+   "vram_idle_before": 839204864,
+   "vram_loaded": 23831617536,
+   "vram_peak": 23934660608,
+   "host_memory": {
+    "VmHWM": "15473256 kB",
+    "VmRSS": "65092 kB"
+   }
+  }
+ },
+ "vram_before": 839204864,
+ "client": "python http.client streaming SSE; TTFT = first content delta; decode rate = (completion_tokens-1)/(last_delta-first_delta); request 0 is a warmup with a distinct session tag; every request has a unique prefix (no prefix/checkpoint reuse)",
+ "finished_at": "2026-09-23T17:14:54.646516+00:00"
+}

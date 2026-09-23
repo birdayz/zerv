@@ -1,0 +1,76 @@
+#version 450
+// Owned packed-weight matvec. No optional storage widths, subgroups or activation quantization.
+layout(local_size_x=64) in;
+layout(set=0, binding=0, std430) readonly buffer Weights { uint weights[]; };
+layout(set=0, binding=1, std430) readonly buffer Input { float input_values[]; };
+layout(set=0, binding=2, std430) writeonly buffer Output { float output_values[]; };
+layout(push_constant) uniform Params {
+    uint columns, rows, row_bytes, weight_offset, input_offset, output_offset, groups_x;
+} p;
+shared float partials[64];
+
+uint byte_at(uint offset) { return (weights[offset >> 2] >> (8*(offset & 3))) & 255; }
+float half_at(uint offset) {
+    return unpackHalf2x16(weights[offset >> 2])[(offset >> 1) & 1];
+}
+float decoded(uint row_start, uint column) {
+#if FORMAT == 0
+    return uintBitsToFloat(weights[(row_start >> 2)+column]);
+#elif FORMAT == 2 || FORMAT == 3
+    uint base = row_start+(column/32)*BLOCK_BYTES, c = column % 32;
+    uint q = (byte_at(base+PAYLOAD_OFFSET+c%16) >> (4*(c/16))) & 15;
+#if FORMAT == 2
+    return half_at(base)*float(int(q)-8);
+#else
+    precise float product = half_at(base)*float(q);
+    return product+half_at(base+2);
+#endif
+#elif FORMAT == 13
+    uint base = row_start+(column/256)*176, c = column % 256, g = c/32, lane = c%32;
+    uint scale, minimum;
+    if (g < 4) {
+        scale = byte_at(base+4+g) & 63;
+        minimum = byte_at(base+8+g) & 63;
+    } else {
+        scale = (byte_at(base+8+g) & 15) | ((byte_at(base+g) >> 6) << 4);
+        minimum = (byte_at(base+8+g) >> 4) | ((byte_at(base+4+g) >> 6) << 4);
+    }
+    uint q = ((byte_at(base+48+(g/2)*32+lane) >> (4*(g%2))) & 15) | (((byte_at(base+16+lane) >> g) & 1) << 4);
+    precise float factor = half_at(base)*float(scale);
+    precise float product = factor*float(q);
+    precise float bias = half_at(base+2)*float(minimum);
+    return product-bias;
+#elif FORMAT == 14
+    uint base = row_start+(column/256)*210, c = column%256;
+    uint h = c/128, g = (c%128)/32, lane = c%32;
+    uint low = (byte_at(base+h*64+(g%2)*32+lane) >> (4*(g/2))) & 15;
+    uint high = (byte_at(base+128+h*32+lane) >> (2*g)) & 3;
+    int scale = int(byte_at(base+192+c/16));
+    if (scale >= 128) scale -= 256;
+    precise float factor = half_at(base+208)*float(scale);
+    return factor*float(int(low | (high << 4))-32);
+#else
+#error Unsupported weight format
+#endif
+}
+void main() {
+    uint row = gl_WorkGroupID.y*p.groups_x+gl_WorkGroupID.x;
+    if (row >= p.rows) return; // Uniform branch: no invocation skips a workgroup barrier.
+    uint lane = gl_LocalInvocationID.x;
+    precise float sum = 0.0;
+    for (uint c=lane; c<p.columns; c+=64) {
+        precise float weight = decoded(p.weight_offset+row*p.row_bytes, c);
+        precise float product = weight*input_values[p.input_offset+c];
+        sum = sum+product;
+    }
+    partials[lane] = sum;
+    barrier();
+    for (uint stride=32; stride>0; stride>>=1) {
+        if (lane < stride) {
+            precise float combined = partials[lane]+partials[lane+stride];
+            partials[lane] = combined;
+        }
+        barrier();
+    }
+    if (lane == 0) output_values[p.output_offset+row] = partials[0];
+}

@@ -1,0 +1,33 @@
+session ~/projects/zerv/docs/bench/data/2026-09-24-bruh-e2e/session2.jsonl
+  1.2k in · 95 out · 4.0s · ttft 2.0s · 47 tok/s
+● bash ls -la && cat calc.py
+  ⎿ [computer: local]
+    total 8
+    drwxr-xr-x    2 <USER> <GROUP>    80 Sep 23 15:25 .
+    … 10 more lines
+● bash python -m pytest -x -q 2>&1 | head -60
+  ⎿ [computer: local]
+    /usr/bin/python: No module named pytest
+  1.5k in · 67 out · 3.8s · ttft 2.3s · 47 tok/s
+● bash cat test_calc.py && python -m unittest -v 2>&1 | tail -20
+  ⎿ [computer: local]
+    import unittest
+    from calc import add, mean
+    … 28 more lines
+
+Found it: `mean` subtracts 1 from the result. Fixing and re-running:
+
+
+
+  1.8k in · 111 out · 5.3s · ttft 2.9s · 47 tok/s
+● bash sed -i 's|return sum(values) / len(values) - 1|return sum(values) / len(values)|' calc.py && cat cal…
+  ⎿ [computer: local]
+    def add(a, b):
+        return a + b
+    … 11 more lines
+
+Bug: `mean()` in calc.py subtracted 1 from the computed average (`sum(values) / len(values) - 1`), so `mean([1, 2, 3, 4])` returned 1.5 instead of 2.5. Removed the `- 1`. Both tests now pass (2 run, 0 failures).
+
+  2k in · 101 out · 5.3s · ttft 3.2s · 47 tok/s
+4 steps · 6.4k new · 374 out
+bruh -p openai-compat -m qwen3.8-27b --storage sqlite-jsonl --resume /home/USER/projects/zerv/docs/bench/data/2026-09-24-bruh-e2e/session2.jsonl

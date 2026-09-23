@@ -1,0 +1,148 @@
+
+/usr/lib/libggml-base.so.0.24.0:     file format elf64-x86-64
+
+
+Disassembly of section .init:
+
+Disassembly of section .plt:
+
+Disassembly of section .text:
+
+000000000008f770 <dequantize_row_q6_K>:
+   8f770:	48 81 fa ff 00 00 00 	cmp    $0xff,%rdx
+   8f777:	0f 8e 01 02 00 00    	jle    8f97e <dequantize_row_q6_K+0x20e>
+   8f77d:	48 c1 fa 08          	sar    $0x8,%rdx
+   8f781:	41 57                	push   %r15
+   8f783:	49 89 f3             	mov    %rsi,%r11
+   8f786:	4c 8d 97 80 00 00 00 	lea    0x80(%rdi),%r10
+   8f78d:	f3 0f 10 25 33 fb 02 	movss  0x2fb33(%rip),%xmm4        # bf2c8 <__func__.8+0x18>
+   8f794:	00 
+   8f795:	f3 0f 10 1d 9b ff 02 	movss  0x2ff9b(%rip),%xmm3        # bf738 <__func__.8+0x488>
+   8f79c:	00 
+   8f79d:	41 56                	push   %r14
+   8f79f:	41 55                	push   %r13
+   8f7a1:	41 54                	push   %r12
+   8f7a3:	55                   	push   %rbp
+   8f7a4:	48 89 d5             	mov    %rdx,%rbp
+   8f7a7:	53                   	push   %rbx
+   8f7a8:	31 db                	xor    %ebx,%ebx
+   8f7aa:	66 0f 1f 44 00 00    	nopw   0x0(%rax,%rax,1)
+   8f7b0:	41 0f b7 42 50       	movzwl 0x50(%r10),%eax
+   8f7b5:	89 c2                	mov    %eax,%edx
+   8f7b7:	c1 e0 11             	shl    $0x11,%eax
+   8f7ba:	c1 e2 10             	shl    $0x10,%edx
+   8f7bd:	81 e2 00 00 00 80    	and    $0x80000000,%edx
+   8f7c3:	3d ff ff ff 07       	cmp    $0x7ffffff,%eax
+   8f7c8:	0f 87 97 01 00 00    	ja     8f965 <dequantize_row_q6_K+0x1f5>
+   8f7ce:	c1 e8 11             	shr    $0x11,%eax
+   8f7d1:	0d 00 00 00 3f       	or     $0x3f000000,%eax
+   8f7d6:	66 0f 6e e8          	movd   %eax,%xmm5
+   8f7da:	f3 0f 5c eb          	subss  %xmm3,%xmm5
+   8f7de:	66 0f 7e e8          	movd   %xmm5,%eax
+   8f7e2:	09 c2                	or     %eax,%edx
+   8f7e4:	4d 8d 42 80          	lea    -0x80(%r10),%r8
+   8f7e8:	49 8d 7a 40          	lea    0x40(%r10),%rdi
+   8f7ec:	4d 89 d1             	mov    %r10,%r9
+   8f7ef:	66 0f 6e ca          	movd   %edx,%xmm1
+   8f7f3:	4c 89 de             	mov    %r11,%rsi
+   8f7f6:	31 d2                	xor    %edx,%edx
+   8f7f8:	0f 1f 84 00 00 00 00 	nopl   0x0(%rax,%rax,1)
+   8f7ff:	00 
+   8f800:	41 0f b6 04 11       	movzbl (%r9,%rdx,1),%eax
+   8f805:	45 0f b6 24 10       	movzbl (%r8,%rdx,1),%r12d
+   8f80a:	89 d1                	mov    %edx,%ecx
+   8f80c:	66 0f ef c0          	pxor   %xmm0,%xmm0
+   8f810:	c1 f9 04             	sar    $0x4,%ecx
+   8f813:	66 0f ef d2          	pxor   %xmm2,%xmm2
+   8f817:	45 0f b6 6c 10 20    	movzbl 0x20(%r8,%rdx,1),%r13d
+   8f81d:	41 89 c6             	mov    %eax,%r14d
+   8f820:	45 89 e7             	mov    %r12d,%r15d
+   8f823:	41 c0 ec 04          	shr    $0x4,%r12b
+   8f827:	41 c1 e6 04          	shl    $0x4,%r14d
+   8f82b:	41 83 e7 0f          	and    $0xf,%r15d
+   8f82f:	41 83 e6 30          	and    $0x30,%r14d
+   8f833:	45 09 fe             	or     %r15d,%r14d
+   8f836:	45 89 ef             	mov    %r13d,%r15d
+   8f839:	41 c0 ed 04          	shr    $0x4,%r13b
+   8f83d:	41 83 ee 20          	sub    $0x20,%r14d
+   8f841:	41 83 e7 0f          	and    $0xf,%r15d
+   8f845:	45 0f be f6          	movsbl %r14b,%r14d
+   8f849:	f3 41 0f 2a c6       	cvtsi2ss %r14d,%xmm0
+   8f84e:	44 0f be 34 0f       	movsbl (%rdi,%rcx,1),%r14d
+   8f853:	f3 41 0f 2a d6       	cvtsi2ss %r14d,%xmm2
+   8f858:	44 8d 34 85 00 00 00 	lea    0x0(,%rax,4),%r14d
+   8f85f:	00 
+   8f860:	41 83 e6 30          	and    $0x30,%r14d
+   8f864:	45 09 fe             	or     %r15d,%r14d
+   8f867:	41 83 ee 20          	sub    $0x20,%r14d
+   8f86b:	f3 0f 59 d1          	mulss  %xmm1,%xmm2
+   8f86f:	45 0f be f6          	movsbl %r14b,%r14d
+   8f873:	f3 0f 59 c2          	mulss  %xmm2,%xmm0
+   8f877:	66 0f ef d2          	pxor   %xmm2,%xmm2
+   8f87b:	f3 0f 11 04 96       	movss  %xmm0,(%rsi,%rdx,4)
+   8f880:	66 0f ef c0          	pxor   %xmm0,%xmm0
+   8f884:	f3 41 0f 2a c6       	cvtsi2ss %r14d,%xmm0
+   8f889:	44 0f be 74 0f 02    	movsbl 0x2(%rdi,%rcx,1),%r14d
+   8f88f:	f3 41 0f 2a d6       	cvtsi2ss %r14d,%xmm2
+   8f894:	44 0f be 74 0f 04    	movsbl 0x4(%rdi,%rcx,1),%r14d
+   8f89a:	f3 0f 59 d1          	mulss  %xmm1,%xmm2
+   8f89e:	f3 0f 59 c2          	mulss  %xmm2,%xmm0
+   8f8a2:	66 0f ef d2          	pxor   %xmm2,%xmm2
+   8f8a6:	f3 0f 11 84 96 80 00 	movss  %xmm0,0x80(%rsi,%rdx,4)
+   8f8ad:	00 00 
+   8f8af:	66 0f ef c0          	pxor   %xmm0,%xmm0
+   8f8b3:	f3 41 0f 2a c6       	cvtsi2ss %r14d,%xmm0
+   8f8b8:	41 89 c6             	mov    %eax,%r14d
+   8f8bb:	c0 e8 06             	shr    $0x6,%al
+   8f8be:	41 83 e6 30          	and    $0x30,%r14d
+   8f8c2:	c1 e0 04             	shl    $0x4,%eax
+   8f8c5:	45 09 f4             	or     %r14d,%r12d
+   8f8c8:	44 09 e8             	or     %r13d,%eax
+   8f8cb:	41 83 ec 20          	sub    $0x20,%r12d
+   8f8cf:	83 e8 20             	sub    $0x20,%eax
+   8f8d2:	f3 0f 59 c1          	mulss  %xmm1,%xmm0
+   8f8d6:	45 0f be e4          	movsbl %r12b,%r12d
+   8f8da:	0f be c0             	movsbl %al,%eax
+   8f8dd:	f3 41 0f 2a d4       	cvtsi2ss %r12d,%xmm2
+   8f8e2:	f3 0f 59 c2          	mulss  %xmm2,%xmm0
+   8f8e6:	66 0f ef d2          	pxor   %xmm2,%xmm2
+   8f8ea:	f3 0f 11 84 96 00 01 	movss  %xmm0,0x100(%rsi,%rdx,4)
+   8f8f1:	00 00 
+   8f8f3:	66 0f ef c0          	pxor   %xmm0,%xmm0
+   8f8f7:	f3 0f 2a c0          	cvtsi2ss %eax,%xmm0
+   8f8fb:	0f be 44 0f 06       	movsbl 0x6(%rdi,%rcx,1),%eax
+   8f900:	f3 0f 2a d0          	cvtsi2ss %eax,%xmm2
+   8f904:	f3 0f 59 d1          	mulss  %xmm1,%xmm2
+   8f908:	f3 0f 59 c2          	mulss  %xmm2,%xmm0
+   8f90c:	f3 0f 11 84 96 80 01 	movss  %xmm0,0x180(%rsi,%rdx,4)
+   8f913:	00 00 
+   8f915:	48 83 c2 01          	add    $0x1,%rdx
+   8f919:	48 83 fa 20          	cmp    $0x20,%rdx
+   8f91d:	0f 85 dd fe ff ff    	jne    8f800 <dequantize_row_q6_K+0x90>
+   8f923:	49 83 c0 40          	add    $0x40,%r8
+   8f927:	48 81 c6 00 02 00 00 	add    $0x200,%rsi
+   8f92e:	49 83 c1 20          	add    $0x20,%r9
+   8f932:	48 83 c7 08          	add    $0x8,%rdi
+   8f936:	4d 39 d0             	cmp    %r10,%r8
+   8f939:	0f 85 b7 fe ff ff    	jne    8f7f6 <dequantize_row_q6_K+0x86>
+   8f93f:	48 83 c3 01          	add    $0x1,%rbx
+   8f943:	49 81 c3 00 04 00 00 	add    $0x400,%r11
+   8f94a:	49 81 c2 d2 00 00 00 	add    $0xd2,%r10
+   8f951:	48 39 dd             	cmp    %rbx,%rbp
+   8f954:	0f 8f 56 fe ff ff    	jg     8f7b0 <dequantize_row_q6_K+0x40>
+   8f95a:	5b                   	pop    %rbx
+   8f95b:	5d                   	pop    %rbp
+   8f95c:	41 5c                	pop    %r12
+   8f95e:	41 5d                	pop    %r13
+   8f960:	41 5e                	pop    %r14
+   8f962:	41 5f                	pop    %r15
+   8f964:	c3                   	ret
+   8f965:	c1 e8 04             	shr    $0x4,%eax
+   8f968:	05 00 00 00 70       	add    $0x70000000,%eax
+   8f96d:	66 0f 6e f0          	movd   %eax,%xmm6
+   8f971:	f3 0f 59 f4          	mulss  %xmm4,%xmm6
+   8f975:	66 0f 7e f0          	movd   %xmm6,%eax
+   8f979:	e9 64 fe ff ff       	jmp    8f7e2 <dequantize_row_q6_K+0x72>
+   8f97e:	c3                   	ret
+
+Disassembly of section .fini:

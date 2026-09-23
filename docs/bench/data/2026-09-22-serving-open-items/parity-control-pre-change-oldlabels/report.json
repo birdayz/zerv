@@ -1,0 +1,368 @@
+{
+ "started_at": "2026-09-23T04:08:05.886187+00:00",
+ "argv": [
+  "tools/check_parity.py",
+  "--output",
+  "docs/bench/data/2026-09-22-serving-open-items/parity-control-pre-change",
+  "--zerv-binary",
+  "third_party/serving-bench/2026-09-22-gemm-accuracy-serving-run1/zerv"
+ ],
+ "workload_sha256": "10c17f8cb519cb364c28b76314b7960cbfae375b326b4c7cf8d7b1f55e6cdb30",
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "zerv_sha256": "1566998ee11d0b52255e31d4efd56eab62928137107a0a7053a7784f5c178c7a",
+ "llama_server_sha256": "0f401589a34aabc75a2371cb39d92d717212e27d9a0c6e2bf30a8d643bf77d85",
+ "llama_version": "version: 0.4.1-dev (build 10964, commit b29c606e28)\nbuilt with GNU 16.2.1 for Linux x86_64",
+ "engines": {
+  "llama-fp32-full": {
+   "cmd": [
+    "/usr/bin/llama-server",
+    "-m",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "18097",
+    "-c",
+    "8192",
+    "-np",
+    "1",
+    "-ngl",
+    "99",
+    "--spec-type",
+    "none",
+    "--no-context-shift",
+    "--no-webui",
+    "--jinja",
+    "--chat-template-file",
+    "/home/USER/projects/zerv/third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/official-template.jinja",
+    "--reasoning-format",
+    "deepseek",
+    "--cache-ram",
+    "0",
+    "-a",
+    "qwen3.8-27b",
+    "-fa",
+    "on",
+    "-b",
+    "2048",
+    "-ub",
+    "512",
+    "-ctk",
+    "f32",
+    "-ctv",
+    "f32"
+   ],
+   "env": {
+    "GGML_VK_DISABLE_MMVQ": "1",
+    "GGML_VK_DISABLE_INTEGER_DOT_PRODUCT": "1",
+    "GGML_VK_DISABLE_COOPMAT": "1",
+    "GGML_VK_DISABLE_F16": "1"
+   }
+  },
+  "zerv": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/serving-bench/parity-control-pre-change/zerv",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18097",
+    "--context",
+    "8192"
+   ],
+   "env": {}
+  }
+ },
+ "cases": [
+  {
+   "case": "think-low-complete",
+   "mode": "json",
+   "verdict": "FORMAT-MISMATCH",
+   "llama": {
+    "reasoning": "The user wants me to multiply 17 by 23 and reply with just the number.\n\n17 \u00d7 23 = 17 \u00d7 20 + 17 \u00d7 3 = 340 + 51 = 391\n",
+    "content": "391",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 56,
+     "completion_tokens": 63
+    },
+    "reasoning_key_present": true
+   },
+   "zerv": {
+    "reasoning": "The user wants me to multiply 17 by 23 and reply with just the number.\n\n17 \u00d7 23 = 17 \u00d7 20 + 17 \u00d7 3 = 340 + 51 = 391",
+    "content": "391",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 56,
+     "completion_tokens": 63
+    },
+    "reasoning_key_present": true
+   }
+  },
+  {
+   "case": "think-low-complete",
+   "mode": "sse",
+   "verdict": "FORMAT-MISMATCH",
+   "llama": {
+    "reasoning": "The user wants me to multiply 17 by 23 and reply with just the number.\n\n17 \u00d7 23 = 17 \u00d7 20 + 17 \u00d7 3 = 340 + 51 = 391\n",
+    "content": "391",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 56,
+     "completion_tokens": 63
+    }
+   },
+   "zerv": {
+    "reasoning": "The user wants me to multiply 17 by 23 and reply with just the number.\n\n17 \u00d7 23 = 17 \u00d7 20 + 17 \u00d7 3 = 340 + 51 = 391",
+    "content": "391",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 56,
+     "completion_tokens": 63
+    }
+   }
+  },
+  {
+   "case": "think-cut-in-reasoning",
+   "mode": "json",
+   "verdict": "equal",
+   "llama": {
+    "reasoning": "We need answer user: Explain step by step how to compute gcd of 1071 and 462 using Euclidean algorithm. Need provide final. Need be clear. Let's compute",
+    "content": "",
+    "finish": "length",
+    "usage": {
+     "prompt_tokens": 81,
+     "completion_tokens": 40
+    },
+    "reasoning_key_present": true
+   },
+   "zerv": {
+    "reasoning": "We need answer user: Explain step by step how to compute gcd of 1071 and 462 using Euclidean algorithm. Need provide final. Need be clear. Let's compute",
+    "content": "",
+    "finish": "length",
+    "usage": {
+     "prompt_tokens": 81,
+     "completion_tokens": 40
+    },
+    "reasoning_key_present": true
+   }
+  },
+  {
+   "case": "think-cut-in-reasoning",
+   "mode": "sse",
+   "verdict": "equal",
+   "llama": {
+    "reasoning": "We need answer user: Explain step by step how to compute gcd of 1071 and 462 using Euclidean algorithm. Need provide final. Need be clear. Let's compute",
+    "content": "",
+    "finish": "length",
+    "usage": {
+     "prompt_tokens": 81,
+     "completion_tokens": 40
+    }
+   },
+   "zerv": {
+    "reasoning": "We need answer user: Explain step by step how to compute gcd of 1071 and 462 using Euclidean algorithm. Need provide final. Need be clear. Let's compute",
+    "content": "",
+    "finish": "length",
+    "usage": {
+     "prompt_tokens": 81,
+     "completion_tokens": 40
+    }
+   }
+  },
+  {
+   "case": "think-stop-think-end",
+   "mode": "json",
+   "verdict": "token-divergence",
+   "llama": {
+    "reasoning": "The user wants me to multiply 17 by 23 and reply with just the number.\n\n17 \u00d7 23 = 17 \u00d7 20 + 17 \u00d7 3 = 340 + 51 = 391\n",
+    "content": "",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 56,
+     "completion_tokens": 58
+    },
+    "reasoning_key_present": true
+   },
+   "zerv": {
+    "reasoning": "The user wants me to multiply 17 by 23 and reply with just the number.\n\n17 \u00d7 23 = 17 \u00d7 20 + 17 \u00d7 3 = 340 + 51 = 391",
+    "content": "391",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 56,
+     "completion_tokens": 63
+    },
+    "reasoning_key_present": true
+   }
+  },
+  {
+   "case": "think-stop-think-end",
+   "mode": "sse",
+   "verdict": "token-divergence",
+   "llama": {
+    "reasoning": "The user wants me to multiply 17 by 23 and reply with just the number.\n\n17 \u00d7 23 = 17 \u00d7 20 + 17 \u00d7 3 = 340 + 51 = 391\n",
+    "content": "",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 56,
+     "completion_tokens": 58
+    }
+   },
+   "zerv": {
+    "reasoning": "The user wants me to multiply 17 by 23 and reply with just the number.\n\n17 \u00d7 23 = 17 \u00d7 20 + 17 \u00d7 3 = 340 + 51 = 391",
+    "content": "391",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 56,
+     "completion_tokens": 63
+    }
+   }
+  },
+  {
+   "case": "think-stop-blank-line",
+   "mode": "json",
+   "verdict": "equal",
+   "llama": {
+    "reasoning": "The user wants me to multiply 17 by 23 and reply with just the number.",
+    "content": "",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 56,
+     "completion_tokens": 21
+    },
+    "reasoning_key_present": true
+   },
+   "zerv": {
+    "reasoning": "The user wants me to multiply 17 by 23 and reply with just the number.",
+    "content": "",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 56,
+     "completion_tokens": 21
+    },
+    "reasoning_key_present": true
+   }
+  },
+  {
+   "case": "think-stop-blank-line",
+   "mode": "sse",
+   "verdict": "equal",
+   "llama": {
+    "reasoning": "The user wants me to multiply 17 by 23 and reply with just the number.",
+    "content": "",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 56,
+     "completion_tokens": 21
+    }
+   },
+   "zerv": {
+    "reasoning": "The user wants me to multiply 17 by 23 and reply with just the number.",
+    "content": "",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 56,
+     "completion_tokens": 21
+    }
+   }
+  },
+  {
+   "case": "nothink-stop-blank-line",
+   "mode": "json",
+   "verdict": "equal",
+   "llama": {
+    "reasoning": null,
+    "content": "The ocean stretches out in an endless expanse of deep blue, its surface rippling with gentle waves that whisper against the shore. Beneath the shimmering light, a vibrant world thrives, filled with colorful coral reefs and schools of fish darting through the clear water, creating a mesmerizing dance of life and movement.",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 26,
+     "completion_tokens": 66
+    },
+    "reasoning_key_present": false
+   },
+   "zerv": {
+    "reasoning": null,
+    "content": "The ocean stretches out in an endless expanse of deep blue, its surface rippling with gentle waves that whisper against the shore. Beneath the shimmering light, a vibrant world thrives, filled with colorful coral reefs and schools of fish darting through the clear water, creating a mesmerizing dance of life and movement.",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 26,
+     "completion_tokens": 66
+    },
+    "reasoning_key_present": false
+   }
+  },
+  {
+   "case": "nothink-stop-blank-line",
+   "mode": "sse",
+   "verdict": "equal",
+   "llama": {
+    "reasoning": null,
+    "content": "The ocean stretches out in an endless expanse of deep blue, its surface rippling with gentle waves that whisper against the shore. Beneath the shimmering light, a vibrant world thrives, filled with colorful coral reefs and schools of fish darting through the clear water, creating a mesmerizing dance of life and movement.",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 26,
+     "completion_tokens": 66
+    }
+   },
+   "zerv": {
+    "reasoning": null,
+    "content": "The ocean stretches out in an endless expanse of deep blue, its surface rippling with gentle waves that whisper against the shore. Beneath the shimmering light, a vibrant world thrives, filled with colorful coral reefs and schools of fish darting through the clear water, creating a mesmerizing dance of life and movement.",
+    "finish": "stop",
+    "usage": {
+     "prompt_tokens": 26,
+     "completion_tokens": 66
+    }
+   }
+  },
+  {
+   "case": "nothink-length",
+   "mode": "json",
+   "verdict": "equal",
+   "llama": {
+    "reasoning": null,
+    "content": "The ocean stretches out in an endless expanse of deep blue, its surface rippling with gentle waves that whisper against the shore. Beneath the shimmering light, a vibrant world thrives, filled with colorful coral reefs and schools of fish",
+    "finish": "length",
+    "usage": {
+     "prompt_tokens": 26,
+     "completion_tokens": 48
+    },
+    "reasoning_key_present": false
+   },
+   "zerv": {
+    "reasoning": null,
+    "content": "The ocean stretches out in an endless expanse of deep blue, its surface rippling with gentle waves that whisper against the shore. Beneath the shimmering light, a vibrant world thrives, filled with colorful coral reefs and schools of fish",
+    "finish": "length",
+    "usage": {
+     "prompt_tokens": 26,
+     "completion_tokens": 48
+    },
+    "reasoning_key_present": false
+   }
+  },
+  {
+   "case": "nothink-length",
+   "mode": "sse",
+   "verdict": "equal",
+   "llama": {
+    "reasoning": null,
+    "content": "The ocean stretches out in an endless expanse of deep blue, its surface rippling with gentle waves that whisper against the shore. Beneath the shimmering light, a vibrant world thrives, filled with colorful coral reefs and schools of fish",
+    "finish": "length",
+    "usage": {
+     "prompt_tokens": 26,
+     "completion_tokens": 48
+    }
+   },
+   "zerv": {
+    "reasoning": null,
+    "content": "The ocean stretches out in an endless expanse of deep blue, its surface rippling with gentle waves that whisper against the shore. Beneath the shimmering light, a vibrant world thrives, filled with colorful coral reefs and schools of fish",
+    "finish": "length",
+    "usage": {
+     "prompt_tokens": 26,
+     "completion_tokens": 48
+    }
+   }
+  }
+ ],
+ "formatting_ok": false,
+ "all_equal": false,
+ "finished_at": "2026-09-23T04:08:57.452264+00:00"
+}

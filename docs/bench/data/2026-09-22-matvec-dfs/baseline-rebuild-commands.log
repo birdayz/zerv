@@ -1,0 +1,51 @@
+["/usr/bin/python3", "/home/USER/projects/zerv/third_party/matvec-dfs/rebuilt-baseline-final/source/tools/compile_matvec.py", "--output-dir", "/home/USER/projects/zerv/third_party/matvec-dfs/rebuilt-baseline-final/shaders"]
+{
+  "source_sha256": "8743b8bc0184747048f4c18bcfd41ee1f215ba820bb144a7791b28430b1a0a44",
+  "tools": {
+    "glslc": "4a4743cde357af0949cdbc07668802297327e993e548f80f4e2ee67ba9b6c74d",
+    "spirv-val": "02fae2475ba0f3cb4987aca3c9eb938e8543cf269244bfcb856d8e0c252c753b"
+  },
+  "modules": {
+    "f32": {
+      "sha256": "0509812a2007ad45f7b95990083f66af90e66a4cca283aa41cc11edca3ac5ff1",
+      "bytes": 3004
+    },
+    "q4_0": {
+      "sha256": "c5fc6321ca98a476ec1ec737be49d548eb25517422a5168c5a0b675ac0584c48",
+      "bytes": 4520
+    },
+    "q4_1": {
+      "sha256": "01bdc7f47785d02f87862e57321eb126e4f78f6f1e77b5b6a415529574a83e5e",
+      "bytes": 5520
+    },
+    "q5_k": {
+      "sha256": "ae5986044d3d79877798b42f79df35d673dfa33c642335e028f24463145af538",
+      "bytes": 7380
+    },
+    "q6_k": {
+      "sha256": "25e867c2dfda72647471c3fae2eb94c6c7f2344dac2562ccd4dad552a10b79a6",
+      "bytes": 5620
+    }
+  }
+}
+["/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig", "build", "test", "gpu-test", "--summary", "all"]
+Build Summary: 6/6 steps succeeded; 47/47 tests passed
+test success
++- run test 41 pass (41 total) 18s MaxRSS:50M
+   +- compile test Debug native success 28s MaxRSS:901M
+gpu-test success
++- run test 6 pass (6 total) 2s MaxRSS:59M
+   +- compile test Debug native success 3s MaxRSS:466M
+
+["/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig", "build", "test", "gpu-test", "gpu-matvec-bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native", "--summary", "all"]
+Build Summary: 9/9 steps succeeded; 47/47 tests passed
+test success
++- run test 41 pass (41 total) 2s MaxRSS:45M
+   +- compile test ReleaseFast native success 58s MaxRSS:1G
+gpu-test success
++- run test 6 pass (6 total) 543ms MaxRSS:57M
+   +- compile test ReleaseFast native success 19s MaxRSS:691M
+gpu-matvec-bench-build success
++- install zerv-gpu-matvec-bench success
+   +- compile exe zerv-gpu-matvec-bench ReleaseFast native success 13s MaxRSS:434M
+

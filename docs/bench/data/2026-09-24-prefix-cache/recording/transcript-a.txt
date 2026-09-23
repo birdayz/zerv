@@ -1,0 +1,41 @@
+session ~/projects/zerv/docs/bench/data/2026-09-24-prefix-cache/recording/session-a-bruh.jsonl
+I'll find the most recently modified .md files in that directory.
+
+
+
+  12k in · 144 out · 19.1s · ttft 15.7s · 43 tok/s
+● bash find ~/projects/zerv/docs/bench -maxdepth 1 -name '*.md' -type f -printf '%T@ %p\n' | sort -rn | hea…
+  ⎿ [computer: local]
+    1790170246.1238332540 /home/USER/projects/zerv/docs/bench/2026-09-24-tool-calling.md
+    1790166064.7130538350 /home/USER/projects/zerv/docs/bench/2026-09-24-long-context.md
+    … 1 more lines
+  13k in · 12k cached · 117 out · 3.4s · ttft 594ms · 42 tok/s
+● bash for f in 2026-09-24-tool-calling.md 2026-09-24-long-context.md 2026-09-24-f16-prefill.md; do echo "=…
+  ⎿ [computer: local]
+    === 2026-09-24-tool-calling.md ===
+    === 2026-09-24-long-context.md ===
+    … 5 more lines
+
+I need the full paths.
+
+
+
+  13k in · 13k cached · 145 out · 4.2s · ttft 782ms · 42 tok/s
+● bash cd ~/projects/zerv/docs/bench && for f in 2026-09-24-tool-calling.md 2026-09-24-long-context.md 2026…
+  ⎿ [computer: local]
+    === 2026-09-24-tool-calling.md ===
+    # Tool calling: parity with llama-server and an end-to-end bruh run (2026-09-24, block 12c)
+    … 4 more lines
+
+The three most recently modified `.md` reports in `~/projects/zerv/docs/bench` and their first headings:
+
+1. **2026-09-24-tool-calling.md**
+   `# Tool calling: parity with llama-server and an end-to-end bruh run (2026-09-24, block 12c)`
+2. **2026-09-24-long-context.md**
+   `# Long-context prefill and decode at the current context cap (2026-09-24)`
+3. **2026-09-24-f16-prefill.md**
+   `# Explicit f16 prefill mode (block 14): speed, accuracy and the matched comparison`
+
+  13k in · 13k cached · 253 out · 6.8s · ttft 789ms · 42 tok/s
+4 steps · 13k new + 38k cached · 659 out
+bruh -p openai-compat -m qwen3.8-27b --storage sqlite-jsonl --resume /home/USER/projects/zerv/docs/bench/data/2026-09-24-prefix-cache/recording/session-a-bruh.jsonl

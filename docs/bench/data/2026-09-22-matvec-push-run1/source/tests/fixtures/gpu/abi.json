@@ -1,0 +1,759 @@
+{
+  "structs": [
+    {
+      "name": "VkApplicationInfo",
+      "size": 48,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "pApplicationName": 16,
+        "applicationVersion": 24,
+        "pEngineName": 32,
+        "engineVersion": 40,
+        "apiVersion": 44
+      }
+    },
+    {
+      "name": "VkBufferCopy",
+      "size": 24,
+      "alignment": 8,
+      "fields": {
+        "srcOffset": 0,
+        "dstOffset": 8,
+        "size": 16
+      }
+    },
+    {
+      "name": "VkBufferCreateInfo",
+      "size": 56,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "flags": 16,
+        "size": 24,
+        "usage": 32,
+        "sharingMode": 36,
+        "queueFamilyIndexCount": 40,
+        "pQueueFamilyIndices": 48
+      }
+    },
+    {
+      "name": "VkBufferMemoryBarrier",
+      "size": 56,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "srcAccessMask": 16,
+        "dstAccessMask": 20,
+        "srcQueueFamilyIndex": 24,
+        "dstQueueFamilyIndex": 28,
+        "buffer": 32,
+        "offset": 40,
+        "size": 48
+      }
+    },
+    {
+      "name": "VkCommandBufferAllocateInfo",
+      "size": 32,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "commandPool": 16,
+        "level": 24,
+        "commandBufferCount": 28
+      }
+    },
+    {
+      "name": "VkCommandBufferBeginInfo",
+      "size": 32,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "flags": 16,
+        "pInheritanceInfo": 24
+      }
+    },
+    {
+      "name": "VkCommandBufferInheritanceInfo",
+      "size": 56,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "renderPass": 16,
+        "subpass": 24,
+        "framebuffer": 32,
+        "occlusionQueryEnable": 40,
+        "queryFlags": 44,
+        "pipelineStatistics": 48
+      }
+    },
+    {
+      "name": "VkCommandPoolCreateInfo",
+      "size": 24,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "flags": 16,
+        "queueFamilyIndex": 20
+      }
+    },
+    {
+      "name": "VkComputePipelineCreateInfo",
+      "size": 96,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "flags": 16,
+        "stage": 24,
+        "layout": 72,
+        "basePipelineHandle": 80,
+        "basePipelineIndex": 88
+      }
+    },
+    {
+      "name": "VkCopyDescriptorSet",
+      "size": 56,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "srcSet": 16,
+        "srcBinding": 24,
+        "srcArrayElement": 28,
+        "dstSet": 32,
+        "dstBinding": 40,
+        "dstArrayElement": 44,
+        "descriptorCount": 48
+      }
+    },
+    {
+      "name": "VkDescriptorBufferInfo",
+      "size": 24,
+      "alignment": 8,
+      "fields": {
+        "buffer": 0,
+        "offset": 8,
+        "range": 16
+      }
+    },
+    {
+      "name": "VkDescriptorImageInfo",
+      "size": 24,
+      "alignment": 8,
+      "fields": {
+        "sampler": 0,
+        "imageView": 8,
+        "imageLayout": 16
+      }
+    },
+    {
+      "name": "VkDescriptorPoolCreateInfo",
+      "size": 40,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "flags": 16,
+        "maxSets": 20,
+        "poolSizeCount": 24,
+        "pPoolSizes": 32
+      }
+    },
+    {
+      "name": "VkDescriptorPoolSize",
+      "size": 8,
+      "alignment": 4,
+      "fields": {
+        "type": 0,
+        "descriptorCount": 4
+      }
+    },
+    {
+      "name": "VkDescriptorSetAllocateInfo",
+      "size": 40,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "descriptorPool": 16,
+        "descriptorSetCount": 24,
+        "pSetLayouts": 32
+      }
+    },
+    {
+      "name": "VkDescriptorSetLayoutBinding",
+      "size": 24,
+      "alignment": 8,
+      "fields": {
+        "binding": 0,
+        "descriptorType": 4,
+        "descriptorCount": 8,
+        "stageFlags": 12,
+        "pImmutableSamplers": 16
+      }
+    },
+    {
+      "name": "VkDescriptorSetLayoutCreateInfo",
+      "size": 32,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "flags": 16,
+        "bindingCount": 20,
+        "pBindings": 24
+      }
+    },
+    {
+      "name": "VkDeviceCreateInfo",
+      "size": 72,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "flags": 16,
+        "queueCreateInfoCount": 20,
+        "pQueueCreateInfos": 24,
+        "enabledLayerCount": 32,
+        "ppEnabledLayerNames": 40,
+        "enabledExtensionCount": 48,
+        "ppEnabledExtensionNames": 56,
+        "pEnabledFeatures": 64
+      }
+    },
+    {
+      "name": "VkDeviceQueueCreateInfo",
+      "size": 40,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "flags": 16,
+        "queueFamilyIndex": 20,
+        "queueCount": 24,
+        "pQueuePriorities": 32
+      }
+    },
+    {
+      "name": "VkExtent3D",
+      "size": 12,
+      "alignment": 4,
+      "fields": {
+        "width": 0,
+        "height": 4,
+        "depth": 8
+      }
+    },
+    {
+      "name": "VkFenceCreateInfo",
+      "size": 24,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "flags": 16
+      }
+    },
+    {
+      "name": "VkImageMemoryBarrier",
+      "size": 72,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "srcAccessMask": 16,
+        "dstAccessMask": 20,
+        "oldLayout": 24,
+        "newLayout": 28,
+        "srcQueueFamilyIndex": 32,
+        "dstQueueFamilyIndex": 36,
+        "image": 40,
+        "subresourceRange": 48
+      }
+    },
+    {
+      "name": "VkImageSubresourceRange",
+      "size": 20,
+      "alignment": 4,
+      "fields": {
+        "aspectMask": 0,
+        "baseMipLevel": 4,
+        "levelCount": 8,
+        "baseArrayLayer": 12,
+        "layerCount": 16
+      }
+    },
+    {
+      "name": "VkInstanceCreateInfo",
+      "size": 64,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "flags": 16,
+        "pApplicationInfo": 24,
+        "enabledLayerCount": 32,
+        "ppEnabledLayerNames": 40,
+        "enabledExtensionCount": 48,
+        "ppEnabledExtensionNames": 56
+      }
+    },
+    {
+      "name": "VkMemoryAllocateInfo",
+      "size": 32,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "allocationSize": 16,
+        "memoryTypeIndex": 24
+      }
+    },
+    {
+      "name": "VkMemoryBarrier",
+      "size": 24,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "srcAccessMask": 16,
+        "dstAccessMask": 20
+      }
+    },
+    {
+      "name": "VkMemoryHeap",
+      "size": 16,
+      "alignment": 8,
+      "fields": {
+        "size": 0,
+        "flags": 8
+      }
+    },
+    {
+      "name": "VkMemoryRequirements",
+      "size": 24,
+      "alignment": 8,
+      "fields": {
+        "size": 0,
+        "alignment": 8,
+        "memoryTypeBits": 16
+      }
+    },
+    {
+      "name": "VkMemoryType",
+      "size": 8,
+      "alignment": 4,
+      "fields": {
+        "propertyFlags": 0,
+        "heapIndex": 4
+      }
+    },
+    {
+      "name": "VkPhysicalDeviceFeatures",
+      "size": 220,
+      "alignment": 4,
+      "fields": {
+        "robustBufferAccess": 0,
+        "fullDrawIndexUint32": 4,
+        "imageCubeArray": 8,
+        "independentBlend": 12,
+        "geometryShader": 16,
+        "tessellationShader": 20,
+        "sampleRateShading": 24,
+        "dualSrcBlend": 28,
+        "logicOp": 32,
+        "multiDrawIndirect": 36,
+        "drawIndirectFirstInstance": 40,
+        "depthClamp": 44,
+        "depthBiasClamp": 48,
+        "fillModeNonSolid": 52,
+        "depthBounds": 56,
+        "wideLines": 60,
+        "largePoints": 64,
+        "alphaToOne": 68,
+        "multiViewport": 72,
+        "samplerAnisotropy": 76,
+        "textureCompressionETC2": 80,
+        "textureCompressionASTC_LDR": 84,
+        "textureCompressionBC": 88,
+        "occlusionQueryPrecise": 92,
+        "pipelineStatisticsQuery": 96,
+        "vertexPipelineStoresAndAtomics": 100,
+        "fragmentStoresAndAtomics": 104,
+        "shaderTessellationAndGeometryPointSize": 108,
+        "shaderImageGatherExtended": 112,
+        "shaderStorageImageExtendedFormats": 116,
+        "shaderStorageImageMultisample": 120,
+        "shaderStorageImageReadWithoutFormat": 124,
+        "shaderStorageImageWriteWithoutFormat": 128,
+        "shaderUniformBufferArrayDynamicIndexing": 132,
+        "shaderSampledImageArrayDynamicIndexing": 136,
+        "shaderStorageBufferArrayDynamicIndexing": 140,
+        "shaderStorageImageArrayDynamicIndexing": 144,
+        "shaderClipDistance": 148,
+        "shaderCullDistance": 152,
+        "shaderFloat64": 156,
+        "shaderInt64": 160,
+        "shaderInt16": 164,
+        "shaderResourceResidency": 168,
+        "shaderResourceMinLod": 172,
+        "sparseBinding": 176,
+        "sparseResidencyBuffer": 180,
+        "sparseResidencyImage2D": 184,
+        "sparseResidencyImage3D": 188,
+        "sparseResidency2Samples": 192,
+        "sparseResidency4Samples": 196,
+        "sparseResidency8Samples": 200,
+        "sparseResidency16Samples": 204,
+        "sparseResidencyAliased": 208,
+        "variableMultisampleRate": 212,
+        "inheritedQueries": 216
+      }
+    },
+    {
+      "name": "VkPhysicalDeviceLimits",
+      "size": 504,
+      "alignment": 8,
+      "fields": {
+        "maxImageDimension1D": 0,
+        "maxImageDimension2D": 4,
+        "maxImageDimension3D": 8,
+        "maxImageDimensionCube": 12,
+        "maxImageArrayLayers": 16,
+        "maxTexelBufferElements": 20,
+        "maxUniformBufferRange": 24,
+        "maxStorageBufferRange": 28,
+        "maxPushConstantsSize": 32,
+        "maxMemoryAllocationCount": 36,
+        "maxSamplerAllocationCount": 40,
+        "bufferImageGranularity": 48,
+        "sparseAddressSpaceSize": 56,
+        "maxBoundDescriptorSets": 64,
+        "maxPerStageDescriptorSamplers": 68,
+        "maxPerStageDescriptorUniformBuffers": 72,
+        "maxPerStageDescriptorStorageBuffers": 76,
+        "maxPerStageDescriptorSampledImages": 80,
+        "maxPerStageDescriptorStorageImages": 84,
+        "maxPerStageDescriptorInputAttachments": 88,
+        "maxPerStageResources": 92,
+        "maxDescriptorSetSamplers": 96,
+        "maxDescriptorSetUniformBuffers": 100,
+        "maxDescriptorSetUniformBuffersDynamic": 104,
+        "maxDescriptorSetStorageBuffers": 108,
+        "maxDescriptorSetStorageBuffersDynamic": 112,
+        "maxDescriptorSetSampledImages": 116,
+        "maxDescriptorSetStorageImages": 120,
+        "maxDescriptorSetInputAttachments": 124,
+        "maxVertexInputAttributes": 128,
+        "maxVertexInputBindings": 132,
+        "maxVertexInputAttributeOffset": 136,
+        "maxVertexInputBindingStride": 140,
+        "maxVertexOutputComponents": 144,
+        "maxTessellationGenerationLevel": 148,
+        "maxTessellationPatchSize": 152,
+        "maxTessellationControlPerVertexInputComponents": 156,
+        "maxTessellationControlPerVertexOutputComponents": 160,
+        "maxTessellationControlPerPatchOutputComponents": 164,
+        "maxTessellationControlTotalOutputComponents": 168,
+        "maxTessellationEvaluationInputComponents": 172,
+        "maxTessellationEvaluationOutputComponents": 176,
+        "maxGeometryShaderInvocations": 180,
+        "maxGeometryInputComponents": 184,
+        "maxGeometryOutputComponents": 188,
+        "maxGeometryOutputVertices": 192,
+        "maxGeometryTotalOutputComponents": 196,
+        "maxFragmentInputComponents": 200,
+        "maxFragmentOutputAttachments": 204,
+        "maxFragmentDualSrcAttachments": 208,
+        "maxFragmentCombinedOutputResources": 212,
+        "maxComputeSharedMemorySize": 216,
+        "maxComputeWorkGroupCount": 220,
+        "maxComputeWorkGroupInvocations": 232,
+        "maxComputeWorkGroupSize": 236,
+        "subPixelPrecisionBits": 248,
+        "subTexelPrecisionBits": 252,
+        "mipmapPrecisionBits": 256,
+        "maxDrawIndexedIndexValue": 260,
+        "maxDrawIndirectCount": 264,
+        "maxSamplerLodBias": 268,
+        "maxSamplerAnisotropy": 272,
+        "maxViewports": 276,
+        "maxViewportDimensions": 280,
+        "viewportBoundsRange": 288,
+        "viewportSubPixelBits": 296,
+        "minMemoryMapAlignment": 304,
+        "minTexelBufferOffsetAlignment": 312,
+        "minUniformBufferOffsetAlignment": 320,
+        "minStorageBufferOffsetAlignment": 328,
+        "minTexelOffset": 336,
+        "maxTexelOffset": 340,
+        "minTexelGatherOffset": 344,
+        "maxTexelGatherOffset": 348,
+        "minInterpolationOffset": 352,
+        "maxInterpolationOffset": 356,
+        "subPixelInterpolationOffsetBits": 360,
+        "maxFramebufferWidth": 364,
+        "maxFramebufferHeight": 368,
+        "maxFramebufferLayers": 372,
+        "framebufferColorSampleCounts": 376,
+        "framebufferDepthSampleCounts": 380,
+        "framebufferStencilSampleCounts": 384,
+        "framebufferNoAttachmentsSampleCounts": 388,
+        "maxColorAttachments": 392,
+        "sampledImageColorSampleCounts": 396,
+        "sampledImageIntegerSampleCounts": 400,
+        "sampledImageDepthSampleCounts": 404,
+        "sampledImageStencilSampleCounts": 408,
+        "storageImageSampleCounts": 412,
+        "maxSampleMaskWords": 416,
+        "timestampComputeAndGraphics": 420,
+        "timestampPeriod": 424,
+        "maxClipDistances": 428,
+        "maxCullDistances": 432,
+        "maxCombinedClipAndCullDistances": 436,
+        "discreteQueuePriorities": 440,
+        "pointSizeRange": 444,
+        "lineWidthRange": 452,
+        "pointSizeGranularity": 460,
+        "lineWidthGranularity": 464,
+        "strictLines": 468,
+        "standardSampleLocations": 472,
+        "optimalBufferCopyOffsetAlignment": 480,
+        "optimalBufferCopyRowPitchAlignment": 488,
+        "nonCoherentAtomSize": 496
+      }
+    },
+    {
+      "name": "VkPhysicalDeviceMemoryProperties",
+      "size": 520,
+      "alignment": 8,
+      "fields": {
+        "memoryTypeCount": 0,
+        "memoryTypes": 4,
+        "memoryHeapCount": 260,
+        "memoryHeaps": 264
+      }
+    },
+    {
+      "name": "VkPhysicalDeviceProperties",
+      "size": 824,
+      "alignment": 8,
+      "fields": {
+        "apiVersion": 0,
+        "driverVersion": 4,
+        "vendorID": 8,
+        "deviceID": 12,
+        "deviceType": 16,
+        "deviceName": 20,
+        "pipelineCacheUUID": 276,
+        "limits": 296,
+        "sparseProperties": 800
+      }
+    },
+    {
+      "name": "VkPhysicalDeviceSparseProperties",
+      "size": 20,
+      "alignment": 4,
+      "fields": {
+        "residencyStandard2DBlockShape": 0,
+        "residencyStandard2DMultisampleBlockShape": 4,
+        "residencyStandard3DBlockShape": 8,
+        "residencyAlignedMipSize": 12,
+        "residencyNonResidentStrict": 16
+      }
+    },
+    {
+      "name": "VkPipelineLayoutCreateInfo",
+      "size": 48,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "flags": 16,
+        "setLayoutCount": 20,
+        "pSetLayouts": 24,
+        "pushConstantRangeCount": 32,
+        "pPushConstantRanges": 40
+      }
+    },
+    {
+      "name": "VkPipelineShaderStageCreateInfo",
+      "size": 48,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "flags": 16,
+        "stage": 20,
+        "module": 24,
+        "pName": 32,
+        "pSpecializationInfo": 40
+      }
+    },
+    {
+      "name": "VkPushConstantRange",
+      "size": 12,
+      "alignment": 4,
+      "fields": {
+        "stageFlags": 0,
+        "offset": 4,
+        "size": 8
+      }
+    },
+    {
+      "name": "VkQueueFamilyProperties",
+      "size": 24,
+      "alignment": 4,
+      "fields": {
+        "queueFlags": 0,
+        "queueCount": 4,
+        "timestampValidBits": 8,
+        "minImageTransferGranularity": 12
+      }
+    },
+    {
+      "name": "VkShaderModuleCreateInfo",
+      "size": 40,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "flags": 16,
+        "codeSize": 24,
+        "pCode": 32
+      }
+    },
+    {
+      "name": "VkSpecializationInfo",
+      "size": 32,
+      "alignment": 8,
+      "fields": {
+        "mapEntryCount": 0,
+        "pMapEntries": 8,
+        "dataSize": 16,
+        "pData": 24
+      }
+    },
+    {
+      "name": "VkSpecializationMapEntry",
+      "size": 16,
+      "alignment": 8,
+      "fields": {
+        "constantID": 0,
+        "offset": 4,
+        "size": 8
+      }
+    },
+    {
+      "name": "VkSubmitInfo",
+      "size": 72,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "waitSemaphoreCount": 16,
+        "pWaitSemaphores": 24,
+        "pWaitDstStageMask": 32,
+        "commandBufferCount": 40,
+        "pCommandBuffers": 48,
+        "signalSemaphoreCount": 56,
+        "pSignalSemaphores": 64
+      }
+    },
+    {
+      "name": "VkWriteDescriptorSet",
+      "size": 64,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "dstSet": 16,
+        "dstBinding": 24,
+        "dstArrayElement": 28,
+        "descriptorCount": 32,
+        "descriptorType": 36,
+        "pImageInfo": 40,
+        "pBufferInfo": 48,
+        "pTexelBufferView": 56
+      }
+    }
+  ],
+  "constants": {
+    "VK_ACCESS_HOST_READ_BIT": 8192,
+    "VK_ACCESS_HOST_WRITE_BIT": 16384,
+    "VK_ACCESS_SHADER_READ_BIT": 32,
+    "VK_ACCESS_SHADER_WRITE_BIT": 64,
+    "VK_ACCESS_TRANSFER_READ_BIT": 2048,
+    "VK_ACCESS_TRANSFER_WRITE_BIT": 4096,
+    "VK_API_VERSION_1_1": 4198400,
+    "VK_BUFFER_USAGE_STORAGE_BUFFER_BIT": 32,
+    "VK_BUFFER_USAGE_TRANSFER_DST_BIT": 2,
+    "VK_BUFFER_USAGE_TRANSFER_SRC_BIT": 1,
+    "VK_COMMAND_BUFFER_LEVEL_PRIMARY": 0,
+    "VK_DESCRIPTOR_TYPE_STORAGE_BUFFER": 7,
+    "VK_ERROR_DEVICE_LOST": -4,
+    "VK_ERROR_OUT_OF_DEVICE_MEMORY": -2,
+    "VK_ERROR_OUT_OF_HOST_MEMORY": -1,
+    "VK_INCOMPLETE": 5,
+    "VK_MAX_MEMORY_HEAPS": 16,
+    "VK_MAX_MEMORY_TYPES": 32,
+    "VK_MAX_PHYSICAL_DEVICE_NAME_SIZE": 256,
+    "VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT": 1,
+    "VK_MEMORY_PROPERTY_HOST_CACHED_BIT": 8,
+    "VK_MEMORY_PROPERTY_HOST_COHERENT_BIT": 4,
+    "VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT": 2,
+    "VK_NOT_READY": 1,
+    "VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU": 2,
+    "VK_PIPELINE_BIND_POINT_COMPUTE": 1,
+    "VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT": 2048,
+    "VK_PIPELINE_STAGE_HOST_BIT": 16384,
+    "VK_PIPELINE_STAGE_TRANSFER_BIT": 4096,
+    "VK_QUEUE_COMPUTE_BIT": 2,
+    "VK_QUEUE_FAMILY_IGNORED": 4294967295,
+    "VK_QUEUE_GRAPHICS_BIT": 1,
+    "VK_SHADER_STAGE_COMPUTE_BIT": 32,
+    "VK_SHARING_MODE_EXCLUSIVE": 0,
+    "VK_STRUCTURE_TYPE_APPLICATION_INFO": 0,
+    "VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO": 12,
+    "VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER": 44,
+    "VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO": 40,
+    "VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO": 42,
+    "VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO": 41,
+    "VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO": 39,
+    "VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO": 29,
+    "VK_STRUCTURE_TYPE_COPY_DESCRIPTOR_SET": 36,
+    "VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO": 33,
+    "VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO": 34,
+    "VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO": 32,
+    "VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO": 3,
+    "VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO": 2,
+    "VK_STRUCTURE_TYPE_FENCE_CREATE_INFO": 8,
+    "VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER": 45,
+    "VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO": 1,
+    "VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO": 5,
+    "VK_STRUCTURE_TYPE_MEMORY_BARRIER": 46,
+    "VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO": 30,
+    "VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO": 18,
+    "VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO": 16,
+    "VK_STRUCTURE_TYPE_SUBMIT_INFO": 4,
+    "VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET": 35,
+    "VK_SUCCESS": 0,
+    "VK_TIMEOUT": 2,
+    "VK_UUID_SIZE": 16
+  },
+  "schema_version": 1,
+  "generator_sha256": "e39fdc7d30bb1175b93903a60fa6d9e2a9555fb51bb85d4d5209b7265a943c10",
+  "helper_sha256": "5054fe6466bb69ecf441db20f4b5980a54fae375f7926caf585b8f6d171ee661",
+  "header_sha256": "55c06a17793bb1a9d752aa0906116fff9d1fb74f5dd3896777b92f124c9637aa",
+  "xml_sha256": "80e7394d0e787d6ec78b67aa324add6f96129fdd042ba640cc336a5481a208ee",
+  "c_source_sha256": "6c4ecb5c09ddc3b31f30f55f2f177f645c7999e6c480f4cf5f961902c84c0027",
+  "target": "Linux x86_64 SysV C ABI"
+}

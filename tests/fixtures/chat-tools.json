@@ -1,0 +1,5078 @@
+{
+ "generator_sha256": "27b7bd2a44d9e3f2f4d00f7776f2b9dbd70083c98fe27e37cf11fce3be93b994",
+ "python": "3.14.7 (main, Aug 10 2026, 07:46:56) [GCC 16.1.1 20260728]",
+ "jinja2": "3.1.6",
+ "config_sha256": "b11349aafa7cdc6a320767cf7ceb29ed82f7eda5d65e8e0819e76f0ce947bf27",
+ "workload_sha256": "cdb5b83ff64aafbd9a2abbdc7d39a9f5e539d1ea319598199d3a166b84c3bded",
+ "cases": [
+  {
+   "name": "r-bruh-date",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are bruh, a coding agent running in a terminal on the user's machine.\n\nWork directly: read what you need, make the change, verify it. Prefer running a command over guessing at its output. Use `bash` for search (ripgrep is likely available), builds, tests, and git.\n\nChange only what the work calls for: no reformatting, renaming or tidying of anything you were not asked to touch.\n\nAs you make progress working on a task, inform the user. Do this only if this is a useful piece of information for the user to follow progress. No trivial updates.\n\nKeep replies short. No preamble, no summary of what you are about to do, no recap of what the user can already see. When you are done, say what changed and what you verified. If something failed, say so plainly with the output.\n\nTool execution: Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\n\nFor background work, set background=true and keep the command itself in the foreground. Do not detach it with &, nohup, disown, or setsid unless the user explicitly requests shell detachment. This applies to dev servers and jobs the user asks you to start without waiting. The runtime tracks the job across model steps through its future_id. Set timeout_ms for the needed lifetime; background mode does not disable timeouts. For example, to keep a dev server running for an hour, call bash with {\"command\":\"npm run dev\",\"background\":true,\"timeout_ms\":3600000}. Then read its API docs and check readiness in later calls. Do not append & or block on tasks collect while the server is meant to keep running.\n\nMachine tools are routed to named computers; their definitions state the active targets and working directories. Local startup instructions and skills describe the controller, not necessarily the selected remote project. Read remote project instructions explicitly. Never reinterpret a path from one computer as a path on another."
+    },
+    {
+     "role": "user",
+     "content": "Print the current date using bash."
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "bash",
+      "description": "Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\nComputers (all paths and localhost belong to the selected target):\n- local: cwd /tmp\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "Shell command to run."
+        },
+        "timeout_ms": {
+         "type": "integer",
+         "description": "Timeout in milliseconds (default 120000)."
+        },
+        "background": {
+         "type": "boolean",
+         "description": "Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running."
+        },
+        "computer": {
+         "type": "string",
+         "enum": [
+          "local"
+         ],
+         "description": "Execution target. Required when more than one computer supports this tool; omission is never a fallback to local."
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "additionalProperties": false
+      }
+     }
+    }
+   ],
+   "options": {},
+   "expected": {
+    "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"bash\", \"description\": \"Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\\nComputers (all paths and localhost belong to the selected target):\\n- local: cwd /tmp\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\", \"description\": \"Shell command to run.\"}, \"timeout_ms\": {\"type\": \"integer\", \"description\": \"Timeout in milliseconds (default 120000).\"}, \"background\": {\"type\": \"boolean\", \"description\": \"Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\"}, \"computer\": {\"type\": \"string\", \"enum\": [\"local\"], \"description\": \"Execution target. Required when more than one computer supports this tool; omission is never a fallback to local.\"}}, \"required\": [\"command\"], \"additionalProperties\": false}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>\n\nYou are bruh, a coding agent running in a terminal on the user's machine.\n\nWork directly: read what you need, make the change, verify it. Prefer running a command over guessing at its output. Use `bash` for search (ripgrep is likely available), builds, tests, and git.\n\nChange only what the work calls for: no reformatting, renaming or tidying of anything you were not asked to touch.\n\nAs you make progress working on a task, inform the user. Do this only if this is a useful piece of information for the user to follow progress. No trivial updates.\n\nKeep replies short. No preamble, no summary of what you are about to do, no recap of what the user can already see. When you are done, say what changed and what you verified. If something failed, say so plainly with the output.\n\nTool execution: Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\n\nFor background work, set background=true and keep the command itself in the foreground. Do not detach it with &, nohup, disown, or setsid unless the user explicitly requests shell detachment. This applies to dev servers and jobs the user asks you to start without waiting. The runtime tracks the job across model steps through its future_id. Set timeout_ms for the needed lifetime; background mode does not disable timeouts. For example, to keep a dev server running for an hour, call bash with {\"command\":\"npm run dev\",\"background\":true,\"timeout_ms\":3600000}. Then read its API docs and check readiness in later calls. Do not append & or block on tasks collect while the server is meant to keep running.\n\nMachine tools are routed to named computers; their definitions state the active targets and working directories. Local startup instructions and skills describe the controller, not necessarily the selected remote project. Read remote project instructions explicitly. Never reinterpret a path from one computer as a path on another.<|im_end|>\n<|im_start|>user\nPrint the current date using bash.<|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "r-bruh-date-nothink",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are bruh, a coding agent running in a terminal on the user's machine.\n\nWork directly: read what you need, make the change, verify it. Prefer running a command over guessing at its output. Use `bash` for search (ripgrep is likely available), builds, tests, and git.\n\nChange only what the work calls for: no reformatting, renaming or tidying of anything you were not asked to touch.\n\nAs you make progress working on a task, inform the user. Do this only if this is a useful piece of information for the user to follow progress. No trivial updates.\n\nKeep replies short. No preamble, no summary of what you are about to do, no recap of what the user can already see. When you are done, say what changed and what you verified. If something failed, say so plainly with the output.\n\nTool execution: Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\n\nFor background work, set background=true and keep the command itself in the foreground. Do not detach it with &, nohup, disown, or setsid unless the user explicitly requests shell detachment. This applies to dev servers and jobs the user asks you to start without waiting. The runtime tracks the job across model steps through its future_id. Set timeout_ms for the needed lifetime; background mode does not disable timeouts. For example, to keep a dev server running for an hour, call bash with {\"command\":\"npm run dev\",\"background\":true,\"timeout_ms\":3600000}. Then read its API docs and check readiness in later calls. Do not append & or block on tasks collect while the server is meant to keep running.\n\nMachine tools are routed to named computers; their definitions state the active targets and working directories. Local startup instructions and skills describe the controller, not necessarily the selected remote project. Read remote project instructions explicitly. Never reinterpret a path from one computer as a path on another."
+    },
+    {
+     "role": "user",
+     "content": "Print the current date using bash."
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "bash",
+      "description": "Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\nComputers (all paths and localhost belong to the selected target):\n- local: cwd /tmp\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "Shell command to run."
+        },
+        "timeout_ms": {
+         "type": "integer",
+         "description": "Timeout in milliseconds (default 120000)."
+        },
+        "background": {
+         "type": "boolean",
+         "description": "Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running."
+        },
+        "computer": {
+         "type": "string",
+         "enum": [
+          "local"
+         ],
+         "description": "Execution target. Required when more than one computer supports this tool; omission is never a fallback to local."
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "additionalProperties": false
+      }
+     }
+    }
+   ],
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "expected": {
+    "output": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"bash\", \"description\": \"Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\\nComputers (all paths and localhost belong to the selected target):\\n- local: cwd /tmp\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\", \"description\": \"Shell command to run.\"}, \"timeout_ms\": {\"type\": \"integer\", \"description\": \"Timeout in milliseconds (default 120000).\"}, \"background\": {\"type\": \"boolean\", \"description\": \"Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\"}, \"computer\": {\"type\": \"string\", \"enum\": [\"local\"], \"description\": \"Execution target. Required when more than one computer supports this tool; omission is never a fallback to local.\"}}, \"required\": [\"command\"], \"additionalProperties\": false}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>\n\nYou are bruh, a coding agent running in a terminal on the user's machine.\n\nWork directly: read what you need, make the change, verify it. Prefer running a command over guessing at its output. Use `bash` for search (ripgrep is likely available), builds, tests, and git.\n\nChange only what the work calls for: no reformatting, renaming or tidying of anything you were not asked to touch.\n\nAs you make progress working on a task, inform the user. Do this only if this is a useful piece of information for the user to follow progress. No trivial updates.\n\nKeep replies short. No preamble, no summary of what you are about to do, no recap of what the user can already see. When you are done, say what changed and what you verified. If something failed, say so plainly with the output.\n\nTool execution: Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\n\nFor background work, set background=true and keep the command itself in the foreground. Do not detach it with &, nohup, disown, or setsid unless the user explicitly requests shell detachment. This applies to dev servers and jobs the user asks you to start without waiting. The runtime tracks the job across model steps through its future_id. Set timeout_ms for the needed lifetime; background mode does not disable timeouts. For example, to keep a dev server running for an hour, call bash with {\"command\":\"npm run dev\",\"background\":true,\"timeout_ms\":3600000}. Then read its API docs and check readiness in later calls. Do not append & or block on tasks collect while the server is meant to keep running.\n\nMachine tools are routed to named computers; their definitions state the active targets and working directories. Local startup instructions and skills describe the controller, not necessarily the selected remote project. Read remote project instructions explicitly. Never reinterpret a path from one computer as a path on another.<|im_end|>\n<|im_start|>user\nPrint the current date using bash.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+   }
+  },
+  {
+   "name": "r-weather-typed",
+   "messages": [
+    {
+     "role": "user",
+     "content": "What's the weather in Paris for the next 3 days in fahrenheit? Include hourly data."
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and forecast for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name, e.g. Paris"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer",
+         "description": "Number of forecast days (1-7)"
+        },
+        "include_hourly": {
+         "type": "boolean",
+         "description": "Include hourly data"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "expected": {
+    "output": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather and forecast for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g. Paris\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\", \"description\": \"Number of forecast days (1-7)\"}, \"include_hourly\": {\"type\": \"boolean\", \"description\": \"Include hourly data\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nWhat's the weather in Paris for the next 3 days in fahrenheit? Include hourly data.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+   }
+  },
+  {
+   "name": "r-write-file-multiline",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Create hello.py that prints hello world and then the numbers 1 to 3, one per line."
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "write_file",
+      "description": "Write text to a file, replacing its contents.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string"
+        },
+        "content": {
+         "type": "string",
+         "description": "Full file contents"
+        }
+       },
+       "required": [
+        "path",
+        "content"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "bash",
+      "description": "Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\nComputers (all paths and localhost belong to the selected target):\n- local: cwd /tmp\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "Shell command to run."
+        },
+        "timeout_ms": {
+         "type": "integer",
+         "description": "Timeout in milliseconds (default 120000)."
+        },
+        "background": {
+         "type": "boolean",
+         "description": "Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running."
+        },
+        "computer": {
+         "type": "string",
+         "enum": [
+          "local"
+         ],
+         "description": "Execution target. Required when more than one computer supports this tool; omission is never a fallback to local."
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "additionalProperties": false
+      }
+     }
+    }
+   ],
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "expected": {
+    "output": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"write_file\", \"description\": \"Write text to a file, replacing its contents.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\", \"description\": \"Full file contents\"}}, \"required\": [\"path\", \"content\"]}}}\n{\"type\": \"function\", \"function\": {\"name\": \"bash\", \"description\": \"Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\\nComputers (all paths and localhost belong to the selected target):\\n- local: cwd /tmp\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\", \"description\": \"Shell command to run.\"}, \"timeout_ms\": {\"type\": \"integer\", \"description\": \"Timeout in milliseconds (default 120000).\"}, \"background\": {\"type\": \"boolean\", \"description\": \"Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\"}, \"computer\": {\"type\": \"string\", \"enum\": [\"local\"], \"description\": \"Execution target. Required when more than one computer supports this tool; omission is never a fallback to local.\"}}, \"required\": [\"command\"], \"additionalProperties\": false}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nCreate hello.py that prints hello world and then the numbers 1 to 3, one per line.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+   }
+  },
+  {
+   "name": "r-parallel-default",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Get the weather in Paris and in Tokyo."
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and forecast for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name, e.g. Paris"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer",
+         "description": "Number of forecast days (1-7)"
+        },
+        "include_hourly": {
+         "type": "boolean",
+         "description": "Include hourly data"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "expected": {
+    "output": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather and forecast for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g. Paris\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\", \"description\": \"Number of forecast days (1-7)\"}, \"include_hourly\": {\"type\": \"boolean\", \"description\": \"Include hourly data\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nGet the weather in Paris and in Tokyo.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+   }
+  },
+  {
+   "name": "r-parallel-false",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Get the weather in Paris and in Tokyo."
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and forecast for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name, e.g. Paris"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer",
+         "description": "Number of forecast days (1-7)"
+        },
+        "include_hourly": {
+         "type": "boolean",
+         "description": "Include hourly data"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    },
+    "parallel_tool_calls": false
+   },
+   "expected": {
+    "output": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather and forecast for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g. Paris\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\", \"description\": \"Number of forecast days (1-7)\"}, \"include_hourly\": {\"type\": \"boolean\", \"description\": \"Include hourly data\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nGet the weather in Paris and in Tokyo.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+   }
+  },
+  {
+   "name": "r-tool-result-final",
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are bruh, a coding agent running in a terminal on the user's machine.\n\nWork directly: read what you need, make the change, verify it. Prefer running a command over guessing at its output. Use `bash` for search (ripgrep is likely available), builds, tests, and git.\n\nChange only what the work calls for: no reformatting, renaming or tidying of anything you were not asked to touch.\n\nAs you make progress working on a task, inform the user. Do this only if this is a useful piece of information for the user to follow progress. No trivial updates.\n\nKeep replies short. No preamble, no summary of what you are about to do, no recap of what the user can already see. When you are done, say what changed and what you verified. If something failed, say so plainly with the output.\n\nTool execution: Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\n\nFor background work, set background=true and keep the command itself in the foreground. Do not detach it with &, nohup, disown, or setsid unless the user explicitly requests shell detachment. This applies to dev servers and jobs the user asks you to start without waiting. The runtime tracks the job across model steps through its future_id. Set timeout_ms for the needed lifetime; background mode does not disable timeouts. For example, to keep a dev server running for an hour, call bash with {\"command\":\"npm run dev\",\"background\":true,\"timeout_ms\":3600000}. Then read its API docs and check readiness in later calls. Do not append & or block on tasks collect while the server is meant to keep running.\n\nMachine tools are routed to named computers; their definitions state the active targets and working directories. Local startup instructions and skills describe the controller, not necessarily the selected remote project. Read remote project instructions explicitly. Never reinterpret a path from one computer as a path on another."
+    },
+    {
+     "role": "user",
+     "content": "Print the current date using bash."
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "call_1",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"date\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "call_1",
+     "content": "Thu Sep 24 14:00:00 CEST 2026\n"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "bash",
+      "description": "Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\nComputers (all paths and localhost belong to the selected target):\n- local: cwd /tmp\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "Shell command to run."
+        },
+        "timeout_ms": {
+         "type": "integer",
+         "description": "Timeout in milliseconds (default 120000)."
+        },
+        "background": {
+         "type": "boolean",
+         "description": "Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running."
+        },
+        "computer": {
+         "type": "string",
+         "enum": [
+          "local"
+         ],
+         "description": "Execution target. Required when more than one computer supports this tool; omission is never a fallback to local."
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "additionalProperties": false
+      }
+     }
+    }
+   ],
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "expected": {
+    "output": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"bash\", \"description\": \"Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\\nComputers (all paths and localhost belong to the selected target):\\n- local: cwd /tmp\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\", \"description\": \"Shell command to run.\"}, \"timeout_ms\": {\"type\": \"integer\", \"description\": \"Timeout in milliseconds (default 120000).\"}, \"background\": {\"type\": \"boolean\", \"description\": \"Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\"}, \"computer\": {\"type\": \"string\", \"enum\": [\"local\"], \"description\": \"Execution target. Required when more than one computer supports this tool; omission is never a fallback to local.\"}}, \"required\": [\"command\"], \"additionalProperties\": false}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>\n\nYou are bruh, a coding agent running in a terminal on the user's machine.\n\nWork directly: read what you need, make the change, verify it. Prefer running a command over guessing at its output. Use `bash` for search (ripgrep is likely available), builds, tests, and git.\n\nChange only what the work calls for: no reformatting, renaming or tidying of anything you were not asked to touch.\n\nAs you make progress working on a task, inform the user. Do this only if this is a useful piece of information for the user to follow progress. No trivial updates.\n\nKeep replies short. No preamble, no summary of what you are about to do, no recap of what the user can already see. When you are done, say what changed and what you verified. If something failed, say so plainly with the output.\n\nTool execution: Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\n\nFor background work, set background=true and keep the command itself in the foreground. Do not detach it with &, nohup, disown, or setsid unless the user explicitly requests shell detachment. This applies to dev servers and jobs the user asks you to start without waiting. The runtime tracks the job across model steps through its future_id. Set timeout_ms for the needed lifetime; background mode does not disable timeouts. For example, to keep a dev server running for an hour, call bash with {\"command\":\"npm run dev\",\"background\":true,\"timeout_ms\":3600000}. Then read its API docs and check readiness in later calls. Do not append & or block on tasks collect while the server is meant to keep running.\n\nMachine tools are routed to named computers; their definitions state the active targets and working directories. Local startup instructions and skills describe the controller, not necessarily the selected remote project. Read remote project instructions explicitly. Never reinterpret a path from one computer as a path on another.<|im_end|>\n<|im_start|>user\nPrint the current date using bash.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=bash>\n<parameter=command>\ndate\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\nThu Sep 24 14:00:00 CEST 2026\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+   }
+  },
+  {
+   "name": "r-tool-choice-none",
+   "messages": [
+    {
+     "role": "user",
+     "content": "What's the weather in Paris?"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and forecast for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name, e.g. Paris"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer",
+         "description": "Number of forecast days (1-7)"
+        },
+        "include_hourly": {
+         "type": "boolean",
+         "description": "Include hourly data"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    },
+    "tool_choice": "none"
+   },
+   "expected": {
+    "output": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather and forecast for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g. Paris\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\", \"description\": \"Number of forecast days (1-7)\"}, \"include_hourly\": {\"type\": \"boolean\", \"description\": \"Include hourly data\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nWhat's the weather in Paris?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+   }
+  },
+  {
+   "name": "r-length-cut",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Create hello.py that prints hello world and then the numbers 1 to 3, one per line."
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "write_file",
+      "description": "Write text to a file, replacing its contents.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string"
+        },
+        "content": {
+         "type": "string",
+         "description": "Full file contents"
+        }
+       },
+       "required": [
+        "path",
+        "content"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "bash",
+      "description": "Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\nComputers (all paths and localhost belong to the selected target):\n- local: cwd /tmp\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "Shell command to run."
+        },
+        "timeout_ms": {
+         "type": "integer",
+         "description": "Timeout in milliseconds (default 120000)."
+        },
+        "background": {
+         "type": "boolean",
+         "description": "Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running."
+        },
+        "computer": {
+         "type": "string",
+         "enum": [
+          "local"
+         ],
+         "description": "Execution target. Required when more than one computer supports this tool; omission is never a fallback to local."
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "additionalProperties": false
+      }
+     }
+    }
+   ],
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "expected": {
+    "output": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"write_file\", \"description\": \"Write text to a file, replacing its contents.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\", \"description\": \"Full file contents\"}}, \"required\": [\"path\", \"content\"]}}}\n{\"type\": \"function\", \"function\": {\"name\": \"bash\", \"description\": \"Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\\nComputers (all paths and localhost belong to the selected target):\\n- local: cwd /tmp\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\", \"description\": \"Shell command to run.\"}, \"timeout_ms\": {\"type\": \"integer\", \"description\": \"Timeout in milliseconds (default 120000).\"}, \"background\": {\"type\": \"boolean\", \"description\": \"Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\"}, \"computer\": {\"type\": \"string\", \"enum\": [\"local\"], \"description\": \"Execution target. Required when more than one computer supports this tool; omission is never a fallback to local.\"}}, \"required\": [\"command\"], \"additionalProperties\": false}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nCreate hello.py that prints hello world and then the numbers 1 to 3, one per line.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+   }
+  },
+  {
+   "name": "r-search-array",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Search for 'zig allocators' and 'vulkan compute', at most 5 results each."
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "search",
+      "description": "Search the web.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "queries": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "limit": {
+         "type": [
+          "integer",
+          "null"
+         ],
+         "description": "Maximum results per query"
+        }
+       },
+       "required": [
+        "queries"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "expected": {
+    "output": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"search\", \"description\": \"Search the web.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"queries\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}, \"limit\": {\"type\": [\"integer\", \"null\"], \"description\": \"Maximum results per query\"}}, \"required\": [\"queries\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nSearch for 'zig allocators' and 'vulkan compute', at most 5 results each.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+   }
+  },
+  {
+   "name": "r-weather-think-low",
+   "messages": [
+    {
+     "role": "user",
+     "content": "Is it warmer in Rome or in Oslo right now?"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and forecast for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name, e.g. Paris"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer",
+         "description": "Number of forecast days (1-7)"
+        },
+        "include_hourly": {
+         "type": "boolean",
+         "description": "Include hourly data"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {
+    "reasoning_effort": "low"
+   },
+   "expected": {
+    "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather and forecast for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g. Paris\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\", \"description\": \"Number of forecast days (1-7)\"}, \"include_hourly\": {\"type\": \"boolean\", \"description\": \"Include hourly data\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nIs it warmer in Rome or in Oslo right now?<|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "r-history-calls",
+   "messages": [
+    {
+     "role": "system",
+     "content": " Be brief. "
+    },
+    {
+     "role": "user",
+     "content": "Check both cities."
+    },
+    {
+     "role": "assistant",
+     "content": " I'll check both. ",
+     "reasoning_content": " need two calls ",
+     "tool_calls": [
+      {
+       "id": "a",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"city\": \"Paris\", \"days\": 3, \"include_hourly\": true}"
+       }
+      },
+      {
+       "id": "b",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"city\":\"東京\",\"unit\":null,\"extra\":{\"a\":[1,2.5,-0.0,1e20,\"x\\ny\"]}}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "a",
+     "content": " 18C sunny "
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "b",
+     "content": "22C\ncloudy"
+    },
+    {
+     "role": "assistant",
+     "content": "Paris 18C, Tokyo 22C."
+    },
+    {
+     "role": "user",
+     "content": "Thanks. Now write it to a file."
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and forecast for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name, e.g. Paris"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer",
+         "description": "Number of forecast days (1-7)"
+        },
+        "include_hourly": {
+         "type": "boolean",
+         "description": "Include hourly data"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "write_file",
+      "description": "Write text to a file, replacing its contents.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string"
+        },
+        "content": {
+         "type": "string",
+         "description": "Full file contents"
+        }
+       },
+       "required": [
+        "path",
+        "content"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {},
+   "expected": {
+    "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather and forecast for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g. Paris\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\", \"description\": \"Number of forecast days (1-7)\"}, \"include_hourly\": {\"type\": \"boolean\", \"description\": \"Include hourly data\"}}, \"required\": [\"city\"]}}}\n{\"type\": \"function\", \"function\": {\"name\": \"write_file\", \"description\": \"Write text to a file, replacing its contents.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\", \"description\": \"Full file contents\"}}, \"required\": [\"path\", \"content\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>\n\nBe brief.<|im_end|>\n<|im_start|>user\nCheck both cities.<|im_end|>\n<|im_start|>assistant\n<think>\nneed two calls\n</think>\n\nI'll check both.\n\n<tool_call>\n<function=get_weather>\n<parameter=city>\nParis\n</parameter>\n<parameter=days>\n3\n</parameter>\n<parameter=include_hourly>\ntrue\n</parameter>\n</function>\n</tool_call>\n<tool_call>\n<function=get_weather>\n<parameter=city>\n東京\n</parameter>\n<parameter=unit>\nnull\n</parameter>\n<parameter=extra>\n{\"a\": [1, 2.5, -0.0, 1e+20, \"x\\ny\"]}\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n18C sunny\n</tool_response>\n<tool_response>\n22C\ncloudy\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nParis 18C, Tokyo 22C.<|im_end|>\n<|im_start|>user\nThanks. Now write it to a file.<|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "r-history-calls-nopreserve",
+   "messages": [
+    {
+     "role": "system",
+     "content": " Be brief. "
+    },
+    {
+     "role": "user",
+     "content": "Check both cities."
+    },
+    {
+     "role": "assistant",
+     "content": " I'll check both. ",
+     "reasoning_content": " need two calls ",
+     "tool_calls": [
+      {
+       "id": "a",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"city\": \"Paris\", \"days\": 3, \"include_hourly\": true}"
+       }
+      },
+      {
+       "id": "b",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"city\":\"東京\",\"unit\":null,\"extra\":{\"a\":[1,2.5,-0.0,1e20,\"x\\ny\"]}}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "a",
+     "content": " 18C sunny "
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "b",
+     "content": "22C\ncloudy"
+    },
+    {
+     "role": "assistant",
+     "content": "Paris 18C, Tokyo 22C."
+    },
+    {
+     "role": "user",
+     "content": "Thanks. Now write it to a file."
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and forecast for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name, e.g. Paris"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer",
+         "description": "Number of forecast days (1-7)"
+        },
+        "include_hourly": {
+         "type": "boolean",
+         "description": "Include hourly data"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "write_file",
+      "description": "Write text to a file, replacing its contents.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "path": {
+         "type": "string"
+        },
+        "content": {
+         "type": "string",
+         "description": "Full file contents"
+        }
+       },
+       "required": [
+        "path",
+        "content"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {
+    "chat_template_kwargs": {
+     "preserve_thinking": false
+    }
+   },
+   "expected": {
+    "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather and forecast for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g. Paris\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\", \"description\": \"Number of forecast days (1-7)\"}, \"include_hourly\": {\"type\": \"boolean\", \"description\": \"Include hourly data\"}}, \"required\": [\"city\"]}}}\n{\"type\": \"function\", \"function\": {\"name\": \"write_file\", \"description\": \"Write text to a file, replacing its contents.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\", \"description\": \"Full file contents\"}}, \"required\": [\"path\", \"content\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>\n\nBe brief.<|im_end|>\n<|im_start|>user\nCheck both cities.<|im_end|>\n<|im_start|>assistant\nI'll check both.\n\n<tool_call>\n<function=get_weather>\n<parameter=city>\nParis\n</parameter>\n<parameter=days>\n3\n</parameter>\n<parameter=include_hourly>\ntrue\n</parameter>\n</function>\n</tool_call>\n<tool_call>\n<function=get_weather>\n<parameter=city>\n東京\n</parameter>\n<parameter=unit>\nnull\n</parameter>\n<parameter=extra>\n{\"a\": [1, 2.5, -0.0, 1e+20, \"x\\ny\"]}\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n18C sunny\n</tool_response>\n<tool_response>\n22C\ncloudy\n</tool_response><|im_end|>\n<|im_start|>assistant\nParis 18C, Tokyo 22C.<|im_end|>\n<|im_start|>user\nThanks. Now write it to a file.<|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "r-history-calls-nothink",
+   "messages": [
+    {
+     "role": "system",
+     "content": " Be brief. "
+    },
+    {
+     "role": "user",
+     "content": "Check both cities."
+    },
+    {
+     "role": "assistant",
+     "content": " I'll check both. ",
+     "reasoning_content": " need two calls ",
+     "tool_calls": [
+      {
+       "id": "a",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"city\": \"Paris\", \"days\": 3, \"include_hourly\": true}"
+       }
+      },
+      {
+       "id": "b",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"city\":\"東京\",\"unit\":null,\"extra\":{\"a\":[1,2.5,-0.0,1e20,\"x\\ny\"]}}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "a",
+     "content": " 18C sunny "
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "b",
+     "content": "22C\ncloudy"
+    },
+    {
+     "role": "assistant",
+     "content": "Paris 18C, Tokyo 22C."
+    },
+    {
+     "role": "user",
+     "content": "Thanks. Now write it to a file."
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and forecast for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name, e.g. Paris"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer",
+         "description": "Number of forecast days (1-7)"
+        },
+        "include_hourly": {
+         "type": "boolean",
+         "description": "Include hourly data"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "expected": {
+    "output": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather and forecast for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g. Paris\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\", \"description\": \"Number of forecast days (1-7)\"}, \"include_hourly\": {\"type\": \"boolean\", \"description\": \"Include hourly data\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>\n\nBe brief.<|im_end|>\n<|im_start|>user\nCheck both cities.<|im_end|>\n<|im_start|>assistant\n<think>\nneed two calls\n</think>\n\nI'll check both.\n\n<tool_call>\n<function=get_weather>\n<parameter=city>\nParis\n</parameter>\n<parameter=days>\n3\n</parameter>\n<parameter=include_hourly>\ntrue\n</parameter>\n</function>\n</tool_call>\n<tool_call>\n<function=get_weather>\n<parameter=city>\n東京\n</parameter>\n<parameter=unit>\nnull\n</parameter>\n<parameter=extra>\n{\"a\": [1, 2.5, -0.0, 1e+20, \"x\\ny\"]}\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n18C sunny\n</tool_response>\n<tool_response>\n22C\ncloudy\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nParis 18C, Tokyo 22C.<|im_end|>\n<|im_start|>user\nThanks. Now write it to a file.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+   }
+  },
+  {
+   "name": "r-args-object",
+   "messages": [
+    {
+     "role": "user",
+     "content": "x"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": {
+         "command": "ls -la",
+         "timeout_ms": 5000
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": "ok"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "bash",
+      "description": "Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\nComputers (all paths and localhost belong to the selected target):\n- local: cwd /tmp\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "Shell command to run."
+        },
+        "timeout_ms": {
+         "type": "integer",
+         "description": "Timeout in milliseconds (default 120000)."
+        },
+        "background": {
+         "type": "boolean",
+         "description": "Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running."
+        },
+        "computer": {
+         "type": "string",
+         "enum": [
+          "local"
+         ],
+         "description": "Execution target. Required when more than one computer supports this tool; omission is never a fallback to local."
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "additionalProperties": false
+      }
+     }
+    }
+   ],
+   "options": {},
+   "expected": {
+    "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"bash\", \"description\": \"Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\\nComputers (all paths and localhost belong to the selected target):\\n- local: cwd /tmp\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\", \"description\": \"Shell command to run.\"}, \"timeout_ms\": {\"type\": \"integer\", \"description\": \"Timeout in milliseconds (default 120000).\"}, \"background\": {\"type\": \"boolean\", \"description\": \"Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\"}, \"computer\": {\"type\": \"string\", \"enum\": [\"local\"], \"description\": \"Execution target. Required when more than one computer supports this tool; omission is never a fallback to local.\"}}, \"required\": [\"command\"], \"additionalProperties\": false}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nx<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=bash>\n<parameter=command>\nls -la\n</parameter>\n<parameter=timeout_ms>\n5000\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\nok\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "r-args-empty-object",
+   "messages": [
+    {
+     "role": "user",
+     "content": "x"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c",
+       "type": "function",
+       "function": {
+        "name": "no_params",
+        "arguments": "{}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": ""
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "no_params"
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "strict_tool",
+      "description": "Tool with \"quotes\", </tools> and ünïcode\tand a tab.",
+      "strict": true,
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "ratio": {
+         "type": "number",
+         "minimum": 0.5,
+         "maximum": 1.0,
+         "default": 1e-05
+        }
+       }
+      }
+     }
+    }
+   ],
+   "options": {},
+   "expected": {
+    "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"no_params\", \"description\": \"\", \"parameters\": {}}}\n{\"type\": \"function\", \"function\": {\"name\": \"strict_tool\", \"description\": \"Tool with \\\"quotes\\\", </tools> and ünïcode\\tand a tab.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"ratio\": {\"type\": \"number\", \"minimum\": 0.5, \"maximum\": 1.0, \"default\": 1e-05}}}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nx<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=no_params>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "r-odd-tools",
+   "messages": [
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "no_params"
+     }
+    },
+    {
+     "type": "function",
+     "function": {
+      "name": "strict_tool",
+      "description": "Tool with \"quotes\", </tools> and ünïcode\tand a tab.",
+      "strict": true,
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "ratio": {
+         "type": "number",
+         "minimum": 0.5,
+         "maximum": 1.0,
+         "default": 1e-05
+        }
+       }
+      }
+     }
+    }
+   ],
+   "options": {},
+   "expected": {
+    "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"no_params\", \"description\": \"\", \"parameters\": {}}}\n{\"type\": \"function\", \"function\": {\"name\": \"strict_tool\", \"description\": \"Tool with \\\"quotes\\\", </tools> and ünïcode\\tand a tab.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"ratio\": {\"type\": \"number\", \"minimum\": 0.5, \"maximum\": 1.0, \"default\": 1e-05}}}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "r-no-system-low",
+   "messages": [
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "bash",
+      "description": "Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\nComputers (all paths and localhost belong to the selected target):\n- local: cwd /tmp\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "Shell command to run."
+        },
+        "timeout_ms": {
+         "type": "integer",
+         "description": "Timeout in milliseconds (default 120000)."
+        },
+        "background": {
+         "type": "boolean",
+         "description": "Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running."
+        },
+        "computer": {
+         "type": "string",
+         "enum": [
+          "local"
+         ],
+         "description": "Execution target. Required when more than one computer supports this tool; omission is never a fallback to local."
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "additionalProperties": false
+      }
+     }
+    }
+   ],
+   "options": {
+    "reasoning_effort": "low"
+   },
+   "expected": {
+    "output": "<|im_start|>system\nReasoning effort is set to low. Keep your thinking brief and focused, moving directly to the conclusion without unnecessary elaboration.\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"bash\", \"description\": \"Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\\nComputers (all paths and localhost belong to the selected target):\\n- local: cwd /tmp\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\", \"description\": \"Shell command to run.\"}, \"timeout_ms\": {\"type\": \"integer\", \"description\": \"Timeout in milliseconds (default 120000).\"}, \"background\": {\"type\": \"boolean\", \"description\": \"Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\"}, \"computer\": {\"type\": \"string\", \"enum\": [\"local\"], \"description\": \"Execution target. Required when more than one computer supports this tool; omission is never a fallback to local.\"}}, \"required\": [\"command\"], \"additionalProperties\": false}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "r-medium-empty-system",
+   "messages": [
+    {
+     "role": "system",
+     "content": "  "
+    },
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "bash",
+      "description": "Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\nComputers (all paths and localhost belong to the selected target):\n- local: cwd /tmp\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "Shell command to run."
+        },
+        "timeout_ms": {
+         "type": "integer",
+         "description": "Timeout in milliseconds (default 120000)."
+        },
+        "background": {
+         "type": "boolean",
+         "description": "Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running."
+        },
+        "computer": {
+         "type": "string",
+         "enum": [
+          "local"
+         ],
+         "description": "Execution target. Required when more than one computer supports this tool; omission is never a fallback to local."
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "additionalProperties": false
+      }
+     }
+    }
+   ],
+   "options": {
+    "reasoning_effort": "medium"
+   },
+   "expected": {
+    "output": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"bash\", \"description\": \"Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\\nComputers (all paths and localhost belong to the selected target):\\n- local: cwd /tmp\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\", \"description\": \"Shell command to run.\"}, \"timeout_ms\": {\"type\": \"integer\", \"description\": \"Timeout in milliseconds (default 120000).\"}, \"background\": {\"type\": \"boolean\", \"description\": \"Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\"}, \"computer\": {\"type\": \"string\", \"enum\": [\"local\"], \"description\": \"Execution target. Required when more than one computer supports this tool; omission is never a fallback to local.\"}}, \"required\": [\"command\"], \"additionalProperties\": false}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "r-tool-then-user",
+   "messages": [
+    {
+     "role": "user",
+     "content": "a"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c",
+       "type": "function",
+       "function": {
+        "name": "bash",
+        "arguments": "{\"command\":\"pwd\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": "/tmp"
+    },
+    {
+     "role": "user",
+     "content": "b"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "bash",
+      "description": "Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\nComputers (all paths and localhost belong to the selected target):\n- local: cwd /tmp\n\nWith \"background\": true this returns {\"future_id\": \"<id>\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "Shell command to run."
+        },
+        "timeout_ms": {
+         "type": "integer",
+         "description": "Timeout in milliseconds (default 120000)."
+        },
+        "background": {
+         "type": "boolean",
+         "description": "Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running."
+        },
+        "computer": {
+         "type": "string",
+         "enum": [
+          "local"
+         ],
+         "description": "Execution target. Required when more than one computer supports this tool; omission is never a fallback to local."
+        }
+       },
+       "required": [
+        "command"
+       ],
+       "additionalProperties": false
+      }
+     }
+    }
+   ],
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "expected": {
+    "output": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"bash\", \"description\": \"Run a shell command in the working directory and return its combined output. Use this for searching (rg, find), building, running tests, and git.\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\\nComputers (all paths and localhost belong to the selected target):\\n- local: cwd /tmp\\n\\nWith \\\"background\\\": true this returns {\\\"future_id\\\": \\\"<id>\\\"} immediately instead of a result. A user message notifies you when it finishes; `tasks collect <id>` is only needed to wait for the outcome now. Without background mode, it blocks and returns the result.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\", \"description\": \"Shell command to run.\"}, \"timeout_ms\": {\"type\": \"integer\", \"description\": \"Timeout in milliseconds (default 120000).\"}, \"background\": {\"type\": \"boolean\", \"description\": \"Default false. Independent foreground tool calls in the same response already run concurrently. Example: to run tests and lint, call bash twice with background=false in one response, then read both results; do NOT use background=true followed by tasks collect. Slow commands alone do not need background mode. Use true only when another model step must do useful independent work before this result is needed (such as reading code and deciding on an edit), or to keep a service running.\"}, \"computer\": {\"type\": \"string\", \"enum\": [\"local\"], \"description\": \"Execution target. Required when more than one computer supports this tool; omission is never a fallback to local.\"}}, \"required\": [\"command\"], \"additionalProperties\": false}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\na<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=bash>\n<parameter=command>\npwd\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n/tmp\n</tool_response><|im_end|>\n<|im_start|>user\nb<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+   }
+  },
+  {
+   "name": "x-empty-tools",
+   "messages": [
+    {
+     "role": "user",
+     "content": "hi"
+    }
+   ],
+   "tools": [],
+   "options": {},
+   "expected": {
+    "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.<|im_end|>\n<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "x-tool-first",
+   "messages": [
+    {
+     "role": "tool",
+     "content": "t"
+    },
+    {
+     "role": "user",
+     "content": "q"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and forecast for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name, e.g. Paris"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer",
+         "description": "Number of forecast days (1-7)"
+        },
+        "include_hourly": {
+         "type": "boolean",
+         "description": "Include hourly data"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {},
+   "expected": {
+    "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather and forecast for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g. Paris\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\", \"description\": \"Number of forecast days (1-7)\"}, \"include_hourly\": {\"type\": \"boolean\", \"description\": \"Include hourly data\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n\n<tool_response>\nt\n</tool_response><|im_end|>\n<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "x-tool-last",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"city\": \"Paris\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": [
+      {
+       "type": "text",
+       "text": " a"
+      },
+      {
+       "type": "text",
+       "text": "b "
+      }
+     ]
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and forecast for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name, e.g. Paris"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer",
+         "description": "Number of forecast days (1-7)"
+        },
+        "include_hourly": {
+         "type": "boolean",
+         "description": "Include hourly data"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {},
+   "expected": {
+    "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather and forecast for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g. Paris\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\", \"description\": \"Number of forecast days (1-7)\"}, \"include_hourly\": {\"type\": \"boolean\", \"description\": \"Include hourly data\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=get_weather>\n<parameter=city>\nParis\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\nab\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "x-args-empty-string",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": ""
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "content": "r"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and forecast for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name, e.g. Paris"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer",
+         "description": "Number of forecast days (1-7)"
+        },
+        "include_hourly": {
+         "type": "boolean",
+         "description": "Include hourly data"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {},
+   "expected": {
+    "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather and forecast for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g. Paris\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\", \"description\": \"Number of forecast days (1-7)\"}, \"include_hourly\": {\"type\": \"boolean\", \"description\": \"Include hourly data\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=get_weather>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\nr\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "x-args-values",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "x",
+     "tool_calls": [
+      {
+       "id": "1",
+       "type": "function",
+       "function": {
+        "name": "f",
+        "arguments": "{\"s\": \"a\\\"b\\\\c\\n\\u00e9\\u2028\\u007f\\u0001\", \"i\": -12, \"big\": 123456789012345678901234567890, \"f\": [0.1, 1.5, 100.0, 1e+16, 1e-05, 0.0001, -0.0, 3.14159265358979], \"b\": [true, false, null], \"o\": {\"k\": {\"z\": []}, \"e\": {}}, \"u\": \"\\ud83d\\ude00\"}"
+       }
+      }
+     ]
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and forecast for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name, e.g. Paris"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer",
+         "description": "Number of forecast days (1-7)"
+        },
+        "include_hourly": {
+         "type": "boolean",
+         "description": "Include hourly data"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {},
+   "expected": {
+    "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather and forecast for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g. Paris\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\", \"description\": \"Number of forecast days (1-7)\"}, \"include_hourly\": {\"type\": \"boolean\", \"description\": \"Include hourly data\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nx\n\n<tool_call>\n<function=f>\n<parameter=s>\na\"b\\c\né \u0001\n</parameter>\n<parameter=i>\n-12\n</parameter>\n<parameter=big>\n123456789012345678901234567890\n</parameter>\n<parameter=f>\n[0.1, 1.5, 100.0, 1e+16, 1e-05, 0.0001, -0.0, 3.14159265358979]\n</parameter>\n<parameter=b>\n[true, false, null]\n</parameter>\n<parameter=o>\n{\"k\": {\"z\": []}, \"e\": {}}\n</parameter>\n<parameter=u>\n😀\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "x-tool-response-user",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "<tool_response>x</tool_response>"
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and forecast for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name, e.g. Paris"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer",
+         "description": "Number of forecast days (1-7)"
+        },
+        "include_hourly": {
+         "type": "boolean",
+         "description": "Include hourly data"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {},
+   "expected": {
+    "output": "<|im_start|>system\nReasoning effort is set to xhigh. Please think carefully through the task, validate key assumptions, consider plausible alternatives, and prioritize correctness, consistency, and clarity in the final answer.\n\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather and forecast for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g. Paris\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}, \"days\": {\"type\": \"integer\", \"description\": \"Number of forecast days (1-7)\"}, \"include_hourly\": {\"type\": \"boolean\", \"description\": \"Include hourly data\"}}, \"required\": [\"city\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nq<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=get_weather>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>x</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n"
+   }
+  },
+  {
+   "name": "x-args-not-object",
+   "messages": [
+    {
+     "role": "user",
+     "content": "q"
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "1",
+       "type": "function",
+       "function": {
+        "name": "f",
+        "arguments": "[1, 2]"
+       }
+      }
+     ]
+    }
+   ],
+   "tools": [
+    {
+     "type": "function",
+     "function": {
+      "name": "get_weather",
+      "description": "Get the current weather and forecast for a city.",
+      "parameters": {
+       "type": "object",
+       "properties": {
+        "city": {
+         "type": "string",
+         "description": "City name, e.g. Paris"
+        },
+        "unit": {
+         "type": "string",
+         "enum": [
+          "celsius",
+          "fahrenheit"
+         ]
+        },
+        "days": {
+         "type": "integer",
+         "description": "Number of forecast days (1-7)"
+        },
+        "include_hourly": {
+         "type": "boolean",
+         "description": "Include hourly data"
+        }
+       },
+       "required": [
+        "city"
+       ]
+      }
+     }
+    }
+   ],
+   "options": {},
+   "expected": {
+    "error": "Can only get item pairs from a mapping."
+   }
+  }
+ ],
+ "numbers": [
+  {
+   "literal": "0",
+   "python": "0"
+  },
+  {
+   "literal": "-0",
+   "python": "0"
+  },
+  {
+   "literal": "7",
+   "python": "7"
+  },
+  {
+   "literal": "-12",
+   "python": "-12"
+  },
+  {
+   "literal": "123456789012345678901234567890",
+   "python": "123456789012345678901234567890"
+  },
+  {
+   "literal": "-9223372036854775809",
+   "python": "-9223372036854775809"
+  },
+  {
+   "literal": "0.0",
+   "python": "0.0"
+  },
+  {
+   "literal": "-0.0",
+   "python": "-0.0"
+  },
+  {
+   "literal": "1.0",
+   "python": "1.0"
+  },
+  {
+   "literal": "1E5",
+   "python": "100000.0"
+  },
+  {
+   "literal": "1e-5",
+   "python": "1e-05"
+  },
+  {
+   "literal": "1e16",
+   "python": "1e+16"
+  },
+  {
+   "literal": "1e15",
+   "python": "1000000000000000.0"
+  },
+  {
+   "literal": "9999999999999998.0",
+   "python": "9999999999999998.0"
+  },
+  {
+   "literal": "0.0001",
+   "python": "0.0001"
+  },
+  {
+   "literal": "0.00001",
+   "python": "1e-05"
+  },
+  {
+   "literal": "1e22",
+   "python": "1e+22"
+  },
+  {
+   "literal": "1e-7",
+   "python": "1e-07"
+  },
+  {
+   "literal": "2.5",
+   "python": "2.5"
+  },
+  {
+   "literal": "0.1",
+   "python": "0.1"
+  },
+  {
+   "literal": "100.0",
+   "python": "100.0"
+  },
+  {
+   "literal": "1.5e300",
+   "python": "1.5e+300"
+  },
+  {
+   "literal": "5e-324",
+   "python": "5e-324"
+  },
+  {
+   "literal": "1.7976931348623157e308",
+   "python": "1.7976931348623157e+308"
+  },
+  {
+   "literal": "0.30000000000000004",
+   "python": "0.30000000000000004"
+  },
+  {
+   "literal": "123456789.123",
+   "python": "123456789.123"
+  },
+  {
+   "literal": "1e400",
+   "python": "Infinity"
+  },
+  {
+   "literal": "-1e400",
+   "python": "-Infinity"
+  },
+  {
+   "literal": "3.14159265358979",
+   "python": "3.14159265358979"
+  },
+  {
+   "literal": "1E+2",
+   "python": "100.0"
+  },
+  {
+   "literal": "2.036941837131545e+211",
+   "python": "2.036941837131545e+211"
+  },
+  {
+   "literal": "-4.2597934671811225e-32",
+   "python": "-4.2597934671811225e-32"
+  },
+  {
+   "literal": "6.884e+143",
+   "python": "6.884e+143"
+  },
+  {
+   "literal": "2.3066873484301055e+154",
+   "python": "2.3066873484301055e+154"
+  },
+  {
+   "literal": "-3.4615044734639308e-105",
+   "python": "-3.4615044734639308e-105"
+  },
+  {
+   "literal": "8.4900669048001081e+116",
+   "python": "8.490066904800108e+116"
+  },
+  {
+   "literal": "-1.3605563788629703e-49",
+   "python": "-1.3605563788629703e-49"
+  },
+  {
+   "literal": "-2.8793100978869001e-29",
+   "python": "-2.8793100978869e-29"
+  },
+  {
+   "literal": "-5.551e+296",
+   "python": "-5.551e+296"
+  },
+  {
+   "literal": "2.478e-33",
+   "python": "2.478e-33"
+  },
+  {
+   "literal": "-4.3656309645510746e-274",
+   "python": "-4.3656309645510746e-274"
+  },
+  {
+   "literal": "2.800e+230",
+   "python": "2.8e+230"
+  },
+  {
+   "literal": "2.8962219934601672e-294",
+   "python": "2.8962219934601672e-294"
+  },
+  {
+   "literal": "-2.704e-34",
+   "python": "-2.704e-34"
+  },
+  {
+   "literal": "-4.770e-79",
+   "python": "-4.77e-79"
+  },
+  {
+   "literal": "2.3562253992861345e-278",
+   "python": "2.3562253992861345e-278"
+  },
+  {
+   "literal": "2.464781034831265e-182",
+   "python": "2.464781034831265e-182"
+  },
+  {
+   "literal": "-0.0009200047303443902",
+   "python": "-0.0009200047303443902"
+  },
+  {
+   "literal": "6.621697250504107e+255",
+   "python": "6.621697250504107e+255"
+  },
+  {
+   "literal": "-9.873111327358485e+26",
+   "python": "-9.873111327358485e+26"
+  },
+  {
+   "literal": "-1.6863097352545942e-91",
+   "python": "-1.6863097352545942e-91"
+  },
+  {
+   "literal": "1.9153188573608197e+251",
+   "python": "1.9153188573608197e+251"
+  },
+  {
+   "literal": "3.906e+46",
+   "python": "3.906e+46"
+  },
+  {
+   "literal": "4.1693502821958626e-88",
+   "python": "4.1693502821958626e-88"
+  },
+  {
+   "literal": "-4.797e-75",
+   "python": "-4.797e-75"
+  },
+  {
+   "literal": "-5.7887788497401354e-64",
+   "python": "-5.7887788497401354e-64"
+  },
+  {
+   "literal": "1.001e-13",
+   "python": "1.001e-13"
+  },
+  {
+   "literal": "-2.977343025670992e-225",
+   "python": "-2.977343025670992e-225"
+  },
+  {
+   "literal": "-3.902976692274406e-13",
+   "python": "-3.902976692274406e-13"
+  },
+  {
+   "literal": "-5.0028468084665706e+130",
+   "python": "-5.002846808466571e+130"
+  },
+  {
+   "literal": "-2.570922486575051e+227",
+   "python": "-2.570922486575051e+227"
+  },
+  {
+   "literal": "8.821262157935176e+140",
+   "python": "8.821262157935176e+140"
+  },
+  {
+   "literal": "-1.712e+209",
+   "python": "-1.712e+209"
+  },
+  {
+   "literal": "-2.159e-277",
+   "python": "-2.159e-277"
+  },
+  {
+   "literal": "-2.0575518663399894e+198",
+   "python": "-2.0575518663399894e+198"
+  },
+  {
+   "literal": "-3.420e+190",
+   "python": "-3.42e+190"
+  },
+  {
+   "literal": "3.009433378721613e-263",
+   "python": "3.009433378721613e-263"
+  },
+  {
+   "literal": "6.895e-129",
+   "python": "6.895e-129"
+  },
+  {
+   "literal": "-9.592e+219",
+   "python": "-9.592e+219"
+  },
+  {
+   "literal": "1.226e-109",
+   "python": "1.226e-109"
+  },
+  {
+   "literal": "3.401e-251",
+   "python": "3.401e-251"
+  },
+  {
+   "literal": "-6.041941652652494e+60",
+   "python": "-6.041941652652494e+60"
+  },
+  {
+   "literal": "1.8380099979589486e+155",
+   "python": "1.8380099979589486e+155"
+  },
+  {
+   "literal": "-6.815e-286",
+   "python": "-6.815e-286"
+  },
+  {
+   "literal": "-6.021e-09",
+   "python": "-6.021e-09"
+  },
+  {
+   "literal": "1.0766485122703109e-66",
+   "python": "1.0766485122703109e-66"
+  },
+  {
+   "literal": "-2.9903120325485293e-75",
+   "python": "-2.9903120325485293e-75"
+  },
+  {
+   "literal": "-5.7135001407985536e-21",
+   "python": "-5.7135001407985536e-21"
+  },
+  {
+   "literal": "8.9408355711445343e-203",
+   "python": "8.940835571144534e-203"
+  },
+  {
+   "literal": "-3.330e-251",
+   "python": "-3.33e-251"
+  },
+  {
+   "literal": "8.797200041145133e-52",
+   "python": "8.797200041145133e-52"
+  },
+  {
+   "literal": "7.356723064145512e-144",
+   "python": "7.356723064145512e-144"
+  },
+  {
+   "literal": "3.726e-283",
+   "python": "3.726e-283"
+  },
+  {
+   "literal": "-2.8541280030359515e-50",
+   "python": "-2.8541280030359515e-50"
+  },
+  {
+   "literal": "6.482691837928028e-257",
+   "python": "6.482691837928028e-257"
+  },
+  {
+   "literal": "-2.317399311853382e-245",
+   "python": "-2.317399311853382e-245"
+  },
+  {
+   "literal": "-5.1523089191056945e-71",
+   "python": "-5.1523089191056945e-71"
+  },
+  {
+   "literal": "4.3687535098587009e+166",
+   "python": "4.368753509858701e+166"
+  },
+  {
+   "literal": "-9.539033110747822e-132",
+   "python": "-9.539033110747822e-132"
+  },
+  {
+   "literal": "1.6786001180576522e+196",
+   "python": "1.6786001180576522e+196"
+  },
+  {
+   "literal": "5.156e+196",
+   "python": "5.156e+196"
+  },
+  {
+   "literal": "5.9560672867192254e+234",
+   "python": "5.9560672867192254e+234"
+  },
+  {
+   "literal": "1.2116190228162202e-42",
+   "python": "1.2116190228162202e-42"
+  },
+  {
+   "literal": "-7.787530434044848e-49",
+   "python": "-7.787530434044848e-49"
+  },
+  {
+   "literal": "-6.5370116218082028e-50",
+   "python": "-6.537011621808203e-50"
+  },
+  {
+   "literal": "2.0647681540835083e+38",
+   "python": "2.0647681540835083e+38"
+  },
+  {
+   "literal": "-4.422e-103",
+   "python": "-4.422e-103"
+  },
+  {
+   "literal": "-1.3414987753328512e+199",
+   "python": "-1.3414987753328512e+199"
+  },
+  {
+   "literal": "-6.3282037587395195e-159",
+   "python": "-6.328203758739519e-159"
+  },
+  {
+   "literal": "-1.3129107809386142e+259",
+   "python": "-1.3129107809386142e+259"
+  },
+  {
+   "literal": "-3.6159409786947763e-194",
+   "python": "-3.6159409786947763e-194"
+  },
+  {
+   "literal": "4.334651267839911e-250",
+   "python": "4.334651267839911e-250"
+  },
+  {
+   "literal": "9.944e-241",
+   "python": "9.944e-241"
+  },
+  {
+   "literal": "7.119e+275",
+   "python": "7.119e+275"
+  },
+  {
+   "literal": "-6.266e+233",
+   "python": "-6.266e+233"
+  },
+  {
+   "literal": "8.963e-32",
+   "python": "8.963e-32"
+  },
+  {
+   "literal": "3.2731293303946374e+26",
+   "python": "3.2731293303946374e+26"
+  },
+  {
+   "literal": "-3.460e+143",
+   "python": "-3.46e+143"
+  },
+  {
+   "literal": "-2.9701462009365659e+187",
+   "python": "-2.970146200936566e+187"
+  },
+  {
+   "literal": "-2.736649558965449e+133",
+   "python": "-2.736649558965449e+133"
+  },
+  {
+   "literal": "-5.975109231168721e+190",
+   "python": "-5.975109231168721e+190"
+  },
+  {
+   "literal": "-5.170e+211",
+   "python": "-5.17e+211"
+  },
+  {
+   "literal": "1.921630196925258e+166",
+   "python": "1.921630196925258e+166"
+  },
+  {
+   "literal": "3.3734652890497042e+150",
+   "python": "3.373465289049704e+150"
+  },
+  {
+   "literal": "-33059130094950416",
+   "python": "-33059130094950416"
+  },
+  {
+   "literal": "5.511626831159831e+206",
+   "python": "5.511626831159831e+206"
+  },
+  {
+   "literal": "-3.335e+234",
+   "python": "-3.335e+234"
+  },
+  {
+   "literal": "-2.4267050731385271e-203",
+   "python": "-2.426705073138527e-203"
+  },
+  {
+   "literal": "2.506e-85",
+   "python": "2.506e-85"
+  },
+  {
+   "literal": "-4.455e+268",
+   "python": "-4.455e+268"
+  },
+  {
+   "literal": "-3.3456089092571954e-270",
+   "python": "-3.3456089092571954e-270"
+  },
+  {
+   "literal": "-1.2954391939170515e+308",
+   "python": "-1.2954391939170515e+308"
+  },
+  {
+   "literal": "-4.6990137669474269e+277",
+   "python": "-4.699013766947427e+277"
+  },
+  {
+   "literal": "1.611538979569454e+31",
+   "python": "1.611538979569454e+31"
+  },
+  {
+   "literal": "1.670e+193",
+   "python": "1.67e+193"
+  },
+  {
+   "literal": "-1.307966574169317e+230",
+   "python": "-1.307966574169317e+230"
+  },
+  {
+   "literal": "1.9617693359603723e+124",
+   "python": "1.9617693359603723e+124"
+  },
+  {
+   "literal": "-2.1012886963947381e-192",
+   "python": "-2.101288696394738e-192"
+  },
+  {
+   "literal": "3.736e+21",
+   "python": "3.736e+21"
+  },
+  {
+   "literal": "-4.2292634207364665e-272",
+   "python": "-4.2292634207364665e-272"
+  },
+  {
+   "literal": "4.3024702872797157e-262",
+   "python": "4.3024702872797157e-262"
+  },
+  {
+   "literal": "-3.7315062611580773e-301",
+   "python": "-3.7315062611580773e-301"
+  },
+  {
+   "literal": "-7.029e+22",
+   "python": "-7.029e+22"
+  },
+  {
+   "literal": "2.2635380618556767e-155",
+   "python": "2.2635380618556767e-155"
+  },
+  {
+   "literal": "7.829e-256",
+   "python": "7.829e-256"
+  },
+  {
+   "literal": "1.776610974915358e+49",
+   "python": "1.776610974915358e+49"
+  },
+  {
+   "literal": "-3.8692030247187044e-95",
+   "python": "-3.8692030247187044e-95"
+  },
+  {
+   "literal": "-1.812e+184",
+   "python": "-1.812e+184"
+  },
+  {
+   "literal": "1.163e+207",
+   "python": "1.163e+207"
+  },
+  {
+   "literal": "-5.3071147607621244e-80",
+   "python": "-5.3071147607621244e-80"
+  },
+  {
+   "literal": "1.9743192435955102e-238",
+   "python": "1.9743192435955102e-238"
+  },
+  {
+   "literal": "1.058797499679963e-97",
+   "python": "1.058797499679963e-97"
+  },
+  {
+   "literal": "-9.050e+195",
+   "python": "-9.05e+195"
+  },
+  {
+   "literal": "-1.4205003162427412e+246",
+   "python": "-1.4205003162427412e+246"
+  },
+  {
+   "literal": "9.22893123726687e-49",
+   "python": "9.22893123726687e-49"
+  },
+  {
+   "literal": "2.798908881213394e+54",
+   "python": "2.798908881213394e+54"
+  },
+  {
+   "literal": "-3.269e+306",
+   "python": "-3.269e+306"
+  },
+  {
+   "literal": "-5.118e+254",
+   "python": "-5.118e+254"
+  },
+  {
+   "literal": "2.170e+243",
+   "python": "2.17e+243"
+  },
+  {
+   "literal": "2.9620967364965029e-264",
+   "python": "2.962096736496503e-264"
+  },
+  {
+   "literal": "-3.6815438401362629e-62",
+   "python": "-3.681543840136263e-62"
+  },
+  {
+   "literal": "2.4651713172157673e-295",
+   "python": "2.4651713172157673e-295"
+  },
+  {
+   "literal": "6.6382094563749524e+299",
+   "python": "6.6382094563749524e+299"
+  },
+  {
+   "literal": "-6.955e+50",
+   "python": "-6.955e+50"
+  },
+  {
+   "literal": "-1.186e-160",
+   "python": "-1.186e-160"
+  },
+  {
+   "literal": "3.4999366063393045e-289",
+   "python": "3.4999366063393045e-289"
+  },
+  {
+   "literal": "-4.231e+256",
+   "python": "-4.231e+256"
+  },
+  {
+   "literal": "1.130239024089015e-294",
+   "python": "1.130239024089015e-294"
+  },
+  {
+   "literal": "-1.1347703456909978e+86",
+   "python": "-1.1347703456909978e+86"
+  },
+  {
+   "literal": "-1.681e+18",
+   "python": "-1.681e+18"
+  },
+  {
+   "literal": "2.0686631244288187e+219",
+   "python": "2.0686631244288187e+219"
+  },
+  {
+   "literal": "-1.2370933397175741e-173",
+   "python": "-1.237093339717574e-173"
+  },
+  {
+   "literal": "-2.0651088545449774e+21",
+   "python": "-2.0651088545449774e+21"
+  },
+  {
+   "literal": "1.463e-59",
+   "python": "1.463e-59"
+  },
+  {
+   "literal": "-3.0845233612564658e-200",
+   "python": "-3.084523361256466e-200"
+  },
+  {
+   "literal": "3.3231406601031155e-10",
+   "python": "3.3231406601031155e-10"
+  },
+  {
+   "literal": "-2.446e-122",
+   "python": "-2.446e-122"
+  },
+  {
+   "literal": "-1.2276396142939662e+299",
+   "python": "-1.2276396142939662e+299"
+  },
+  {
+   "literal": "-1.6527279223727386e+63",
+   "python": "-1.6527279223727386e+63"
+  },
+  {
+   "literal": "-9.4083762486709845e+125",
+   "python": "-9.408376248670984e+125"
+  },
+  {
+   "literal": "6.865160128178532e+168",
+   "python": "6.865160128178532e+168"
+  },
+  {
+   "literal": "-7.622e+234",
+   "python": "-7.622e+234"
+  },
+  {
+   "literal": "-1.4711772396083228e-260",
+   "python": "-1.4711772396083228e-260"
+  },
+  {
+   "literal": "-5.001e+203",
+   "python": "-5.001e+203"
+  },
+  {
+   "literal": "1.2423428088385491e-270",
+   "python": "1.242342808838549e-270"
+  },
+  {
+   "literal": "-1.8584445327909927e+255",
+   "python": "-1.8584445327909927e+255"
+  },
+  {
+   "literal": "-212097804760307.62",
+   "python": "-212097804760307.62"
+  },
+  {
+   "literal": "4.088016038195702e-08",
+   "python": "4.088016038195702e-08"
+  },
+  {
+   "literal": "-1.911463259848938e+236",
+   "python": "-1.911463259848938e+236"
+  },
+  {
+   "literal": "1.6943472420864116e-154",
+   "python": "1.6943472420864116e-154"
+  },
+  {
+   "literal": "7.3696294860675265e-239",
+   "python": "7.3696294860675265e-239"
+  },
+  {
+   "literal": "-2.3319168028382393e-146",
+   "python": "-2.3319168028382393e-146"
+  },
+  {
+   "literal": "7.517e-136",
+   "python": "7.517e-136"
+  },
+  {
+   "literal": "-2.85144674970662e-86",
+   "python": "-2.85144674970662e-86"
+  },
+  {
+   "literal": "2.001e-56",
+   "python": "2.001e-56"
+  },
+  {
+   "literal": "1.193e-139",
+   "python": "1.193e-139"
+  },
+  {
+   "literal": "-1.6909838484576498e+176",
+   "python": "-1.6909838484576498e+176"
+  },
+  {
+   "literal": "-8.4505018987115842e-308",
+   "python": "-8.450501898711584e-308"
+  },
+  {
+   "literal": "4.028e-302",
+   "python": "4.028e-302"
+  },
+  {
+   "literal": "-5.5020391196099424e+113",
+   "python": "-5.5020391196099424e+113"
+  },
+  {
+   "literal": "-5.7301173755776427e+121",
+   "python": "-5.730117375577643e+121"
+  },
+  {
+   "literal": "8.735629660861734e+214",
+   "python": "8.735629660861734e+214"
+  },
+  {
+   "literal": "-2.5955130717980014e+29",
+   "python": "-2.5955130717980014e+29"
+  },
+  {
+   "literal": "1.6106489082645868e+299",
+   "python": "1.6106489082645868e+299"
+  },
+  {
+   "literal": "2.8914612975097925e-106",
+   "python": "2.8914612975097925e-106"
+  },
+  {
+   "literal": "-7.8967553490296305e+269",
+   "python": "-7.89675534902963e+269"
+  },
+  {
+   "literal": "-3.3569321830466537e-141",
+   "python": "-3.3569321830466537e-141"
+  },
+  {
+   "literal": "-4.7286430140493501e-111",
+   "python": "-4.72864301404935e-111"
+  },
+  {
+   "literal": "3.816e-286",
+   "python": "3.816e-286"
+  },
+  {
+   "literal": "0.003878830999753859",
+   "python": "0.003878830999753859"
+  },
+  {
+   "literal": "2.250e-282",
+   "python": "2.25e-282"
+  },
+  {
+   "literal": "2.2267978340708515e-290",
+   "python": "2.2267978340708515e-290"
+  },
+  {
+   "literal": "4.539e+114",
+   "python": "4.539e+114"
+  },
+  {
+   "literal": "-3.210e+283",
+   "python": "-3.21e+283"
+  },
+  {
+   "literal": "5.4440451351407206e+234",
+   "python": "5.4440451351407206e+234"
+  },
+  {
+   "literal": "-4.707727673530805e+126",
+   "python": "-4.707727673530805e+126"
+  },
+  {
+   "literal": "-1.6222199697182382e+91",
+   "python": "-1.6222199697182382e+91"
+  },
+  {
+   "literal": "-5.6116841643627383e+211",
+   "python": "-5.611684164362738e+211"
+  },
+  {
+   "literal": "-4.8842025585330657e-104",
+   "python": "-4.884202558533066e-104"
+  },
+  {
+   "literal": "-3.471e-226",
+   "python": "-3.471e-226"
+  },
+  {
+   "literal": "8.471e-218",
+   "python": "8.471e-218"
+  },
+  {
+   "literal": "1.4260812086939824e-05",
+   "python": "1.4260812086939824e-05"
+  },
+  {
+   "literal": "1.960e-22",
+   "python": "1.96e-22"
+  },
+  {
+   "literal": "2.844e+197",
+   "python": "2.844e+197"
+  },
+  {
+   "literal": "-3.2725603991878566e-282",
+   "python": "-3.2725603991878566e-282"
+  },
+  {
+   "literal": "-9.3121343311449392e-240",
+   "python": "-9.312134331144939e-240"
+  },
+  {
+   "literal": "-1.3019906318534717e+51",
+   "python": "-1.3019906318534717e+51"
+  },
+  {
+   "literal": "-2.4159216760398628e+306",
+   "python": "-2.4159216760398628e+306"
+  },
+  {
+   "literal": "-3.919114171506746e+170",
+   "python": "-3.919114171506746e+170"
+  },
+  {
+   "literal": "1.6886926122837293e-86",
+   "python": "1.6886926122837293e-86"
+  },
+  {
+   "literal": "-8.585e-55",
+   "python": "-8.585e-55"
+  },
+  {
+   "literal": "1.4636905581668816e+144",
+   "python": "1.4636905581668816e+144"
+  },
+  {
+   "literal": "5.3024497693158729e+112",
+   "python": "5.302449769315873e+112"
+  },
+  {
+   "literal": "2.204e+107",
+   "python": "2.204e+107"
+  },
+  {
+   "literal": "-2.4215723270768455e-45",
+   "python": "-2.4215723270768455e-45"
+  },
+  {
+   "literal": "7.748754404752388e-304",
+   "python": "7.748754404752388e-304"
+  },
+  {
+   "literal": "-3.706e+70",
+   "python": "-3.706e+70"
+  },
+  {
+   "literal": "-3.8112122837705582e+24",
+   "python": "-3.811212283770558e+24"
+  },
+  {
+   "literal": "3.518e-306",
+   "python": "3.518e-306"
+  },
+  {
+   "literal": "-8.0204400906407551e-105",
+   "python": "-8.020440090640755e-105"
+  },
+  {
+   "literal": "1.5758744398771137e+49",
+   "python": "1.5758744398771137e+49"
+  },
+  {
+   "literal": "2.542193125539424e-108",
+   "python": "2.542193125539424e-108"
+  },
+  {
+   "literal": "-3.812e-290",
+   "python": "-3.812e-290"
+  },
+  {
+   "literal": "-7.4083718545362941e-121",
+   "python": "-7.408371854536294e-121"
+  },
+  {
+   "literal": "1.4011235661028551e-37",
+   "python": "1.4011235661028551e-37"
+  },
+  {
+   "literal": "-1.253e-144",
+   "python": "-1.253e-144"
+  },
+  {
+   "literal": "7.75853862388697e+278",
+   "python": "7.75853862388697e+278"
+  },
+  {
+   "literal": "-1.5131237389939308e-201",
+   "python": "-1.5131237389939308e-201"
+  },
+  {
+   "literal": "1.018e-69",
+   "python": "1.018e-69"
+  },
+  {
+   "literal": "-5.595e+203",
+   "python": "-5.595e+203"
+  },
+  {
+   "literal": "-9.191621374504718e-120",
+   "python": "-9.191621374504718e-120"
+  },
+  {
+   "literal": "5.471040435874928e+60",
+   "python": "5.471040435874928e+60"
+  },
+  {
+   "literal": "9.857119230126585e+157",
+   "python": "9.857119230126585e+157"
+  },
+  {
+   "literal": "3.2904168870272156e+142",
+   "python": "3.2904168870272156e+142"
+  },
+  {
+   "literal": "-2.400e-293",
+   "python": "-2.4e-293"
+  },
+  {
+   "literal": "-9.8031081387244012e+88",
+   "python": "-9.803108138724401e+88"
+  },
+  {
+   "literal": "-4.115718276960057e+197",
+   "python": "-4.115718276960057e+197"
+  },
+  {
+   "literal": "5.534294058574382e-292",
+   "python": "5.534294058574382e-292"
+  },
+  {
+   "literal": "-3.032823237661187e+226",
+   "python": "-3.032823237661187e+226"
+  },
+  {
+   "literal": "-4.0699892657562364e-70",
+   "python": "-4.0699892657562364e-70"
+  },
+  {
+   "literal": "4.0733903715074652e-192",
+   "python": "4.073390371507465e-192"
+  },
+  {
+   "literal": "-4.5810211401124911e+55",
+   "python": "-4.581021140112491e+55"
+  },
+  {
+   "literal": "-3.686e+37",
+   "python": "-3.686e+37"
+  },
+  {
+   "literal": "1.293e-89",
+   "python": "1.293e-89"
+  },
+  {
+   "literal": "-1.7914357178930392e+214",
+   "python": "-1.7914357178930392e+214"
+  },
+  {
+   "literal": "-2.263e+142",
+   "python": "-2.263e+142"
+  },
+  {
+   "literal": "-2.858e+91",
+   "python": "-2.858e+91"
+  },
+  {
+   "literal": "-1.687e-183",
+   "python": "-1.687e-183"
+  },
+  {
+   "literal": "-2.853e-295",
+   "python": "-2.853e-295"
+  },
+  {
+   "literal": "1.9971627084208522e+206",
+   "python": "1.9971627084208522e+206"
+  },
+  {
+   "literal": "-1.390e-109",
+   "python": "-1.39e-109"
+  },
+  {
+   "literal": "3.2528902014174383e+148",
+   "python": "3.2528902014174383e+148"
+  },
+  {
+   "literal": "-1.6615559891248083e+143",
+   "python": "-1.6615559891248083e+143"
+  },
+  {
+   "literal": "-1.0200031412317136e-16",
+   "python": "-1.0200031412317136e-16"
+  },
+  {
+   "literal": "-4.881674916838154e-104",
+   "python": "-4.881674916838154e-104"
+  },
+  {
+   "literal": "-8.100563052340524e-117",
+   "python": "-8.100563052340524e-117"
+  },
+  {
+   "literal": "5.4672528161602346e+302",
+   "python": "5.4672528161602346e+302"
+  },
+  {
+   "literal": "-3.495e-172",
+   "python": "-3.495e-172"
+  },
+  {
+   "literal": "4.0338707995836895e+229",
+   "python": "4.0338707995836895e+229"
+  },
+  {
+   "literal": "1.7414970162274122e-278",
+   "python": "1.7414970162274122e-278"
+  },
+  {
+   "literal": "-1.2043198780696615e+120",
+   "python": "-1.2043198780696615e+120"
+  },
+  {
+   "literal": "3.358e+27",
+   "python": "3.358e+27"
+  },
+  {
+   "literal": "3.5474223719366191e-51",
+   "python": "3.547422371936619e-51"
+  },
+  {
+   "literal": "8.431e+258",
+   "python": "8.431e+258"
+  },
+  {
+   "literal": "5.1657533699229401e+193",
+   "python": "5.16575336992294e+193"
+  },
+  {
+   "literal": "-6.700e-169",
+   "python": "-6.7e-169"
+  },
+  {
+   "literal": "2.882e-03",
+   "python": "0.002882"
+  },
+  {
+   "literal": "-1.030e+39",
+   "python": "-1.03e+39"
+  },
+  {
+   "literal": "9.8526496673776958e-262",
+   "python": "9.852649667377696e-262"
+  },
+  {
+   "literal": "-0.02330584561470659",
+   "python": "-0.02330584561470659"
+  },
+  {
+   "literal": "8.811e+79",
+   "python": "8.811e+79"
+  },
+  {
+   "literal": "3.2558421552282785e+68",
+   "python": "3.2558421552282785e+68"
+  },
+  {
+   "literal": "1.7711658863602126e-115",
+   "python": "1.7711658863602126e-115"
+  },
+  {
+   "literal": "-1.8961772668516006e-241",
+   "python": "-1.8961772668516006e-241"
+  },
+  {
+   "literal": "9.990e-212",
+   "python": "9.99e-212"
+  },
+  {
+   "literal": "2.9511723372855842e+285",
+   "python": "2.951172337285584e+285"
+  },
+  {
+   "literal": "-5.030815656896458e+97",
+   "python": "-5.030815656896458e+97"
+  },
+  {
+   "literal": "-4.6306863174181224e+286",
+   "python": "-4.6306863174181224e+286"
+  },
+  {
+   "literal": "5.738e+68",
+   "python": "5.738e+68"
+  },
+  {
+   "literal": "5.463e+45",
+   "python": "5.463e+45"
+  },
+  {
+   "literal": "-3.629833137300476e+244",
+   "python": "-3.629833137300476e+244"
+  },
+  {
+   "literal": "7.330e+255",
+   "python": "7.33e+255"
+  },
+  {
+   "literal": "-2.1100425930675033e-271",
+   "python": "-2.1100425930675033e-271"
+  },
+  {
+   "literal": "1.9038056859764756e-243",
+   "python": "1.9038056859764756e-243"
+  },
+  {
+   "literal": "9.899e+86",
+   "python": "9.899e+86"
+  },
+  {
+   "literal": "-1.4900533180861033e-223",
+   "python": "-1.4900533180861033e-223"
+  },
+  {
+   "literal": "-6.9075354497610853e-183",
+   "python": "-6.907535449761085e-183"
+  },
+  {
+   "literal": "-4.2268261114150848e+30",
+   "python": "-4.226826111415085e+30"
+  },
+  {
+   "literal": "-2.291e+113",
+   "python": "-2.291e+113"
+  },
+  {
+   "literal": "-3.681e-31",
+   "python": "-3.681e-31"
+  },
+  {
+   "literal": "-1.3490153595162386e+105",
+   "python": "-1.3490153595162386e+105"
+  },
+  {
+   "literal": "-3.2594897016657914e-99",
+   "python": "-3.2594897016657914e-99"
+  },
+  {
+   "literal": "1.3382300296752742e-190",
+   "python": "1.3382300296752742e-190"
+  },
+  {
+   "literal": "-5.3783258045283296e+245",
+   "python": "-5.37832580452833e+245"
+  },
+  {
+   "literal": "1.409e+267",
+   "python": "1.409e+267"
+  },
+  {
+   "literal": "-9.4871149839348167e+145",
+   "python": "-9.487114983934817e+145"
+  },
+  {
+   "literal": "-2.2624011099892734e+191",
+   "python": "-2.2624011099892734e+191"
+  },
+  {
+   "literal": "2.4663843935949577e-270",
+   "python": "2.4663843935949577e-270"
+  },
+  {
+   "literal": "-1.349119628361222e+205",
+   "python": "-1.349119628361222e+205"
+  },
+  {
+   "literal": "1.588e-103",
+   "python": "1.588e-103"
+  },
+  {
+   "literal": "-2.3540626212015112e+20",
+   "python": "-2.3540626212015112e+20"
+  },
+  {
+   "literal": "4.2251666547494323e-250",
+   "python": "4.2251666547494323e-250"
+  },
+  {
+   "literal": "-1.7849868331473682e+213",
+   "python": "-1.7849868331473682e+213"
+  },
+  {
+   "literal": "-4.184e-226",
+   "python": "-4.184e-226"
+  },
+  {
+   "literal": "-5.6362673246873192e-136",
+   "python": "-5.636267324687319e-136"
+  },
+  {
+   "literal": "5.940e+98",
+   "python": "5.94e+98"
+  },
+  {
+   "literal": "5.3964162929843809e+205",
+   "python": "5.396416292984381e+205"
+  },
+  {
+   "literal": "1.4314718698415618e-273",
+   "python": "1.4314718698415618e-273"
+  },
+  {
+   "literal": "-9.1433107787384644e+307",
+   "python": "-9.143310778738464e+307"
+  },
+  {
+   "literal": "1.6362340239502479e-81",
+   "python": "1.636234023950248e-81"
+  },
+  {
+   "literal": "2.3703820110206763e-169",
+   "python": "2.3703820110206763e-169"
+  },
+  {
+   "literal": "1.0331162638376805e+162",
+   "python": "1.0331162638376805e+162"
+  },
+  {
+   "literal": "1.136e+148",
+   "python": "1.136e+148"
+  },
+  {
+   "literal": "-3.0554354409448469e-253",
+   "python": "-3.055435440944847e-253"
+  },
+  {
+   "literal": "2.7183946332999586e-45",
+   "python": "2.7183946332999586e-45"
+  },
+  {
+   "literal": "-2.9378315855163945e+153",
+   "python": "-2.9378315855163945e+153"
+  },
+  {
+   "literal": "-2.276e+18",
+   "python": "-2.276e+18"
+  },
+  {
+   "literal": "-3.708e-305",
+   "python": "-3.708e-305"
+  },
+  {
+   "literal": "-6.638e-37",
+   "python": "-6.638e-37"
+  },
+  {
+   "literal": "6.083e-199",
+   "python": "6.083e-199"
+  },
+  {
+   "literal": "5.6926265809248704e-67",
+   "python": "5.6926265809248704e-67"
+  },
+  {
+   "literal": "-9.555657641560123e+68",
+   "python": "-9.555657641560123e+68"
+  },
+  {
+   "literal": "-5.459615777991201e+40",
+   "python": "-5.459615777991201e+40"
+  },
+  {
+   "literal": "-1.175394614961853e+205",
+   "python": "-1.175394614961853e+205"
+  },
+  {
+   "literal": "-3.331003546637049e+168",
+   "python": "-3.331003546637049e+168"
+  },
+  {
+   "literal": "-4.0243256230046624e+266",
+   "python": "-4.0243256230046624e+266"
+  },
+  {
+   "literal": "-2.141674805861511e-106",
+   "python": "-2.141674805861511e-106"
+  },
+  {
+   "literal": "-3.527e-128",
+   "python": "-3.527e-128"
+  },
+  {
+   "literal": "-2.0158909718341826e-25",
+   "python": "-2.0158909718341826e-25"
+  },
+  {
+   "literal": "4.8063120280900249e-119",
+   "python": "4.806312028090025e-119"
+  },
+  {
+   "literal": "-4.8554173321750246e+92",
+   "python": "-4.8554173321750246e+92"
+  },
+  {
+   "literal": "-2.3831611156997616e-146",
+   "python": "-2.3831611156997616e-146"
+  },
+  {
+   "literal": "-1.6285470915824332e+76",
+   "python": "-1.6285470915824332e+76"
+  },
+  {
+   "literal": "-1.112e-103",
+   "python": "-1.112e-103"
+  },
+  {
+   "literal": "-2.39139438327006e+149",
+   "python": "-2.39139438327006e+149"
+  },
+  {
+   "literal": "3.1662402930801927e-304",
+   "python": "3.1662402930801927e-304"
+  },
+  {
+   "literal": "-7.685e-64",
+   "python": "-7.685e-64"
+  },
+  {
+   "literal": "2.4076677452761859e-293",
+   "python": "2.407667745276186e-293"
+  },
+  {
+   "literal": "3.314e+108",
+   "python": "3.314e+108"
+  },
+  {
+   "literal": "-1.480e+238",
+   "python": "-1.48e+238"
+  },
+  {
+   "literal": "2.2127943030432313e+219",
+   "python": "2.2127943030432313e+219"
+  },
+  {
+   "literal": "9.0513781566671508e-95",
+   "python": "9.051378156667151e-95"
+  },
+  {
+   "literal": "1.0680710377741808e+259",
+   "python": "1.0680710377741808e+259"
+  },
+  {
+   "literal": "3.646e+159",
+   "python": "3.646e+159"
+  },
+  {
+   "literal": "-4814475709.3215818",
+   "python": "-4814475709.321582"
+  },
+  {
+   "literal": "-5.0902628968036925e-250",
+   "python": "-5.0902628968036925e-250"
+  },
+  {
+   "literal": "-6.287353391631916e+94",
+   "python": "-6.287353391631916e+94"
+  },
+  {
+   "literal": "5.7414897981799974e-264",
+   "python": "5.7414897981799974e-264"
+  },
+  {
+   "literal": "5.3355094713627633e-224",
+   "python": "5.335509471362763e-224"
+  },
+  {
+   "literal": "2.3270660912947027e+297",
+   "python": "2.3270660912947027e+297"
+  },
+  {
+   "literal": "1.064e+306",
+   "python": "1.064e+306"
+  },
+  {
+   "literal": "-2.3554849749524047e-147",
+   "python": "-2.3554849749524047e-147"
+  },
+  {
+   "literal": "1.653e+227",
+   "python": "1.653e+227"
+  },
+  {
+   "literal": "-1.3465947829336096e-51",
+   "python": "-1.3465947829336096e-51"
+  },
+  {
+   "literal": "-1.4426632149258e+24",
+   "python": "-1.4426632149258e+24"
+  },
+  {
+   "literal": "5.552823208390857e-294",
+   "python": "5.552823208390857e-294"
+  },
+  {
+   "literal": "2.7340622654088294e-286",
+   "python": "2.7340622654088294e-286"
+  },
+  {
+   "literal": "4.4474183498403455e-124",
+   "python": "4.4474183498403455e-124"
+  },
+  {
+   "literal": "5.352e-185",
+   "python": "5.352e-185"
+  },
+  {
+   "literal": "7.39007297263391e-114",
+   "python": "7.39007297263391e-114"
+  },
+  {
+   "literal": "-7.423e+144",
+   "python": "-7.423e+144"
+  },
+  {
+   "literal": "-1.0924870262698634e+79",
+   "python": "-1.0924870262698634e+79"
+  },
+  {
+   "literal": "-3.322075130920621e+271",
+   "python": "-3.322075130920621e+271"
+  },
+  {
+   "literal": "-2.2967841113206645e+19",
+   "python": "-2.2967841113206645e+19"
+  },
+  {
+   "literal": "8.2916951106010011e+211",
+   "python": "8.291695110601001e+211"
+  },
+  {
+   "literal": "2.989626796207577e-41",
+   "python": "2.989626796207577e-41"
+  },
+  {
+   "literal": "-5.684e-36",
+   "python": "-5.684e-36"
+  },
+  {
+   "literal": "1.5020967382850738e-96",
+   "python": "1.5020967382850738e-96"
+  },
+  {
+   "literal": "-1.121e-88",
+   "python": "-1.121e-88"
+  },
+  {
+   "literal": "-1.219014797034145e+202",
+   "python": "-1.219014797034145e+202"
+  },
+  {
+   "literal": "-6.8650133165091425e-133",
+   "python": "-6.8650133165091425e-133"
+  },
+  {
+   "literal": "-2.380088872572797e+32",
+   "python": "-2.380088872572797e+32"
+  },
+  {
+   "literal": "6.2015826493767276e+66",
+   "python": "6.2015826493767276e+66"
+  },
+  {
+   "literal": "-8.819e+254",
+   "python": "-8.819e+254"
+  },
+  {
+   "literal": "-9.162e-102",
+   "python": "-9.162e-102"
+  },
+  {
+   "literal": "1.285118104940703e-238",
+   "python": "1.285118104940703e-238"
+  },
+  {
+   "literal": "-1.6510253666940776e-158",
+   "python": "-1.6510253666940776e-158"
+  },
+  {
+   "literal": "-1.040e+302",
+   "python": "-1.04e+302"
+  },
+  {
+   "literal": "-1.940e-154",
+   "python": "-1.94e-154"
+  },
+  {
+   "literal": "1.5140100339326524e-21",
+   "python": "1.5140100339326524e-21"
+  },
+  {
+   "literal": "-2.7476787061642311e-44",
+   "python": "-2.747678706164231e-44"
+  },
+  {
+   "literal": "-8.887e+136",
+   "python": "-8.887e+136"
+  },
+  {
+   "literal": "1.6613294889129726e-141",
+   "python": "1.6613294889129726e-141"
+  },
+  {
+   "literal": "-1.638e-217",
+   "python": "-1.638e-217"
+  },
+  {
+   "literal": "6.259273646094891e+275",
+   "python": "6.259273646094891e+275"
+  },
+  {
+   "literal": "1.4087666114728906e+277",
+   "python": "1.4087666114728906e+277"
+  },
+  {
+   "literal": "-4.0832113762193751",
+   "python": "-4.083211376219375"
+  },
+  {
+   "literal": "1.225e-14",
+   "python": "1.225e-14"
+  },
+  {
+   "literal": "-1.181e+307",
+   "python": "-1.181e+307"
+  },
+  {
+   "literal": "1.0496591737034469e+87",
+   "python": "1.049659173703447e+87"
+  },
+  {
+   "literal": "-3.0451796341053731e-56",
+   "python": "-3.045179634105373e-56"
+  },
+  {
+   "literal": "-5.9002849797043956e-89",
+   "python": "-5.9002849797043956e-89"
+  },
+  {
+   "literal": "-1.9921439878380058e-191",
+   "python": "-1.9921439878380058e-191"
+  },
+  {
+   "literal": "-1.110e-177",
+   "python": "-1.11e-177"
+  },
+  {
+   "literal": "6.638e+100",
+   "python": "6.638e+100"
+  },
+  {
+   "literal": "-3.008e+66",
+   "python": "-3.008e+66"
+  },
+  {
+   "literal": "1.9698972578746675e+28",
+   "python": "1.9698972578746675e+28"
+  },
+  {
+   "literal": "-1.910e-77",
+   "python": "-1.91e-77"
+  },
+  {
+   "literal": "2.6933954692057133e+142",
+   "python": "2.6933954692057133e+142"
+  },
+  {
+   "literal": "-3.049e-29",
+   "python": "-3.049e-29"
+  },
+  {
+   "literal": "-9.0016691070274679e-11",
+   "python": "-9.001669107027468e-11"
+  },
+  {
+   "literal": "-137623271472419.81",
+   "python": "-137623271472419.81"
+  },
+  {
+   "literal": "5.562e-226",
+   "python": "5.562e-226"
+  },
+  {
+   "literal": "1.4961064028355675e+97",
+   "python": "1.4961064028355675e+97"
+  },
+  {
+   "literal": "-1.8313653295952856e-124",
+   "python": "-1.8313653295952856e-124"
+  },
+  {
+   "literal": "-6.443e+155",
+   "python": "-6.443e+155"
+  },
+  {
+   "literal": "1.7037508126165446e+282",
+   "python": "1.7037508126165446e+282"
+  },
+  {
+   "literal": "5.0222753666099107e-241",
+   "python": "5.022275366609911e-241"
+  },
+  {
+   "literal": "-1.339e-92",
+   "python": "-1.339e-92"
+  },
+  {
+   "literal": "-2.8586450253112923e+205",
+   "python": "-2.8586450253112923e+205"
+  },
+  {
+   "literal": "2.810e+184",
+   "python": "2.81e+184"
+  },
+  {
+   "literal": "8.174e-207",
+   "python": "8.174e-207"
+  },
+  {
+   "literal": "-6.779e+284",
+   "python": "-6.779e+284"
+  },
+  {
+   "literal": "-9.4014490982944012e-248",
+   "python": "-9.401449098294401e-248"
+  },
+  {
+   "literal": "2.6033667922057588e-176",
+   "python": "2.6033667922057588e-176"
+  },
+  {
+   "literal": "-1.6813138983806376e+208",
+   "python": "-1.6813138983806376e+208"
+  },
+  {
+   "literal": "3.4213788976154962e+49",
+   "python": "3.421378897615496e+49"
+  },
+  {
+   "literal": "2.9214260757685457e+214",
+   "python": "2.9214260757685457e+214"
+  },
+  {
+   "literal": "-2.889e+222",
+   "python": "-2.889e+222"
+  },
+  {
+   "literal": "-9.6798298260278434e-160",
+   "python": "-9.679829826027843e-160"
+  },
+  {
+   "literal": "-259041.37926897302",
+   "python": "-259041.37926897302"
+  },
+  {
+   "literal": "-518.275",
+   "python": "-518.275"
+  },
+  {
+   "literal": "801435.0439026088",
+   "python": "801435.0439026088"
+  },
+  {
+   "literal": "-927.099",
+   "python": "-927.099"
+  },
+  {
+   "literal": "-183649.55693925114",
+   "python": "-183649.55693925114"
+  },
+  {
+   "literal": "830.068",
+   "python": "830.068"
+  },
+  {
+   "literal": "214220.4882965465",
+   "python": "214220.4882965465"
+  },
+  {
+   "literal": "451.975",
+   "python": "451.975"
+  },
+  {
+   "literal": "-312014.2539847181",
+   "python": "-312014.2539847181"
+  },
+  {
+   "literal": "864.229",
+   "python": "864.229"
+  },
+  {
+   "literal": "-175251.0044041453",
+   "python": "-175251.0044041453"
+  },
+  {
+   "literal": "-331.948",
+   "python": "-331.948"
+  },
+  {
+   "literal": "860267.0357618013",
+   "python": "860267.0357618013"
+  },
+  {
+   "literal": "893.732",
+   "python": "893.732"
+  },
+  {
+   "literal": "-177631.98252089368",
+   "python": "-177631.98252089368"
+  },
+  {
+   "literal": "286.873",
+   "python": "286.873"
+  },
+  {
+   "literal": "12970.038411629619",
+   "python": "12970.038411629619"
+  },
+  {
+   "literal": "345.892",
+   "python": "345.892"
+  },
+  {
+   "literal": "98774.15444415691",
+   "python": "98774.15444415691"
+  },
+  {
+   "literal": "373.385",
+   "python": "373.385"
+  },
+  {
+   "literal": "343353.15511340625",
+   "python": "343353.15511340625"
+  },
+  {
+   "literal": "-229.135",
+   "python": "-229.135"
+  },
+  {
+   "literal": "382065.1659961841",
+   "python": "382065.1659961841"
+  },
+  {
+   "literal": "-584.953",
+   "python": "-584.953"
+  },
+  {
+   "literal": "222748.96901056683",
+   "python": "222748.96901056683"
+  },
+  {
+   "literal": "940.356",
+   "python": "940.356"
+  },
+  {
+   "literal": "380957.9219689686",
+   "python": "380957.9219689686"
+  },
+  {
+   "literal": "827.589",
+   "python": "827.589"
+  },
+  {
+   "literal": "-763418.8580324906",
+   "python": "-763418.8580324906"
+  },
+  {
+   "literal": "847.356",
+   "python": "847.356"
+  },
+  {
+   "literal": "824235.9781131747",
+   "python": "824235.9781131747"
+  },
+  {
+   "literal": "821.626",
+   "python": "821.626"
+  },
+  {
+   "literal": "58120.87837762642",
+   "python": "58120.87837762642"
+  },
+  {
+   "literal": "-349.334",
+   "python": "-349.334"
+  },
+  {
+   "literal": "949801.0517434669",
+   "python": "949801.0517434669"
+  },
+  {
+   "literal": "587.923",
+   "python": "587.923"
+  },
+  {
+   "literal": "-330759.6594535853",
+   "python": "-330759.6594535853"
+  },
+  {
+   "literal": "748.198",
+   "python": "748.198"
+  },
+  {
+   "literal": "747277.9310595267",
+   "python": "747277.9310595267"
+  },
+  {
+   "literal": "756.315",
+   "python": "756.315"
+  },
+  {
+   "literal": "877917.0567627638",
+   "python": "877917.0567627638"
+  },
+  {
+   "literal": "-569.38",
+   "python": "-569.38"
+  },
+  {
+   "literal": "5455.317328526988",
+   "python": "5455.317328526988"
+  },
+  {
+   "literal": "-578.113",
+   "python": "-578.113"
+  },
+  {
+   "literal": "-342213.95516452007",
+   "python": "-342213.95516452007"
+  },
+  {
+   "literal": "12.129",
+   "python": "12.129"
+  },
+  {
+   "literal": "-6205.5465353989275",
+   "python": "-6205.5465353989275"
+  },
+  {
+   "literal": "581.437",
+   "python": "581.437"
+  },
+  {
+   "literal": "-504947.19350037596",
+   "python": "-504947.19350037596"
+  },
+  {
+   "literal": "407.879",
+   "python": "407.879"
+  },
+  {
+   "literal": "-114465.1788519189",
+   "python": "-114465.1788519189"
+  },
+  {
+   "literal": "-68.918",
+   "python": "-68.918"
+  },
+  {
+   "literal": "890095.6346331607",
+   "python": "890095.6346331607"
+  },
+  {
+   "literal": "-947.084",
+   "python": "-947.084"
+  },
+  {
+   "literal": "998015.3209003243",
+   "python": "998015.3209003243"
+  },
+  {
+   "literal": "-0.341",
+   "python": "-0.341"
+  },
+  {
+   "literal": "429275.15174862905",
+   "python": "429275.15174862905"
+  },
+  {
+   "literal": "130.92",
+   "python": "130.92"
+  },
+  {
+   "literal": "-6066.451763830031",
+   "python": "-6066.451763830031"
+  },
+  {
+   "literal": "-265.715",
+   "python": "-265.715"
+  },
+  {
+   "literal": "940827.2280007559",
+   "python": "940827.2280007559"
+  },
+  {
+   "literal": "148.873",
+   "python": "148.873"
+  },
+  {
+   "literal": "-45284.727139261086",
+   "python": "-45284.727139261086"
+  },
+  {
+   "literal": "711.34",
+   "python": "711.34"
+  },
+  {
+   "literal": "-442566.0492530898",
+   "python": "-442566.0492530898"
+  },
+  {
+   "literal": "-937.625",
+   "python": "-937.625"
+  },
+  {
+   "literal": "-636818.2831912899",
+   "python": "-636818.2831912899"
+  },
+  {
+   "literal": "722.865",
+   "python": "722.865"
+  },
+  {
+   "literal": "509326.7791210483",
+   "python": "509326.7791210483"
+  },
+  {
+   "literal": "493.73",
+   "python": "493.73"
+  },
+  {
+   "literal": "-194737.7660845766",
+   "python": "-194737.7660845766"
+  },
+  {
+   "literal": "84.109",
+   "python": "84.109"
+  },
+  {
+   "literal": "118227.97247216944",
+   "python": "118227.97247216944"
+  },
+  {
+   "literal": "-754.897",
+   "python": "-754.897"
+  },
+  {
+   "literal": "-91842.06999934057",
+   "python": "-91842.06999934057"
+  },
+  {
+   "literal": "-888.805",
+   "python": "-888.805"
+  },
+  {
+   "literal": "906444.6311935321",
+   "python": "906444.6311935321"
+  },
+  {
+   "literal": "-846.878",
+   "python": "-846.878"
+  },
+  {
+   "literal": "124194.38303364348",
+   "python": "124194.38303364348"
+  },
+  {
+   "literal": "-379.651",
+   "python": "-379.651"
+  },
+  {
+   "literal": "207707.2485575392",
+   "python": "207707.2485575392"
+  },
+  {
+   "literal": "-634.787",
+   "python": "-634.787"
+  },
+  {
+   "literal": "205367.24906522338",
+   "python": "205367.24906522338"
+  },
+  {
+   "literal": "987.436",
+   "python": "987.436"
+  },
+  {
+   "literal": "961370.7050168128",
+   "python": "961370.7050168128"
+  },
+  {
+   "literal": "-901.312",
+   "python": "-901.312"
+  },
+  {
+   "literal": "870248.5033795384",
+   "python": "870248.5033795384"
+  },
+  {
+   "literal": "-288.524",
+   "python": "-288.524"
+  },
+  {
+   "literal": "110333.02911287849",
+   "python": "110333.02911287849"
+  },
+  {
+   "literal": "-122.223",
+   "python": "-122.223"
+  },
+  {
+   "literal": "-840577.3127702929",
+   "python": "-840577.3127702929"
+  },
+  {
+   "literal": "779.57",
+   "python": "779.57"
+  },
+  {
+   "literal": "-377203.0358398424",
+   "python": "-377203.0358398424"
+  },
+  {
+   "literal": "-833.986",
+   "python": "-833.986"
+  },
+  {
+   "literal": "911690.0235109492",
+   "python": "911690.0235109492"
+  },
+  {
+   "literal": "876.123",
+   "python": "876.123"
+  },
+  {
+   "literal": "315132.5270591171",
+   "python": "315132.5270591171"
+  },
+  {
+   "literal": "599.718",
+   "python": "599.718"
+  },
+  {
+   "literal": "846932.3003341425",
+   "python": "846932.3003341425"
+  },
+  {
+   "literal": "919.815",
+   "python": "919.815"
+  },
+  {
+   "literal": "163256.21553380322",
+   "python": "163256.21553380322"
+  },
+  {
+   "literal": "-65.084",
+   "python": "-65.084"
+  },
+  {
+   "literal": "-438505.5886035176",
+   "python": "-438505.5886035176"
+  },
+  {
+   "literal": "-394.115",
+   "python": "-394.115"
+  },
+  {
+   "literal": "-824554.438778955",
+   "python": "-824554.438778955"
+  },
+  {
+   "literal": "277.194",
+   "python": "277.194"
+  },
+  {
+   "literal": "-354750.06539867236",
+   "python": "-354750.06539867236"
+  },
+  {
+   "literal": "-269.514",
+   "python": "-269.514"
+  },
+  {
+   "literal": "-624219.9471467307",
+   "python": "-624219.9471467307"
+  },
+  {
+   "literal": "-31.404",
+   "python": "-31.404"
+  },
+  {
+   "literal": "711910.9648216474",
+   "python": "711910.9648216474"
+  },
+  {
+   "literal": "-407.496",
+   "python": "-407.496"
+  },
+  {
+   "literal": "168544.69357551844",
+   "python": "168544.69357551844"
+  },
+  {
+   "literal": "-939.208",
+   "python": "-939.208"
+  },
+  {
+   "literal": "481305.2048425304",
+   "python": "481305.2048425304"
+  },
+  {
+   "literal": "-591.881",
+   "python": "-591.881"
+  },
+  {
+   "literal": "42437.94915619679",
+   "python": "42437.94915619679"
+  },
+  {
+   "literal": "-638.842",
+   "python": "-638.842"
+  },
+  {
+   "literal": "-914241.5020335593",
+   "python": "-914241.5020335593"
+  },
+  {
+   "literal": "-331.797",
+   "python": "-331.797"
+  },
+  {
+   "literal": "-620329.6254434685",
+   "python": "-620329.6254434685"
+  },
+  {
+   "literal": "-760.5",
+   "python": "-760.5"
+  },
+  {
+   "literal": "114940.59954564832",
+   "python": "114940.59954564832"
+  },
+  {
+   "literal": "-626.17",
+   "python": "-626.17"
+  },
+  {
+   "literal": "-73815.93860757654",
+   "python": "-73815.93860757654"
+  },
+  {
+   "literal": "-112.835",
+   "python": "-112.835"
+  },
+  {
+   "literal": "539825.6066824046",
+   "python": "539825.6066824046"
+  },
+  {
+   "literal": "625.259",
+   "python": "625.259"
+  },
+  {
+   "literal": "289699.7570275406",
+   "python": "289699.7570275406"
+  },
+  {
+   "literal": "102.343",
+   "python": "102.343"
+  },
+  {
+   "literal": "-449666.12751265254",
+   "python": "-449666.12751265254"
+  },
+  {
+   "literal": "-712.219",
+   "python": "-712.219"
+  },
+  {
+   "literal": "759572.3290162233",
+   "python": "759572.3290162233"
+  },
+  {
+   "literal": "917.718",
+   "python": "917.718"
+  },
+  {
+   "literal": "664531.3246229147",
+   "python": "664531.3246229147"
+  },
+  {
+   "literal": "-22.67",
+   "python": "-22.67"
+  },
+  {
+   "literal": "-477016.08635609504",
+   "python": "-477016.08635609504"
+  },
+  {
+   "literal": "5.842",
+   "python": "5.842"
+  },
+  {
+   "literal": "440834.6589031343",
+   "python": "440834.6589031343"
+  },
+  {
+   "literal": "-985.249",
+   "python": "-985.249"
+  },
+  {
+   "literal": "-726325.1917552524",
+   "python": "-726325.1917552524"
+  },
+  {
+   "literal": "79.752",
+   "python": "79.752"
+  },
+  {
+   "literal": "-994692.9521865369",
+   "python": "-994692.9521865369"
+  },
+  {
+   "literal": "-754.646",
+   "python": "-754.646"
+  },
+  {
+   "literal": "89616.72542673559",
+   "python": "89616.72542673559"
+  },
+  {
+   "literal": "-676.366",
+   "python": "-676.366"
+  },
+  {
+   "literal": "934836.0963225767",
+   "python": "934836.0963225767"
+  },
+  {
+   "literal": "511.186",
+   "python": "511.186"
+  },
+  {
+   "literal": "-89650.56233908504",
+   "python": "-89650.56233908504"
+  },
+  {
+   "literal": "-645.011",
+   "python": "-645.011"
+  },
+  {
+   "literal": "30187.31388226722",
+   "python": "30187.31388226722"
+  },
+  {
+   "literal": "-988.211",
+   "python": "-988.211"
+  },
+  {
+   "literal": "-119653.2291650041",
+   "python": "-119653.2291650041"
+  },
+  {
+   "literal": "-795.132",
+   "python": "-795.132"
+  },
+  {
+   "literal": "477125.6056065548",
+   "python": "477125.6056065548"
+  },
+  {
+   "literal": "690.357",
+   "python": "690.357"
+  },
+  {
+   "literal": "-59106.80732131342",
+   "python": "-59106.80732131342"
+  },
+  {
+   "literal": "40.796",
+   "python": "40.796"
+  },
+  {
+   "literal": "-498343.57659875427",
+   "python": "-498343.57659875427"
+  },
+  {
+   "literal": "944.426",
+   "python": "944.426"
+  },
+  {
+   "literal": "-59294.85509948048",
+   "python": "-59294.85509948048"
+  },
+  {
+   "literal": "134.563",
+   "python": "134.563"
+  },
+  {
+   "literal": "967755.6272296088",
+   "python": "967755.6272296088"
+  },
+  {
+   "literal": "-294.892",
+   "python": "-294.892"
+  },
+  {
+   "literal": "826509.6411271063",
+   "python": "826509.6411271063"
+  },
+  {
+   "literal": "141.886",
+   "python": "141.886"
+  },
+  {
+   "literal": "-53533.172561222455",
+   "python": "-53533.172561222455"
+  },
+  {
+   "literal": "705.579",
+   "python": "705.579"
+  },
+  {
+   "literal": "554856.0996240191",
+   "python": "554856.0996240191"
+  },
+  {
+   "literal": "-19.69",
+   "python": "-19.69"
+  },
+  {
+   "literal": "-399910.81116546283",
+   "python": "-399910.81116546283"
+  },
+  {
+   "literal": "-678.207",
+   "python": "-678.207"
+  },
+  {
+   "literal": "-473169.793141873",
+   "python": "-473169.793141873"
+  },
+  {
+   "literal": "668.722",
+   "python": "668.722"
+  },
+  {
+   "literal": "-261209.1008953217",
+   "python": "-261209.1008953217"
+  },
+  {
+   "literal": "860.752",
+   "python": "860.752"
+  },
+  {
+   "literal": "725279.3925468104",
+   "python": "725279.3925468104"
+  },
+  {
+   "literal": "309.29",
+   "python": "309.29"
+  },
+  {
+   "literal": "399076.3638977711",
+   "python": "399076.3638977711"
+  },
+  {
+   "literal": "-91.447",
+   "python": "-91.447"
+  },
+  {
+   "literal": "10653.72626050841",
+   "python": "10653.72626050841"
+  },
+  {
+   "literal": "-730.074",
+   "python": "-730.074"
+  },
+  {
+   "literal": "440217.31604438415",
+   "python": "440217.31604438415"
+  },
+  {
+   "literal": "692.236",
+   "python": "692.236"
+  },
+  {
+   "literal": "747644.8068116957",
+   "python": "747644.8068116957"
+  },
+  {
+   "literal": "385.714",
+   "python": "385.714"
+  },
+  {
+   "literal": "175619.6517103312",
+   "python": "175619.6517103312"
+  },
+  {
+   "literal": "-363.972",
+   "python": "-363.972"
+  },
+  {
+   "literal": "926703.0636495012",
+   "python": "926703.0636495012"
+  },
+  {
+   "literal": "485.323",
+   "python": "485.323"
+  },
+  {
+   "literal": "-714389.1148581627",
+   "python": "-714389.1148581627"
+  },
+  {
+   "literal": "-499.67",
+   "python": "-499.67"
+  },
+  {
+   "literal": "-31925.091654422693",
+   "python": "-31925.091654422693"
+  },
+  {
+   "literal": "-164.664",
+   "python": "-164.664"
+  },
+  {
+   "literal": "467502.7374305816",
+   "python": "467502.7374305816"
+  },
+  {
+   "literal": "994.691",
+   "python": "994.691"
+  },
+  {
+   "literal": "-716491.1484262822",
+   "python": "-716491.1484262822"
+  },
+  {
+   "literal": "759.703",
+   "python": "759.703"
+  },
+  {
+   "literal": "343584.74496326805",
+   "python": "343584.74496326805"
+  },
+  {
+   "literal": "709.154",
+   "python": "709.154"
+  },
+  {
+   "literal": "648509.2907318759",
+   "python": "648509.2907318759"
+  },
+  {
+   "literal": "-437.722",
+   "python": "-437.722"
+  },
+  {
+   "literal": "914707.4479059018",
+   "python": "914707.4479059018"
+  },
+  {
+   "literal": "-601.174",
+   "python": "-601.174"
+  },
+  {
+   "literal": "-314727.2721708437",
+   "python": "-314727.2721708437"
+  },
+  {
+   "literal": "476.514",
+   "python": "476.514"
+  },
+  {
+   "literal": "623184.4648964424",
+   "python": "623184.4648964424"
+  },
+  {
+   "literal": "-788.14",
+   "python": "-788.14"
+  },
+  {
+   "literal": "-957165.2716725769",
+   "python": "-957165.2716725769"
+  },
+  {
+   "literal": "-407.941",
+   "python": "-407.941"
+  },
+  {
+   "literal": "762378.537271261",
+   "python": "762378.537271261"
+  },
+  {
+   "literal": "-962.428",
+   "python": "-962.428"
+  },
+  {
+   "literal": "-421224.1244833111",
+   "python": "-421224.1244833111"
+  },
+  {
+   "literal": "540.412",
+   "python": "540.412"
+  },
+  {
+   "literal": "710613.7681382955",
+   "python": "710613.7681382955"
+  },
+  {
+   "literal": "732.939",
+   "python": "732.939"
+  },
+  {
+   "literal": "138107.28041410982",
+   "python": "138107.28041410982"
+  },
+  {
+   "literal": "361.092",
+   "python": "361.092"
+  },
+  {
+   "literal": "-950016.8466392765",
+   "python": "-950016.8466392765"
+  },
+  {
+   "literal": "-385.661",
+   "python": "-385.661"
+  },
+  {
+   "literal": "756819.6923302193",
+   "python": "756819.6923302193"
+  },
+  {
+   "literal": "112.978",
+   "python": "112.978"
+  },
+  {
+   "literal": "624575.5774981894",
+   "python": "624575.5774981894"
+  },
+  {
+   "literal": "-473.904",
+   "python": "-473.904"
+  },
+  {
+   "literal": "368352.8361909583",
+   "python": "368352.8361909583"
+  },
+  {
+   "literal": "852.306",
+   "python": "852.306"
+  },
+  {
+   "literal": "157747.1194120429",
+   "python": "157747.1194120429"
+  },
+  {
+   "literal": "397.155",
+   "python": "397.155"
+  },
+  {
+   "literal": "533469.7577182134",
+   "python": "533469.7577182134"
+  },
+  {
+   "literal": "-288.757",
+   "python": "-288.757"
+  },
+  {
+   "literal": "-331384.54994540603",
+   "python": "-331384.54994540603"
+  },
+  {
+   "literal": "541.782",
+   "python": "541.782"
+  },
+  {
+   "literal": "275857.569127053",
+   "python": "275857.569127053"
+  },
+  {
+   "literal": "-319.471",
+   "python": "-319.471"
+  },
+  {
+   "literal": "-799595.4168704243",
+   "python": "-799595.4168704243"
+  },
+  {
+   "literal": "833.626",
+   "python": "833.626"
+  },
+  {
+   "literal": "718719.1132660948",
+   "python": "718719.1132660948"
+  },
+  {
+   "literal": "199.029",
+   "python": "199.029"
+  },
+  {
+   "literal": "-162743.70269841002",
+   "python": "-162743.70269841002"
+  },
+  {
+   "literal": "88.969",
+   "python": "88.969"
+  },
+  {
+   "literal": "297578.1466276776",
+   "python": "297578.1466276776"
+  },
+  {
+   "literal": "-224.36",
+   "python": "-224.36"
+  },
+  {
+   "literal": "-687743.8628252996",
+   "python": "-687743.8628252996"
+  },
+  {
+   "literal": "608.618",
+   "python": "608.618"
+  },
+  {
+   "literal": "-906176.7032740915",
+   "python": "-906176.7032740915"
+  },
+  {
+   "literal": "-49.638",
+   "python": "-49.638"
+  },
+  {
+   "literal": "-721803.753458705",
+   "python": "-721803.753458705"
+  },
+  {
+   "literal": "602.011",
+   "python": "602.011"
+  },
+  {
+   "literal": "730290.4405452227",
+   "python": "730290.4405452227"
+  },
+  {
+   "literal": "-878.367",
+   "python": "-878.367"
+  },
+  {
+   "literal": "171273.06878180732",
+   "python": "171273.06878180732"
+  },
+  {
+   "literal": "516.638",
+   "python": "516.638"
+  },
+  {
+   "literal": "115582.27112084441",
+   "python": "115582.27112084441"
+  },
+  {
+   "literal": "-862.158",
+   "python": "-862.158"
+  },
+  {
+   "literal": "-169931.29782108252",
+   "python": "-169931.29782108252"
+  },
+  {
+   "literal": "966.71",
+   "python": "966.71"
+  },
+  {
+   "literal": "-713633.7610393979",
+   "python": "-713633.7610393979"
+  },
+  {
+   "literal": "-372.236",
+   "python": "-372.236"
+  },
+  {
+   "literal": "59289.36056249123",
+   "python": "59289.36056249123"
+  },
+  {
+   "literal": "41.492",
+   "python": "41.492"
+  },
+  {
+   "literal": "-898225.1811288142",
+   "python": "-898225.1811288142"
+  },
+  {
+   "literal": "-286.22",
+   "python": "-286.22"
+  },
+  {
+   "literal": "837448.299526664",
+   "python": "837448.299526664"
+  },
+  {
+   "literal": "303.088",
+   "python": "303.088"
+  },
+  {
+   "literal": "786673.6829810764",
+   "python": "786673.6829810764"
+  },
+  {
+   "literal": "749.84",
+   "python": "749.84"
+  },
+  {
+   "literal": "402241.6561134828",
+   "python": "402241.6561134828"
+  },
+  {
+   "literal": "-438.778",
+   "python": "-438.778"
+  },
+  {
+   "literal": "680760.5122253969",
+   "python": "680760.5122253969"
+  },
+  {
+   "literal": "-299.187",
+   "python": "-299.187"
+  },
+  {
+   "literal": "-85053.60786971461",
+   "python": "-85053.60786971461"
+  },
+  {
+   "literal": "-713.726",
+   "python": "-713.726"
+  },
+  {
+   "literal": "387240.18845391506",
+   "python": "387240.18845391506"
+  },
+  {
+   "literal": "682.011",
+   "python": "682.011"
+  },
+  {
+   "literal": "985466.9140185595",
+   "python": "985466.9140185595"
+  },
+  {
+   "literal": "-418.482",
+   "python": "-418.482"
+  },
+  {
+   "literal": "161068.7662532949",
+   "python": "161068.7662532949"
+  },
+  {
+   "literal": "-633.259",
+   "python": "-633.259"
+  },
+  {
+   "literal": "535270.8719717253",
+   "python": "535270.8719717253"
+  },
+  {
+   "literal": "-227.228",
+   "python": "-227.228"
+  },
+  {
+   "literal": "315570.4142480204",
+   "python": "315570.4142480204"
+  },
+  {
+   "literal": "647.503",
+   "python": "647.503"
+  },
+  {
+   "literal": "417687.6752050072",
+   "python": "417687.6752050072"
+  },
+  {
+   "literal": "840.694",
+   "python": "840.694"
+  },
+  {
+   "literal": "-649520.4827353104",
+   "python": "-649520.4827353104"
+  },
+  {
+   "literal": "887.104",
+   "python": "887.104"
+  },
+  {
+   "literal": "-170022.68953318952",
+   "python": "-170022.68953318952"
+  },
+  {
+   "literal": "488.536",
+   "python": "488.536"
+  },
+  {
+   "literal": "-339328.7820098876",
+   "python": "-339328.7820098876"
+  },
+  {
+   "literal": "-702.415",
+   "python": "-702.415"
+  },
+  {
+   "literal": "-727824.3511827567",
+   "python": "-727824.3511827567"
+  },
+  {
+   "literal": "172.252",
+   "python": "172.252"
+  },
+  {
+   "literal": "301388.27440374857",
+   "python": "301388.27440374857"
+  },
+  {
+   "literal": "-478.803",
+   "python": "-478.803"
+  },
+  {
+   "literal": "-358137.0055263628",
+   "python": "-358137.0055263628"
+  },
+  {
+   "literal": "-57.453",
+   "python": "-57.453"
+  },
+  {
+   "literal": "-991043.084972185",
+   "python": "-991043.084972185"
+  },
+  {
+   "literal": "849.183",
+   "python": "849.183"
+  },
+  {
+   "literal": "380752.9897829171",
+   "python": "380752.9897829171"
+  },
+  {
+   "literal": "-190.971",
+   "python": "-190.971"
+  },
+  {
+   "literal": "727163.6936157099",
+   "python": "727163.6936157099"
+  },
+  {
+   "literal": "-539.817",
+   "python": "-539.817"
+  },
+  {
+   "literal": "-806313.7683433756",
+   "python": "-806313.7683433756"
+  },
+  {
+   "literal": "216.792",
+   "python": "216.792"
+  },
+  {
+   "literal": "197674.3420013648",
+   "python": "197674.3420013648"
+  },
+  {
+   "literal": "-289.93",
+   "python": "-289.93"
+  },
+  {
+   "literal": "149882.81490245485",
+   "python": "149882.81490245485"
+  },
+  {
+   "literal": "-788.593",
+   "python": "-788.593"
+  },
+  {
+   "literal": "968717.6243848589",
+   "python": "968717.6243848589"
+  },
+  {
+   "literal": "-404.43",
+   "python": "-404.43"
+  },
+  {
+   "literal": "-834174.5053863099",
+   "python": "-834174.5053863099"
+  },
+  {
+   "literal": "-245.586",
+   "python": "-245.586"
+  },
+  {
+   "literal": "355161.41537983366",
+   "python": "355161.41537983366"
+  },
+  {
+   "literal": "214.208",
+   "python": "214.208"
+  },
+  {
+   "literal": "-647972.6793004237",
+   "python": "-647972.6793004237"
+  },
+  {
+   "literal": "-540.261",
+   "python": "-540.261"
+  },
+  {
+   "literal": "-835489.7637541989",
+   "python": "-835489.7637541989"
+  },
+  {
+   "literal": "-798.206",
+   "python": "-798.206"
+  },
+  {
+   "literal": "-438835.3641573237",
+   "python": "-438835.3641573237"
+  },
+  {
+   "literal": "170.512",
+   "python": "170.512"
+  },
+  {
+   "literal": "889494.5004312871",
+   "python": "889494.5004312871"
+  },
+  {
+   "literal": "-544.808",
+   "python": "-544.808"
+  },
+  {
+   "literal": "828492.7480275647",
+   "python": "828492.7480275647"
+  },
+  {
+   "literal": "1.211",
+   "python": "1.211"
+  },
+  {
+   "literal": "-779009.633453412",
+   "python": "-779009.633453412"
+  },
+  {
+   "literal": "-919.226",
+   "python": "-919.226"
+  },
+  {
+   "literal": "182897.84337993385",
+   "python": "182897.84337993385"
+  },
+  {
+   "literal": "-77.596",
+   "python": "-77.596"
+  },
+  {
+   "literal": "-666952.4549908452",
+   "python": "-666952.4549908452"
+  },
+  {
+   "literal": "-512.145",
+   "python": "-512.145"
+  },
+  {
+   "literal": "121179.80100999633",
+   "python": "121179.80100999633"
+  },
+  {
+   "literal": "-255.734",
+   "python": "-255.734"
+  },
+  {
+   "literal": "-857832.4420366281",
+   "python": "-857832.4420366281"
+  },
+  {
+   "literal": "-72.471",
+   "python": "-72.471"
+  },
+  {
+   "literal": "804379.8805588419",
+   "python": "804379.8805588419"
+  },
+  {
+   "literal": "-59.27",
+   "python": "-59.27"
+  },
+  {
+   "literal": "757788.2677554607",
+   "python": "757788.2677554607"
+  },
+  {
+   "literal": "-960.41",
+   "python": "-960.41"
+  },
+  {
+   "literal": "398511.32598164934",
+   "python": "398511.32598164934"
+  },
+  {
+   "literal": "441.717",
+   "python": "441.717"
+  },
+  {
+   "literal": "74415.31637424626",
+   "python": "74415.31637424626"
+  },
+  {
+   "literal": "-758.77",
+   "python": "-758.77"
+  },
+  {
+   "literal": "536084.8091259063",
+   "python": "536084.8091259063"
+  },
+  {
+   "literal": "-272.811",
+   "python": "-272.811"
+  },
+  {
+   "literal": "-168133.09026812087",
+   "python": "-168133.09026812087"
+  },
+  {
+   "literal": "324.583",
+   "python": "324.583"
+  },
+  {
+   "literal": "656932.7872614858",
+   "python": "656932.7872614858"
+  },
+  {
+   "literal": "-763.872",
+   "python": "-763.872"
+  },
+  {
+   "literal": "78814.53095734143",
+   "python": "78814.53095734143"
+  },
+  {
+   "literal": "-213.634",
+   "python": "-213.634"
+  },
+  {
+   "literal": "757206.2401735105",
+   "python": "757206.2401735105"
+  },
+  {
+   "literal": "218.097",
+   "python": "218.097"
+  },
+  {
+   "literal": "586058.6050751079",
+   "python": "586058.6050751079"
+  },
+  {
+   "literal": "-220.138",
+   "python": "-220.138"
+  },
+  {
+   "literal": "695282.1774275173",
+   "python": "695282.1774275173"
+  },
+  {
+   "literal": "658.042",
+   "python": "658.042"
+  },
+  {
+   "literal": "569676.5493991564",
+   "python": "569676.5493991564"
+  },
+  {
+   "literal": "-615.741",
+   "python": "-615.741"
+  },
+  {
+   "literal": "-477296.5501733495",
+   "python": "-477296.5501733495"
+  },
+  {
+   "literal": "-356.442",
+   "python": "-356.442"
+  },
+  {
+   "literal": "-270957.16774060554",
+   "python": "-270957.16774060554"
+  },
+  {
+   "literal": "653.839",
+   "python": "653.839"
+  },
+  {
+   "literal": "-893542.038320218",
+   "python": "-893542.038320218"
+  },
+  {
+   "literal": "-996.403",
+   "python": "-996.403"
+  },
+  {
+   "literal": "602394.8522696302",
+   "python": "602394.8522696302"
+  },
+  {
+   "literal": "-565.015",
+   "python": "-565.015"
+  },
+  {
+   "literal": "-785455.4640792242",
+   "python": "-785455.4640792242"
+  },
+  {
+   "literal": "348.193",
+   "python": "348.193"
+  },
+  {
+   "literal": "-822595.9367356916",
+   "python": "-822595.9367356916"
+  },
+  {
+   "literal": "337.918",
+   "python": "337.918"
+  },
+  {
+   "literal": "-548634.5665877936",
+   "python": "-548634.5665877936"
+  },
+  {
+   "literal": "-795.906",
+   "python": "-795.906"
+  },
+  {
+   "literal": "-325603.8877631631",
+   "python": "-325603.8877631631"
+  },
+  {
+   "literal": "-321.15",
+   "python": "-321.15"
+  },
+  {
+   "literal": "-997580.4830675841",
+   "python": "-997580.4830675841"
+  },
+  {
+   "literal": "942.199",
+   "python": "942.199"
+  },
+  {
+   "literal": "265797.782998516",
+   "python": "265797.782998516"
+  },
+  {
+   "literal": "846.94",
+   "python": "846.94"
+  },
+  {
+   "literal": "252577.89566834434",
+   "python": "252577.89566834434"
+  },
+  {
+   "literal": "-179.898",
+   "python": "-179.898"
+  },
+  {
+   "literal": "-768454.934183901",
+   "python": "-768454.934183901"
+  },
+  {
+   "literal": "84.714",
+   "python": "84.714"
+  },
+  {
+   "literal": "162906.92902129726",
+   "python": "162906.92902129726"
+  },
+  {
+   "literal": "-197.879",
+   "python": "-197.879"
+  },
+  {
+   "literal": "-847941.6848888195",
+   "python": "-847941.6848888195"
+  },
+  {
+   "literal": "906.477",
+   "python": "906.477"
+  },
+  {
+   "literal": "-513128.645033361",
+   "python": "-513128.645033361"
+  },
+  {
+   "literal": "384.572",
+   "python": "384.572"
+  },
+  {
+   "literal": "-948994.2200133901",
+   "python": "-948994.2200133901"
+  },
+  {
+   "literal": "323.717",
+   "python": "323.717"
+  },
+  {
+   "literal": "-37824.302514372044",
+   "python": "-37824.302514372044"
+  },
+  {
+   "literal": "-630.993",
+   "python": "-630.993"
+  },
+  {
+   "literal": "-28517.135872445186",
+   "python": "-28517.135872445186"
+  },
+  {
+   "literal": "-207.042",
+   "python": "-207.042"
+  },
+  {
+   "literal": "993510.8537697257",
+   "python": "993510.8537697257"
+  },
+  {
+   "literal": "677.246",
+   "python": "677.246"
+  },
+  {
+   "literal": "-706415.8241287142",
+   "python": "-706415.8241287142"
+  },
+  {
+   "literal": "46.462",
+   "python": "46.462"
+  },
+  {
+   "literal": "685586.1576404464",
+   "python": "685586.1576404464"
+  },
+  {
+   "literal": "841.26",
+   "python": "841.26"
+  }
+ ]
+}

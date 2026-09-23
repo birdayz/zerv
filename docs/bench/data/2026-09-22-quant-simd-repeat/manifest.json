@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "started_at": "2026-09-22T07:09:45.187743+00:00",
+  "argv": [
+    "bench/run_quant.py",
+    "--zig",
+    ".tools/zig-x86_64-linux-0.16.0/zig",
+    "--reference",
+    "/usr/lib/libggml-base.so.0.24.0",
+    "--cpu",
+    "0",
+    "--output",
+    "docs/bench/data/2026-09-22-quant-simd-repeat"
+  ],
+  "cwd": "/home/USER/projects/zerv",
+  "platform": "Linux-7.2.6-arch2-1-x86_64-with-glibc2.44",
+  "python": "3.14.7",
+  "cpu": 0,
+  "initial_affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23
+  ],
+  "values_per_call": 10485760,
+  "iterations": 16,
+  "trials": 5,
+  "rounds": 3,
+  "warmup_calls": 3,
+  "cache_policy": "reused buffers; warm; no cache flushing",
+  "commands": [
+    [
+      "/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig",
+      "version"
+    ],
+    [
+      "/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig",
+      "build",
+      "test",
+      "--summary",
+      "all"
+    ],
+    [
+      "/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig",
+      "build",
+      "test",
+      "-Doptimize=ReleaseFast",
+      "--summary",
+      "all"
+    ],
+    [
+      "/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig",
+      "build",
+      "bench-build",
+      "-Doptimize=ReleaseFast",
+      "-Dcpu=native"
+    ],
+    [
+      "lscpu"
+    ],
+    [
+      "git",
+      "status",
+      "--short"
+    ],
+    [
+      "ldd",
+      "/usr/lib/libggml-base.so.0.24.0"
+    ],
+    [
+      "/home/USER/projects/zerv/zig-out/bin/zerv-quant-bench"
+    ],
+    [
+      "/home/USER/projects/zerv/zig-out/bin/zerv-quant-bench"
+    ],
+    [
+      "/home/USER/projects/zerv/zig-out/bin/zerv-quant-bench"
+    ]
+  ],
+  "zig_sha256": "2317bbb91798556d9d0f38aabdac23db83f0979b25f767259ae474546724087c",
+  "reference_path": "/usr/lib/libggml-base.so.0.24.0",
+  "reference_sha256": "7d9065538f5df6342613b4fa92e661d5ad8fd811c2dbe16ff0e4b62a77777073",
+  "zig_version": "0.16.0",
+  "native_sha256": "642bafdc32e87b7a889359b59c38a2fb6506dd4047b60f7f16e84e3de0a6f6a3",
+  "source_sha256": {
+    ".zig-version": "aa037454b5e8320521a32b278a3f4aff05fc79009ab5503f5d4a1b9a33b38c47",
+    "bench/quant.zig": "a781ced295aa37492789f862b0264454f313d2a6e265c93ae1e0a672de5bd5f7",
+    "bench/run_quant.py": "f0f710e3a9c94b4581ad0de034c958ebb289adee4a5f5509ee19911140583acd",
+    "build.zig": "66f947917978e8a942da95e89bd66784c6da4f727d89940bf36fe36e9750ec9e",
+    "src/quant.zig": "47c0f6fb2ae4f78f8a22ac72e773c25a518777075de435dc940ed3679cc715cf",
+    "src/root.zig": "3a325fbb9892aba8b02be7c0724b6afe7bb2adb4deb5baee7c75ab449d634914",
+    "tests/fixtures/quantization.json": "c4f19b31cf52ac797f4fed5f47c5b82cbd2e264dbbf0b420c552012ff9fdd464",
+    "tests/reference/generate_quant_goldens.py": "241e46cf2eb791f8fbafb35a6ffee20a43f11107dfb575bc8b9f34c50a96a4a4",
+    "tests/root.zig": "8d2911d5b8090595fe4bf8017f011e0e36639ec0c107935469170729de54f004",
+    "tests/test_quant_bench.py": "bb3dbca529a338c76bbb255e452a4f42949b4fbaea0a64da77561c0d99e64cb4"
+  },
+  "measured_affinity": [
+    0
+  ],
+  "governor": "powersave",
+  "ggml_version": "0.24.0",
+  "ggml_commit": "456172ec-dirty",
+  "workload_hashes": {
+    "q4_0": {
+      "input_sha256": "ea716946b8ba5ed645abdcf3c3a1ef2a0a4620a06cfde24a8a3bdbe87e59f290",
+      "output_sha256": "d9a8dc3ed49a3c4caa5cd3427712299db8492994a0c7f8178a25cff93640d0fa"
+    },
+    "q8_0": {
+      "input_sha256": "04c07b929ab1c9a7b78dd6c46974a67da0b9eab9cbf6694379e6e4555012a011",
+      "output_sha256": "52ef614934ea0b702b7b913ee993047efeb6e3f386771441888a76976eb23e10"
+    }
+  },
+  "finished_at": "2026-09-22T07:09:53.731099+00:00"
+}
