@@ -44,7 +44,8 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model", type=Path, default=ROOT/"models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf")
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--engines", default="zerv,zerv-f16,llama-fa-ub512")
+    p.add_argument("--engines", default="zerv,zerv-f16,llama-fa-ub512",
+                   help="comma-separated engine names; with any `@` knob suffix (run_serving.resolve_engine) separate them with `;`")
     p.add_argument("--paragraphs", type=int, default=145, help="paragraph repeats (145 -> ~29k prompt tokens)")
     p.add_argument("--max-tokens", type=int, default=128)
     p.add_argument("--repeats", type=int, default=2)
@@ -65,8 +66,8 @@ def main():
                     client="python http.client streaming SSE; TTFT = first content delta; decode rate = (completion_tokens-1)/(last_delta-first_delta); "
                            "request 0 is a warmup with a distinct session tag; every request has a unique prefix (no prefix/checkpoint reuse)")
     raw = (out/"raw.jsonl").open("w")
-    for name in a.engines.split(","):
-        spec = table[name]
+    for name in (a.engines.split(";") if "@" in a.engines else a.engines.split(",")):
+        spec = rs.resolve_engine(table, name, zerv_binary)  # BASE@flag=value knob runs
         env = {k: v for k, v in os.environ.items() if not k.startswith(("GGML_", "LLAMA_", "RADV_"))}
         env.update(spec["env"])
         log = (out/f"{name}.log").open("w")
@@ -109,7 +110,7 @@ def main():
     raw.close()
     rows = [json.loads(line) for line in (out/"raw.jsonl").read_text().splitlines()]
     summary = {}
-    for name in a.engines.split(","):
+    for name in (a.engines.split(";") if "@" in a.engines else a.engines.split(",")):
         timed = [r for r in rows if r["engine"] == name and not r["warmup"]]
         if not timed: continue
         # llama-server's own per-request prompt/eval timings, in request order (warmup first).

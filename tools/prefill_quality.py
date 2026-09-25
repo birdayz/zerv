@@ -38,6 +38,9 @@ CONFIGS = {  # environment + KV type, mirroring bench/run_serving.py engines (FA
     "nocoopmat": ({"GGML_VK_DISABLE_COOPMAT": "1"}, "f16"),
     "fp32-full": ({"GGML_VK_DISABLE_MMVQ": "1", "GGML_VK_DISABLE_INTEGER_DOT_PRODUCT": "1", "GGML_VK_DISABLE_COOPMAT": "1",
                    "GGML_VK_DISABLE_F16": "1"}, "f32"),
+    # Block 17c: FP32 arithmetic with an f16 KV cache (the matched reference for zerv --kv-type f16).
+    "fp32-kvf16": ({"GGML_VK_DISABLE_MMVQ": "1", "GGML_VK_DISABLE_INTEGER_DOT_PRODUCT": "1", "GGML_VK_DISABLE_COOPMAT": "1",
+                    "GGML_VK_DISABLE_F16": "1"}, "f16"),
 }
 PINS = {"/usr/lib/libllama.so.0.4.1": "c352cb4b1f5456dffbc4483ba1e0be7a547b21a0f7e63462ab8fb333f51245e1",
         "/usr/lib/libggml-base.so.0.24.0": "7d9065538f5df6342613b4fa92e661d5ad8fd811c2dbe16ff0e4b62a77777073",

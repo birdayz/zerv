@@ -2,7 +2,8 @@
 //! timestamps written between recorded phases (instrumented commands only; the
 //! production commands carry no timestamps). Tokens are a fixed synthetic sequence:
 //! the kernels' cost does not depend on token values.
-//! Usage: zerv-model-profile MODEL CONTEXT CHUNK PROMPT_TOKENS DECODE_STEPS [fp32|f16]
+//! Usage: zerv-model-profile MODEL CONTEXT CHUNK PROMPT_TOKENS DECODE_STEPS [fp32|f16[@native|@spirv] [f32|f16[@page=N|@page=context]]]
+//! (prefill precision, KV cache type and page tokens)
 //! Prints one JSON line per prefill chunk and one summary line for decode (median step).
 const std = @import("std");
 const zerv = @import("zerv");
@@ -53,8 +54,26 @@ pub fn main(init: std.process.Init) !void {
     const a = init.arena.allocator();
     const io = init.io;
     const args = try init.minimal.args.toSlice(a);
-    if (args.len != 6 and args.len != 7) return error.Usage;
-    const precision: zerv.model.gemm.Precision = if (args.len == 7) std.meta.stringToEnum(zerv.model.gemm.Precision, args[6]) orelse return error.Usage else .fp32;
+    if (args.len < 6 or args.len > 8) return error.Usage;
+    // PRECISION[@native|@spirv]: the gemm_f16x machine code (`Model.Options.gemm_code`).
+    var precision: zerv.model.gemm.Precision = .fp32;
+    var gemm_code: zerv.model.gemm.Code = .spirv;
+    if (args.len >= 7) {
+        var pp = std.mem.splitScalar(u8, args[6], '@');
+        precision = std.meta.stringToEnum(zerv.model.gemm.Precision, pp.first()) orelse return error.Usage;
+        while (pp.next()) |option| gemm_code = std.meta.stringToEnum(zerv.model.gemm.Code, option) orelse return error.Usage;
+    }
+    var kv_type: model.KvType = .f32;
+    var kv_page: u32 = model.layout.default_kv_page;
+    if (args.len == 8) {
+        var kp = std.mem.splitScalar(u8, args[7], '@');
+        kv_type = std.meta.stringToEnum(model.KvType, kp.first()) orelse return error.Usage;
+        while (kp.next()) |option| {
+            if (!std.mem.startsWith(u8, option, "page=")) return error.Usage;
+            const v = option["page=".len..];
+            kv_page = if (std.mem.eql(u8, v, "context")) 0 else try std.fmt.parseInt(u32, v, 10);
+        }
+    }
     const context = try std.fmt.parseInt(u32, args[2], 10);
     const chunk = try std.fmt.parseInt(u32, args[3], 10);
     const prompt_len = try std.fmt.parseInt(u32, args[4], 10);
@@ -65,10 +84,11 @@ pub fn main(init: std.process.Init) !void {
     defer file.deinit();
     var container = try zerv.artifact.gguf.Container.parse(a, file.bytes, .{});
     defer container.deinit();
-    var device = try zerv.gpu.Device.open(.{ .max_allocated_bytes = 23 * 1024 * 1024 * 1024, .cooperative_matrix = model.gemm.deviceNeeds(precision).cooperative_matrix, .subgroup_size_control = model.gemm.deviceNeeds(precision).subgroup_size_control });
+    var device = try zerv.gpu.Device.open(.{ .max_allocated_bytes = 23 * 1024 * 1024 * 1024, .cooperative_matrix = model.gemm.deviceNeeds(precision).cooperative_matrix, .subgroup_size_control = model.gemm.deviceNeeds(precision).subgroup_size_control, .storage16 = kv_type == .f16, .pipeline_binaries = model.gemm.needsPipelineBinaries(precision, gemm_code) });
     defer device.deinit() catch @panic("live device resources");
     var m: model.Model = undefined;
-    try m.init(&device, &container, .{ .context = context, .prefill_rows = chunk, .prefill_precision = precision });
+    try m.init(&device, &container, .{ .context = context, .prefill_rows = chunk, .prefill_precision = precision, .kv_type = kv_type, .kv_page_tokens = kv_page, .gemm_code = gemm_code });
+    std.debug.print("gemm_f16x: {s}\n", .{m.gemmCodeStatus()});
     defer m.deinit();
 
     const tokens = try a.alloc(u32, prompt_len + steps);

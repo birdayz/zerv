@@ -6,7 +6,7 @@ const Error = driver.Error;
 const Buffer = @import("buffer.zig").Buffer;
 
 /// Kernels a device may hold at once (bounded child count; docs/specs/gpu-driver.md).
-pub const max_kernels = 128;
+pub const max_kernels = 192;
 
 pub const Kernel = struct {
     device: *Device,
@@ -19,6 +19,18 @@ pub const Kernel = struct {
     buffer_count: usize = 0,
     push_bytes: u32,
     references: u32 = 0,
+    /// Created from `Options.binary` (our machine code) rather than compiled from SPIR-V.
+    native: bool = false,
+
+    /// A driver pipeline binary for this kernel (docs/specs/gpu-driver.md, "Pipeline
+    /// binaries"): its data and binary key as the driver returned them, and the global key
+    /// of the driver it is valid for. The contents are trusted like the SPIR-V.
+    pub const Binary = struct {
+        data: []const u8,
+        key: []const u8,
+        global_key: *const [32]u8,
+    };
+    pub const max_binary_bytes = 1024 * 1024;
 
     pub const Options = struct {
         /// Require this subgroup size (a power of two within `device.subgroup_sizes`;
@@ -28,7 +40,14 @@ pub const Kernel = struct {
         /// `device.full_subgroups`). The local size X must be a multiple of the subgroup
         /// size (the required one, else the device maximum); the SPIR-V is trusted.
         full_subgroups: bool = false,
+        /// Create the pipeline from this binary when the device's global key equals
+        /// `binary.global_key`; otherwise (or without pipeline binaries) from the SPIR-V.
+        binary: ?Binary = null,
+        /// Specialization constants: `constants[i]` is the 32-bit value of `constant_id = i`
+        /// (at most `max_constants`). IDs the module does not declare have no effect.
+        constants: []const u32 = &.{},
     };
+    pub const max_constants = 8;
 
     /// Trusted, validated SPIR-V only; callers own the shader/layout/shape safety contract.
     pub fn init(device: *Device, code: []align(4) const u8, buffers: []const *Buffer, push_bytes: u32) Error!Kernel {
@@ -42,7 +61,12 @@ pub const Kernel = struct {
             if (!std.math.isPowerOfTwo(size) or size < device.subgroup_sizes.min or size > device.subgroup_sizes.max) return error.InvalidLayout;
         }
         if (options.full_subgroups and !device.full_subgroups) return error.UnsupportedFeature;
+        if (options.constants.len > max_constants) return error.InvalidLayout;
         try validateCode(code);
+        if (options.binary) |b| {
+            if (b.data.len == 0 or b.data.len > max_binary_bytes or b.key.len == 0 or b.key.len > vk.VK_MAX_PIPELINE_BINARY_KEY_SIZE_KHR) return error.InvalidShader;
+        }
+        const use_binary = if (options.binary) |b| (if (device.pipeline_key) |k| std.mem.eql(u8, &k, b.global_key) else false) else false;
         if (buffers.len == 0 or buffers.len > 8 or buffers.len > device.properties.limits.maxPerStageDescriptorStorageBuffers or buffers.len > device.properties.limits.maxDescriptorSetStorageBuffers or push_bytes > 128 or push_bytes > device.properties.limits.maxPushConstantsSize or push_bytes % 4 != 0) return error.InvalidLayout;
         if (device.kernels >= max_kernels) return error.ResourceLimit;
         for (buffers) |buffer| {
@@ -65,7 +89,26 @@ pub const Kernel = struct {
         try device.check(vk.vkCreatePipelineLayout(device.handle, &layout_info, null, &self.layout));
         errdefer vk.vkDestroyPipelineLayout(device.handle, self.layout, null);
         const required: vk.VkPipelineShaderStageRequiredSubgroupSizeCreateInfo = .{ .requiredSubgroupSize = options.subgroup_size orelse 0 };
-        const pipeline_info: vk.VkComputePipelineCreateInfo = .{ .stage = .{ .pNext = if (options.subgroup_size != null) &required else null, .flags = if (options.full_subgroups) vk.VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT else 0, .stage = vk.VK_SHADER_STAGE_COMPUTE_BIT, .module = shader, .pName = "main" }, .layout = self.layout, .basePipelineIndex = -1 };
+        var entries: [max_constants]vk.VkSpecializationMapEntry = undefined;
+        for (entries[0..options.constants.len], 0..) |*entry, i| entry.* = .{ .constantID = @intCast(i), .offset = @intCast(4 * i), .size = 4 };
+        const specialization: vk.VkSpecializationInfo = .{ .mapEntryCount = @intCast(options.constants.len), .pMapEntries = &entries, .dataSize = 4 * options.constants.len, .pData = options.constants.ptr };
+        // From a binary: the driver skips compilation and imports the binary's code; the
+        // stage still names the module (the same pipeline description).
+        var binary: vk.VkPipelineBinaryKHR = null;
+        var binary_info: vk.VkPipelineBinaryInfoKHR = .{ .binaryCount = 1, .pPipelineBinaries = &binary };
+        if (use_binary) {
+            const b = options.binary.?;
+            var key: vk.VkPipelineBinaryKeyKHR = .{ .keySize = @intCast(b.key.len) };
+            @memcpy(key.key[0..b.key.len], b.key);
+            const data: vk.VkPipelineBinaryDataKHR = .{ .dataSize = b.data.len, .pData = @constCast(b.data.ptr) };
+            const keys_and_data: vk.VkPipelineBinaryKeysAndDataKHR = .{ .binaryCount = 1, .pPipelineBinaryKeys = &key, .pPipelineBinaryData = &data };
+            const create_info: vk.VkPipelineBinaryCreateInfoKHR = .{ .pKeysAndDataInfo = &keys_and_data };
+            var handles: vk.VkPipelineBinaryHandlesInfoKHR = .{ .pipelineBinaryCount = 1, .pPipelineBinaries = &binary };
+            try device.check(device.create_pipeline_binaries.?(device.handle, &create_info, null, &handles));
+            if (binary == null) return error.DriverError;
+        }
+        defer if (binary != null) device.destroy_pipeline_binary.?(device.handle, binary, null);
+        const pipeline_info: vk.VkComputePipelineCreateInfo = .{ .pNext = if (use_binary) &binary_info else null, .stage = .{ .pNext = if (options.subgroup_size != null) &required else null, .flags = if (options.full_subgroups) vk.VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT else 0, .stage = vk.VK_SHADER_STAGE_COMPUTE_BIT, .module = shader, .pName = "main", .pSpecializationInfo = if (options.constants.len > 0) &specialization else null }, .layout = self.layout, .basePipelineIndex = -1 };
         // Vulkan can return partial handles on a failed multi-pipeline creation.
         errdefer if (self.handle != null) vk.vkDestroyPipeline(device.handle, self.handle, null);
         try device.check(vk.vkCreateComputePipelines(device.handle, null, 1, &pipeline_info, null, &self.handle));
@@ -87,6 +130,7 @@ pub const Kernel = struct {
             buffer.references += 1;
         }
         self.buffer_count = buffers.len;
+        self.native = use_binary;
         device.kernels += 1;
         return self;
     }

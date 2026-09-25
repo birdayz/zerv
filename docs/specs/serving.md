@@ -6,10 +6,15 @@
 
 ## Startup
 
-`zerv --model PATH [--host 127.0.0.1] [--port 8080] [--context 8192]
+`zerv --model PATH [--host 127.0.0.1] [--port 8080] [--context 8192|max] [--vram-reserve-mib 1024]
 [--alias qwen3.8-27b] [--max-waiting 16] [--vram-budget-gib 23]
 [--prefill-chunk 512] [--drain-timeout 30] [--prefill-precision fp32]
-[--prefix-cache-slots 8]` ([prefix cache](prefix-cache.md)).
+[--prefix-cache-slots 8] [--prefix-cache-memory device] [--embedding-memory host]
+[--spec-draft 3] [--spec-policy adaptive] [--kv-type f32] [--decode-fusion on] [--verify-fusion on] [--delta-state-out on]
+[--matvec-accumulation fma] [--sampler-order id] [--spec-draft-vocab full]`
+([prefix cache](prefix-cache.md),
+[sampling orders](session.md),
+[host-resident data](model.md), [speculative decoding](speculative.md)).
 
 1. **Port first.** The server binds and listens (`src/serve/listen.zig`) before loading
    anything.
@@ -22,13 +27,17 @@
      served when the model is ready. So `/health` and `/ready` answer only when requests
      can be served.
 2. **Free VRAM.** Before any device allocation, the device-local bytes the model needs
-   (weights, activation arena, state arena, prefix-cache snapshots, plus 256 MiB of
+   (weights, activation arena, state arena, KV buffers, prefix-cache snapshots, plus 256 MiB of
    headroom for driver objects) are compared with the driver's budget
    (`VK_EXT_memory_budget`: heapBudget − heapUsage, which includes other processes on
    RADV).
    - If they don't fit, startup fails with `not enough free VRAM: the model needs N MiB
      …, M MiB are free`. This is done instead of oversubscribing VRAM, which ended in a
      compute timeout and a lost device.
+   - With `--context max` and no context fitting at all, the message gives the
+     context-independent requirement (weights, snapshots, headroom, `--vram-reserve-mib`)
+     and the limit that ran out: free VRAM (hint: another process, or a too-large reserve)
+     or the `--vram-budget-gib` cap.
    - The numbers are printed at every start. Without the extension, no check is made and
      the start line says so.
    - Two servers starting at the same moment can still both pass the check; that race
@@ -48,7 +57,7 @@ llama-server does. Failures are fatal and explicit; no CPU or smaller-context fa
 | `POST /v1/chat/completions` | JSON or SSE (`stream: true`) |
 | `GET /v1/models` | the served id(s) |
 | `GET /health`, `GET /ready` | `{"status":"ok"}` (connections are accepted after load); `/ready` is 503 `{"status":"draining"}` during shutdown; both are 503 `{"status":"failed"}` once the engine is unusable |
-| `GET /metrics` | Prometheus text: requests/rejected/overloaded/failed, token and time counters, queue gauge |
+| `GET /metrics` | Prometheus text: requests/rejected/overloaded/failed, token and time counters, queue gauge, prefix-cache outcomes, speculative counters (`zerv_spec_verifies_total`, `zerv_spec_draft_tokens_total{stage="drafted|verified|accepted"}`) |
 
 Other paths → 404, wrong methods → 405, missing content-length → 411,
 body > 4 MiB → 413. Errors use `{"error":{message,type,param,code}}`.
@@ -89,9 +98,11 @@ llama-server's parser for this model ([session spec](session.md#termination-and-
 
 ## Scheduling and lifecycle
 
-One model, one sequence: generations are serialized by a mutex. At most
-`--max-waiting` requests may wait (including the running one); beyond that → 503
-`overloaded`. Each request renders, tokenizes and validates before admission; the
+Generations run under a semaphore of `--parallel N` permits (default 1: one sequence at a
+time, serialized as before). With N > 1, the continuous-batching scheduler
+([concurrent.md](concurrent.md), "18c design") decodes the running sequences in one batch,
+and every response is byte-identical to serving it alone. At most `--max-waiting` requests
+may wait for a permit; beyond that → 503 `overloaded`. Each request renders, tokenizes and validates before admission; the
 model state is reset per request (no cross-request state; no prefix cache yet).
 A client disconnect during streaming aborts generation at the next token. Connections
 are bounded (64) and handled concurrently by `std.Io.Group` tasks. No TLS or auth:

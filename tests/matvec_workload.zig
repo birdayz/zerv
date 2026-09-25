@@ -42,6 +42,7 @@ pub fn parseCase(raw: []const u8) !Data {
     for (&h, 0..) |*v, i| v.* = std.mem.readInt(u32, raw[i * 4 ..][0..4], .little);
     if (h[0] != 0x38564d5a or h[1] != 1 or h[7] != 0) return error.InvalidCase;
     const format = std.enums.fromInt(m.Format, h[2]) orelse return error.InvalidCase;
+    if (format == .q8_0) return error.InvalidCase; // no single-row module (multi-row only)
     const shape: m.Shape = .{ .format = format, .columns = h[3], .rows = h[4] };
     if (h[5] != try shape.weightBytes() or h[6] != @as(u64, shape.columns) * 4 or raw.len != 32 + @as(u64, h[5]) + h[6]) return error.InvalidCase;
     const weights = raw[32 .. 32 + @as(usize, h[5])];
@@ -109,12 +110,16 @@ pub const Workload = struct {
     output_offset: usize,
 
     pub fn init(self: *Workload, device: *gpu.Device, data: Data) !void {
-        return self.initOffset(device, data, if (data.shape.format == .f32) 4 else 2);
+        return self.initOffset(device, data, if (data.shape.format == .f32) 4 else 2, .fma);
     }
     pub fn initAligned(self: *Workload, device: *gpu.Device, data: Data) !void {
-        return self.initOffset(device, data, 0);
+        return self.initOffset(device, data, 0, .fma);
     }
-    fn initOffset(self: *Workload, device: *gpu.Device, data: Data, weight_offset: usize) !void {
+    /// Either layout (`aligned`) with the given matvec accumulation.
+    pub fn initWith(self: *Workload, device: *gpu.Device, data: Data, aligned: bool, accumulation: m.Accumulation) !void {
+        return self.initOffset(device, data, if (aligned) 0 else if (data.shape.format == .f32) 4 else 2, accumulation);
+    }
+    fn initOffset(self: *Workload, device: *gpu.Device, data: Data, weight_offset: usize, accumulation: m.Accumulation) !void {
         try m.validateWeights(data.shape, data.weights);
         if (data.input.len != @as(usize, data.shape.columns) * 4) return error.InvalidCase;
         self.shape = data.shape;
@@ -129,7 +134,7 @@ pub const Workload = struct {
         errdefer self.resident.deinit() catch @panic("resident cleanup");
         self.readback = try gpu.Buffer.init(device, output_bytes + 80, .host);
         errdefer self.readback.deinit() catch @panic("readback cleanup");
-        self.plan = try m.Plan.init(data.shape, .{ .buffer = &self.resident, .offset = self.weight_offset }, .{ .buffer = &self.resident, .offset = self.input_offset }, .{ .buffer = &self.resident, .offset = self.output_offset });
+        self.plan = try m.Plan.initWith(data.shape, .{ .buffer = &self.resident, .offset = self.weight_offset }, .{ .buffer = &self.resident, .offset = self.input_offset }, .{ .buffer = &self.resident, .offset = self.output_offset }, accumulation);
         errdefer self.plan.deinit() catch @panic("plan cleanup");
         var initialized: usize = 0;
         errdefer for (self.commands[0..initialized]) |*cmd| cmd.deinit() catch @panic("command cleanup");

@@ -607,6 +607,16 @@
       }
     },
     {
+      "name": "VkPhysicalDevicePipelineBinaryFeaturesKHR",
+      "size": 24,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "pipelineBinaries": 16
+      }
+    },
+    {
       "name": "VkPhysicalDeviceProperties",
       "size": 824,
       "alignment": 8,
@@ -702,6 +712,79 @@
         "vulkanMemoryModel": 16,
         "vulkanMemoryModelDeviceScope": 20,
         "vulkanMemoryModelAvailabilityVisibilityChains": 24
+      }
+    },
+    {
+      "name": "VkPipelineBinaryCreateInfoKHR",
+      "size": 40,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "pKeysAndDataInfo": 16,
+        "pipeline": 24,
+        "pPipelineCreateInfo": 32
+      }
+    },
+    {
+      "name": "VkPipelineBinaryDataKHR",
+      "size": 16,
+      "alignment": 8,
+      "fields": {
+        "dataSize": 0,
+        "pData": 8
+      }
+    },
+    {
+      "name": "VkPipelineBinaryHandlesInfoKHR",
+      "size": 32,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "pipelineBinaryCount": 16,
+        "pPipelineBinaries": 24
+      }
+    },
+    {
+      "name": "VkPipelineBinaryInfoKHR",
+      "size": 32,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "binaryCount": 16,
+        "pPipelineBinaries": 24
+      }
+    },
+    {
+      "name": "VkPipelineBinaryKeyKHR",
+      "size": 56,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "keySize": 16,
+        "key": 20
+      }
+    },
+    {
+      "name": "VkPipelineBinaryKeysAndDataKHR",
+      "size": 24,
+      "alignment": 8,
+      "fields": {
+        "binaryCount": 0,
+        "pPipelineBinaryKeys": 8,
+        "pPipelineBinaryData": 16
+      }
+    },
+    {
+      "name": "VkPipelineCreateInfoKHR",
+      "size": 16,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8
       }
     },
     {
@@ -851,6 +934,7 @@
     "VK_MAX_MEMORY_HEAPS": 16,
     "VK_MAX_MEMORY_TYPES": 32,
     "VK_MAX_PHYSICAL_DEVICE_NAME_SIZE": 256,
+    "VK_MAX_PIPELINE_BINARY_KEY_SIZE_KHR": 32,
     "VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT": 1,
     "VK_MEMORY_PROPERTY_HOST_CACHED_BIT": 8,
     "VK_MEMORY_PROPERTY_HOST_COHERENT_BIT": 4,
@@ -891,18 +975,25 @@
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2": 1000059000,
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT": 1000237000,
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2": 1000059006,
+    "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_BINARY_FEATURES_KHR": 1000483000,
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2": 1000059001,
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES": 1000082000,
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES": 1000094000,
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES": 1000225002,
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES": 1000225000,
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES": 1000211000,
+    "VK_STRUCTURE_TYPE_PIPELINE_BINARY_CREATE_INFO_KHR": 1000483001,
+    "VK_STRUCTURE_TYPE_PIPELINE_BINARY_HANDLES_INFO_KHR": 1000483009,
+    "VK_STRUCTURE_TYPE_PIPELINE_BINARY_INFO_KHR": 1000483002,
+    "VK_STRUCTURE_TYPE_PIPELINE_BINARY_KEY_KHR": 1000483003,
+    "VK_STRUCTURE_TYPE_PIPELINE_CREATE_INFO_KHR": 1000483007,
     "VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO": 30,
     "VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO": 18,
     "VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO": 1000225001,
     "VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO": 16,
     "VK_STRUCTURE_TYPE_SUBMIT_INFO": 4,
     "VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET": 35,
+    "VK_SUBGROUP_FEATURE_ARITHMETIC_BIT": 4,
     "VK_SUBGROUP_FEATURE_BALLOT_BIT": 8,
     "VK_SUBGROUP_FEATURE_BASIC_BIT": 1,
     "VK_SUCCESS": 0,
@@ -912,9 +1003,9 @@
   },
   "schema_version": 1,
   "generator_sha256": "e39fdc7d30bb1175b93903a60fa6d9e2a9555fb51bb85d4d5209b7265a943c10",
-  "helper_sha256": "78f8bf7dc8910b534f12c3bc88a712cb4a0ba9ad7e444dbd97378bfb1509ceb4",
+  "helper_sha256": "59e49478a73c3c1decb927da015e10002947b75253adf952ce581291ef0a091f",
   "header_sha256": "55c06a17793bb1a9d752aa0906116fff9d1fb74f5dd3896777b92f124c9637aa",
   "xml_sha256": "80e7394d0e787d6ec78b67aa324add6f96129fdd042ba640cc336a5481a208ee",
-  "c_source_sha256": "2ee49207099e4264f446732a6865a1c6251ecd55499a2b7235d6be175163ae99",
+  "c_source_sha256": "05a52b6cb3d789d1e16d668a0d48a36fe93d56323cebb91968c499052a9420e2",
   "target": "Linux x86_64 SysV C ABI"
 }

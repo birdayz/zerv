@@ -201,6 +201,158 @@ test "f16 GEMM: Q4_0, Q4_1 and Q5_K against an FP64 sum of the same f16-rounded 
     try t.expectError(error.InvalidRange, gemm.validateF16(.q4_0, ok, .{ .rows = rows }, 1 << 30, (1 << 20) * 4));
 }
 
+// ---- gemm_f16n (block 18e, --decode-precision f16): 128 x 16 tile -----------------------
+// Spec gate (docs/specs/concurrent.md, "18e design"): every row equals gemm_f16's result for
+// the same X row, bit for bit (so a decode row does not depend on its batch), for Q4_0, Q4_1
+// and Q5_K, row counts 1..40 (tails and several 16-row tiles), several K; rows past the
+// validated span untouched.
+fn checkSmallN(comptime format: quant.Format, v: gemm.Variant, device: *gpu.Device, K: u32, n: u32, seed: u64) !void {
+    const width = comptime quant.blockBytes(format);
+    const elements = comptime quant.blockElements(format);
+    const row_bytes: u32 = K / @as(u32, elements) * @as(u32, width);
+    const span: u32 = std.mem.alignForward(u32, n, gemm.f16n_tile_n); // rows the small kernel may write
+    const x_base: u32 = 16;
+    const y_ref: u32 = x_base + rows * K + 16;
+    const y_small: u32 = y_ref + rows * M + 64;
+    const total: u32 = y_small + span * M + 64;
+    var a = try gpu.Buffer.init(device, @as(u64, M) * row_bytes + 64, .host);
+    defer a.deinit() catch @panic("a");
+    var act = try gpu.Buffer.init(device, @as(u64, total) * 4, .host);
+    defer act.deinit() catch @panic("act");
+    var io = try gpu.Buffer.init(device, 1024, .host);
+    defer io.deinit() catch @panic("io");
+    var big = try gpu.Kernel.init(device, try gemm.moduleF16(v), &.{ &a, &act, &io, &act }, @sizeOf(gemm.Push));
+    defer big.deinit() catch @panic("big");
+    var small = try gpu.Kernel.init(device, try gemm.moduleF16n(v), &.{ &a, &act, &io, &act }, @sizeOf(gemm.Push));
+    defer small.deinit() catch @panic("small");
+    var cmd = try gpu.Commands.init(device);
+    defer cmd.deinit() catch @panic("cmd");
+    var prng = std.Random.DefaultPrng.init(seed);
+    const random = prng.random();
+    const wa = try a.mapped();
+    @memset(wa, 0);
+    randomBlocks(format, wa[0 .. M * row_bytes], random);
+    const words = std.mem.bytesAsSlice(f32, try act.mapped());
+    @memset(words, 12345.0);
+    for (0..rows) |r| for (0..K) |k| {
+        words[x_base + r * K + k] = if (r < n) random.floatNorm(f32) else std.math.inf(f32);
+    };
+    std.mem.bytesAsSlice(u32, try io.mapped())[2] = n;
+    const p_ref: gemm.Push = .{ .a_base = 0, .a_rs = row_bytes, .x_base = x_base, .x_rs = K, .y_base = y_ref, .y_rs = M, .m = M, .k = K };
+    var p_small = p_ref;
+    p_small.y_base = y_small;
+    const g_ref = try gemm.validateF16(v, p_ref, .{ .rows = rows }, a.size, act.size);
+    const g_small = try gemm.validateF16n(v, p_small, .{ .rows = span }, a.size, act.size);
+    try t.expectEqual([3]u32{ M / 128, span / 16, 1 }, g_small);
+    try cmd.begin();
+    try cmd.barrier(.host, .compute);
+    try cmd.dispatch(&big, std.mem.asBytes(&p_ref), g_ref);
+    try cmd.dispatch(&small, std.mem.asBytes(&p_small), g_small);
+    try cmd.barrier(.compute, .host);
+    try cmd.end();
+    try cmd.run(timeout_ns);
+    const got = std.mem.bytesAsSlice(u32, std.mem.sliceAsBytes(words[y_small..][0 .. n * M]));
+    const want = std.mem.bytesAsSlice(u32, std.mem.sliceAsBytes(words[y_ref..][0 .. n * M]));
+    for (got, want, 0..) |g, w_, i| if (g != w_) {
+        std.debug.print("gemm_f16n {s} K={d} n={d}: row {d} m {d}: 0x{x} != gemm_f16 0x{x}\n", .{ @tagName(format), K, n, i / M, i % M, g, w_ });
+        return error.NotBitwiseEqual;
+    };
+    for (words[total - 64 .. total]) |value| try t.expectEqual(@as(f32, 12345.0), value);
+    for (words[y_small - 64 .. y_small]) |value| try t.expectEqual(@as(f32, 12345.0), value);
+}
+
+/// Split-K (k_chunk != 0): part z of the split dispatch equals the unsplit kernel over the
+/// K range of part z (weights and X offset to its first block), bit for bit; so the split
+/// arithmetic is exactly "chains per part, then the parts added in order" (the reduce).
+fn checkSmallNSplit(comptime format: quant.Format, v: gemm.Variant, device: *gpu.Device, K: u32, chunk: u32, n: u32, seed: u64) !void {
+    const width = comptime quant.blockBytes(format);
+    const elements = comptime quant.blockElements(format);
+    const row_bytes: u32 = K / @as(u32, elements) * @as(u32, width);
+    const span: u32 = std.mem.alignForward(u32, n, gemm.f16n_tile_n);
+    const parts: u32 = gemm.splitCount(K, chunk);
+    const x_base: u32 = 16;
+    const y_split: u32 = x_base + span * K + 64;
+    const y_parts: u32 = y_split + parts * span * M + 64;
+    const total: u32 = y_parts + parts * span * M + 64;
+    var a = try gpu.Buffer.init(device, @as(u64, M) * row_bytes + 64, .host);
+    defer a.deinit() catch @panic("a");
+    var act = try gpu.Buffer.init(device, @as(u64, total) * 4, .host);
+    defer act.deinit() catch @panic("act");
+    var io = try gpu.Buffer.init(device, 1024, .host);
+    defer io.deinit() catch @panic("io");
+    var small = try gpu.Kernel.init(device, try gemm.moduleF16n(v), &.{ &a, &act, &io, &act }, @sizeOf(gemm.Push));
+    defer small.deinit() catch @panic("small");
+    var cmd = try gpu.Commands.init(device);
+    defer cmd.deinit() catch @panic("cmd");
+    var prng = std.Random.DefaultPrng.init(seed);
+    const random = prng.random();
+    const wa = try a.mapped();
+    @memset(wa, 0);
+    randomBlocks(format, wa[0 .. M * row_bytes], random);
+    const words = std.mem.bytesAsSlice(f32, try act.mapped());
+    @memset(words, 12345.0);
+    for (0..span) |r| for (0..K) |k| {
+        words[x_base + r * K + k] = if (r < n) random.floatNorm(f32) else std.math.inf(f32);
+    };
+    std.mem.bytesAsSlice(u32, try io.mapped())[2] = n;
+    const p_split: gemm.Push = .{ .a_base = 0, .a_rs = row_bytes, .x_base = x_base, .x_rs = K, .y_base = y_split, .y_rs = M, .y_bs = span * M, .m = M, .k = K, .k_chunk = chunk };
+    const g_split = try gemm.validateF16n(v, p_split, .{ .rows = span, .batches = parts }, a.size, act.size);
+    try t.expectEqual([3]u32{ M / 128, span / 16, parts }, g_split);
+    try cmd.begin();
+    try cmd.barrier(.host, .compute);
+    try cmd.dispatch(&small, std.mem.asBytes(&p_split), g_split);
+    for (0..parts) |z| {
+        const kb: u32 = @as(u32, @intCast(z)) * chunk;
+        const kl: u32 = @min(K, kb + chunk) - kb;
+        const p_part: gemm.Push = .{ .a_base = kb / @as(u32, elements) * @as(u32, width), .a_rs = row_bytes, .x_base = x_base + kb, .x_rs = K, .y_base = y_parts + @as(u32, @intCast(z)) * span * M, .y_rs = M, .m = M, .k = kl };
+        // A K sub-range of full-width rows (a_rs > the range's bytes): not a shape the
+        // production validator accepts, so this reference dispatch gives its grid directly
+        // (every read lies inside the rows validated by the split dispatch above).
+        try cmd.dispatch(&small, std.mem.asBytes(&p_part), .{ M / 128, span / 16, 1 });
+    }
+    try cmd.barrier(.compute, .host);
+    try cmd.end();
+    try cmd.run(timeout_ns);
+    for (0..parts) |z| {
+        const got = std.mem.bytesAsSlice(u32, std.mem.sliceAsBytes(words[y_split + z * span * M ..][0 .. n * M]));
+        const want = std.mem.bytesAsSlice(u32, std.mem.sliceAsBytes(words[y_parts + z * span * M ..][0 .. n * M]));
+        for (got, want, 0..) |g, w_, i| if (g != w_) {
+            std.debug.print("gemm_f16n split {s} K={d} chunk={d} part {d}: row {d} m {d}: 0x{x} != 0x{x}\n", .{ @tagName(format), K, chunk, z, i / M, i % M, g, w_ });
+            return error.NotBitwiseEqual;
+        };
+    }
+    for (words[total - 64 .. total]) |value| try t.expectEqual(@as(f32, 12345.0), value);
+}
+
+test "f16 GEMM n16: every row bitwise equal to gemm_f16 (Q4_0, Q4_1, Q5_K; 1..40 rows)" {
+    var device = (try openDevice()) orelse return error.SkipZigTest;
+    defer device.deinit() catch @panic("device");
+    var checked: u32 = 0;
+    for ([_]u32{ 1, 5, 16, 17, 40 }, 0..) |n, i| {
+        try checkSmallN(.q4_0, .q4_0, &device, 5120, n, 0x18e0 + i);
+        try checkSmallN(.q4_1, .q4_1, &device, 512, n, 0x18e1 + i);
+        try checkSmallN(.q5_k, .q5_k, &device, 1024, n, 0x18e2 + i);
+        checked += 3;
+    }
+    // Split-K parts (the decode split rule's chunks and a short last part).
+    try checkSmallNSplit(.q4_0, .q4_0, &device, 5120, 1280, 16, 0x18e7);
+    try checkSmallNSplit(.q4_0, .q4_0, &device, 17408, gemm.f16nChunk(5120, 17408, 384), 7, 0x18e8);
+    try checkSmallNSplit(.q4_1, .q4_1, &device, 1280, 512, 3, 0x18e9);
+    try checkSmallNSplit(.q5_k, .q5_k, &device, 1536, 512, 17, 0x18ea);
+    try t.expectEqual(@as(u32, 1792), gemm.f16nChunk(5120, 17408, 384)); // 40 tiles: 10 parts
+    try t.expectEqual(@as(u32, 0), gemm.f16nChunk(49152, 5120, 384)); // 384 tiles: no split
+    // Validation: row spans must be whole 16-row tiles; ineligible shapes are refused.
+    const ok: gemm.Push = .{ .a_base = 0, .a_rs = 18 * 16, .x_base = 0, .x_rs = 512, .y_base = 1 << 20, .y_rs = M, .m = M, .k = 512 };
+    _ = try gemm.validateF16n(.q4_0, ok, .{ .rows = 16 }, 1 << 30, 1 << 30);
+    try t.expectError(error.InvalidShape, gemm.validateF16n(.q4_0, ok, .{ .rows = 8 }, 1 << 30, 1 << 30));
+    var bad = ok;
+    bad.m = 1024;
+    try t.expectError(error.InvalidShape, gemm.validateF16n(.q4_0, bad, .{ .rows = 16 }, 1 << 30, 1 << 30));
+    try t.expectError(error.InvalidShape, gemm.validateF16n(.q6_k, ok, .{ .rows = 16 }, 1 << 30, 1 << 30));
+    try t.expectError(error.InvalidRange, gemm.validateF16n(.q4_0, ok, .{ .rows = 32 }, 1 << 30, (1 << 20) * 4));
+    std.debug.print("gemm_f16n: {d} (format, rows) cases bitwise equal to gemm_f16\n", .{checked});
+}
+
 // ---- gemm_f16x (block 16b): wave32, 128 x 256 tile, reads an f16 copy of X ----------------
 // Spec gates (docs/specs/prefill.md, "f16 GEMM, wave32 kernel with f16 X"):
 // 1. bitwise-equal to gemm_f16 (f32 X holding the same values) on random Q4_0 weights,
@@ -505,4 +657,133 @@ test "f16-mode producers: the f16 copy is f16(y) of the FP32 output, bit for bit
             try t.expect(@abs(words[4 * 16384 + i] - want) <= 1e-5 * (@abs(want) + 1e-3));
         }
     }
+}
+
+// ---- native gemm_f16x machine code (docs/specs/prefill.md, "Native gemm_f16x machine code") --
+// Gate 2: the kernel created from our pipeline binary equals the SPIR-V kernel bit for bit on
+// every plan row (rows >= n included, they read row n - 1); a wrong global key falls back to
+// SPIR-V; malformed binaries are rejected before any driver call.
+
+fn nativeBinary() gpu.Kernel.Binary {
+    const n = gemm.nativeF16x(.q4_0).?;
+    return .{ .data = n.data, .key = n.key, .global_key = n.global_key };
+}
+
+fn checkNative(device: *gpu.Device, native: *gpu.Kernel, spirv: *gpu.Kernel, a: *gpu.Buffer, act: *gpu.Buffer, io: *gpu.Buffer, K: u32, n: u32, a_base: u32, seed: u64) !void {
+    const row_bytes: u32 = K / 32 * 18;
+    const x16_word: u32 = 64;
+    const y_s: u32 = x16_word + rows_x * K / 2 + 64;
+    const y_n: u32 = y_s + rows_x * M + 64;
+    const total: u32 = y_n + rows_x * M + 64;
+    if (@as(u64, total) * 4 > act.size or @as(u64, M) * row_bytes + a_base > a.size) return error.TestBuffersTooSmall;
+    var prng = std.Random.DefaultPrng.init(seed);
+    const random = prng.random();
+    const wa = try a.mapped();
+    random.bytes(wa);
+    q4Blocks(wa[a_base..][0 .. M * row_bytes], random);
+    const words = std.mem.bytesAsSlice(f32, try act.mapped());
+    @memset(words[0..total], 12345.0);
+    const x16 = std.mem.bytesAsSlice(u16, std.mem.sliceAsBytes(words[x16_word..][0 .. rows_x * K / 2]));
+    for (0..rows_x) |r| for (0..K) |k| {
+        x16[r * K + k] = @bitCast(half(if (r < n) random.floatNorm(f32) else std.math.inf(f32)));
+    };
+    std.mem.bytesAsSlice(u32, try io.mapped())[2] = n;
+    const p_s: gemm.Push = .{ .a_base = a_base, .a_rs = row_bytes, .x_base = 2 * x16_word, .x_rs = K, .y_base = y_s, .y_rs = M, .m = M, .k = K };
+    var p_n = p_s;
+    p_n.y_base = y_n;
+    const groups = try gemm.validateF16x(.q4_0, p_s, .{ .rows = rows_x }, a.size, act.size);
+    var cmd = try gpu.Commands.init(device);
+    defer cmd.deinit() catch @panic("cmd");
+    try cmd.begin();
+    try cmd.barrier(.host, .compute);
+    try cmd.dispatch(spirv, std.mem.asBytes(&p_s), groups);
+    try cmd.dispatch(native, std.mem.asBytes(&p_n), groups);
+    try cmd.barrier(.compute, .host);
+    try cmd.end();
+    try cmd.run(timeout_ns);
+    const got = std.mem.bytesAsSlice(u32, std.mem.sliceAsBytes(words[y_n..][0 .. rows_x * M]));
+    const want = std.mem.bytesAsSlice(u32, std.mem.sliceAsBytes(words[y_s..][0 .. rows_x * M]));
+    for (got, want, 0..) |g, w_, i| if (g != w_) {
+        std.debug.print("native gemm_f16x K={d} n={d} a_base={d}: row {d} m {d}: 0x{x} != SPIR-V 0x{x}\n", .{ K, n, a_base, i / M, i % M, g, w_ });
+        return error.NotBitwiseEqual;
+    };
+    for (words[total - 64 .. total]) |v| try t.expectEqual(@as(f32, 12345.0), v);
+    for (words[y_n - 64 .. y_n]) |v| try t.expectEqual(@as(f32, 12345.0), v);
+}
+
+test "native gemm_f16x: bitwise equal to the SPIR-V kernel; fallback on another driver key" {
+    var device = gpu.Device.open(.{ .max_allocated_bytes = 1024 * 1024 * 1024, .cooperative_matrix = true, .subgroup_size_control = true, .pipeline_binaries = true }) catch |e| switch (e) {
+        error.UnsupportedFeature => return error.SkipZigTest,
+        else => return e,
+    };
+    defer device.deinit() catch @panic("device");
+    if (!device.full_subgroups or device.subgroup_sizes.min > gemm.f16x_subgroup or device.subgroup_sizes.max < gemm.f16x_subgroup) return error.SkipZigTest;
+    const binary = nativeBinary();
+    const key = device.pipeline_key orelse return error.SkipZigTest;
+    if (!std.mem.eql(u8, &key, binary.global_key)) {
+        std.debug.print("native gemm_f16x: driver key differs from the binary's (another Mesa build?); skipped\n", .{});
+        return error.SkipZigTest;
+    }
+    var a = try gpu.Buffer.init(&device, @as(u64, M) * (5120 / 32 * 18) + 64, .host);
+    defer a.deinit() catch @panic("a");
+    var act = try gpu.Buffer.init(&device, (64 + rows_x * 5120 / 2 + 2 * rows_x * M + 256) * 4, .host);
+    defer act.deinit() catch @panic("act");
+    var io = try gpu.Buffer.init(&device, 1024, .host);
+    defer io.deinit() catch @panic("io");
+    const buffers = [_]*gpu.Buffer{ &a, &act, &io, &act };
+    const opts: gpu.Kernel.Options = .{ .subgroup_size = gemm.f16x_subgroup, .full_subgroups = true };
+    var spirv = try gpu.Kernel.initWith(&device, try gemm.moduleF16x(.q4_0), &buffers, @sizeOf(gemm.Push), opts);
+    defer spirv.deinit() catch @panic("spirv");
+    var with_binary = opts;
+    with_binary.binary = binary;
+    var native = try gpu.Kernel.initWith(&device, try gemm.moduleF16x(.q4_0), &buffers, @sizeOf(gemm.Push), with_binary);
+    defer native.deinit() catch @panic("native");
+    try t.expect(!spirv.native);
+    try t.expect(native.native);
+    try checkNative(&device, &native, &spirv, &a, &act, &io, 64, rows_x, 0, 0x5a1);
+    try checkNative(&device, &native, &spirv, &a, &act, &io, 192, 200, 2, 0x5a2);
+    try checkNative(&device, &native, &spirv, &a, &act, &io, 512, 1, 0, 0x5a3);
+    try checkNative(&device, &native, &spirv, &a, &act, &io, 5120, rows_x, 2, 0x5a4);
+    try checkNative(&device, &native, &spirv, &a, &act, &io, 5120, 129, 0, 0x5a5);
+
+    // Another driver's key: the SPIR-V kernel, same results.
+    var other_key = binary.global_key.*;
+    other_key[7] ^= 0x40;
+    var mismatch = binary;
+    mismatch.global_key = &other_key;
+    var fallback_opts = opts;
+    fallback_opts.binary = mismatch;
+    var fallback = try gpu.Kernel.initWith(&device, try gemm.moduleF16x(.q4_0), &buffers, @sizeOf(gemm.Push), fallback_opts);
+    defer fallback.deinit() catch @panic("fallback");
+    try t.expect(!fallback.native);
+    try checkNative(&device, &fallback, &spirv, &a, &act, &io, 512, 300 % rows_x, 2, 0x5a6);
+
+    // Malformed binaries: rejected before any driver call.
+    const kernels = device.kernels;
+    for ([_]gpu.Kernel.Binary{
+        .{ .data = binary.data[0..0], .key = binary.key, .global_key = binary.global_key },
+        .{ .data = binary.data, .key = binary.key[0..0], .global_key = binary.global_key },
+        .{ .data = binary.data, .key = &([_]u8{1} ** 33), .global_key = binary.global_key },
+    }) |bad| {
+        var bad_opts = opts;
+        bad_opts.binary = bad;
+        try t.expectError(error.InvalidShader, gpu.Kernel.initWith(&device, try gemm.moduleF16x(.q4_0), &buffers, @sizeOf(gemm.Push), bad_opts));
+    }
+    try t.expectEqual(kernels, device.kernels);
+    std.debug.print("native gemm_f16x: bitwise equal to SPIR-V on 5 cases; key mismatch falls back\n", .{});
+}
+
+test "native gemm_f16x: a device without pipeline binaries uses the SPIR-V" {
+    var device = gpu.Device.open(.{ .max_allocated_bytes = 256 * 1024 * 1024, .cooperative_matrix = true, .subgroup_size_control = true }) catch |e| switch (e) {
+        error.UnsupportedFeature => return error.SkipZigTest,
+        else => return e,
+    };
+    defer device.deinit() catch @panic("device");
+    if (!device.full_subgroups) return error.SkipZigTest;
+    try t.expect(device.pipeline_key == null);
+    var buffer = try gpu.Buffer.init(&device, 4096, .device);
+    defer buffer.deinit() catch @panic("buffer");
+    var k = try gpu.Kernel.initWith(&device, try gemm.moduleF16x(.q4_0), &.{ &buffer, &buffer, &buffer, &buffer }, @sizeOf(gemm.Push), .{ .subgroup_size = gemm.f16x_subgroup, .full_subgroups = true, .binary = nativeBinary() });
+    defer k.deinit() catch @panic("kernel");
+    try t.expect(!k.native);
 }

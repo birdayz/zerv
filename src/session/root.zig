@@ -5,6 +5,7 @@ pub const sampler = @import("sampler.zig");
 pub const text = @import("text.zig");
 pub const tools = @import("tools.zig");
 pub const prefix = @import("prefix.zig");
+pub const spec = @import("spec.zig");
 
 /// Model-profile token ids, resolved from the tokenizer at load time.
 pub const Special = struct {
@@ -27,9 +28,23 @@ pub const Request = struct {
     /// Reuse processed tokens across requests (docs/specs/prefix-cache.md). The backend
     /// must then provide `saveSnapshot(slot)` and `loadSnapshot(slot, position)`.
     cache: ?*prefix.Cache = null,
+    /// Speculative decoding (backends with `speculative() > 0`): the verify-count policy
+    /// (null: verify every draft). Owned by the caller; it learns across requests.
+    spec_policy: ?*spec.Policy = null,
 };
 pub const Event = text.Event;
 pub const Finish = enum { stop, length };
+/// Speculative decoding counters of one generation.
+pub const SpecStats = struct {
+    /// Verify passes.
+    verifies: u32 = 0,
+    /// Drafts the drafter produced (the policy may verify fewer).
+    drafted: u32 = 0,
+    /// Verified drafts that were decided, and those accepted (sampled equal to the draft).
+    /// Drafts left over when a generation ends inside verified rows are neither.
+    verified: u32 = 0,
+    accepted: u32 = 0,
+};
 pub const Result = struct {
     finish: Finish,
     prompt_tokens: u32,
@@ -42,6 +57,12 @@ pub const Result = struct {
     /// Prompt tokens reused from the prefix cache, and how the prompt was started.
     cached_tokens: u32 = 0,
     cache_outcome: prefix.Outcome = .reset,
+    spec: SpecStats = .{},
+    /// Of `decode_ns`: time inside backend calls (step, draft, verify, commit: submission,
+    /// GPU and fence wait) and inside the sampler. The rest is host token handling
+    /// (detokenizing, stop strings, streaming to the sink).
+    backend_ns: u64 = 0,
+    sample_ns: u64 = 0,
 };
 pub const Error = sampler.Error || error{ InvalidStop, EmptyPrompt, ContextExceeded, InvalidMaxTokens, PieceTooLong, NoAllowedToken, SnapshotsUnsupported };
 
@@ -94,13 +115,32 @@ pub fn Generation(comptime Backend: type, comptime Tokenizer: type, comptime Sin
             const prefill_end = std.Io.Clock.awake.now(io);
             var generated: u32 = 0;
             var finish: Finish = .length;
+            // Speculative decoding (docs/specs/speculative.md): `sv.logits` holds verified
+            // rows (row i = the logits after verify token i = `sv.tokens[i]`, the drafts
+            // follow the sampled token). Sampling stays one token at a time with the same
+            // sampler calls, and row i+1 is used only when the token sampled from row i
+            // equals its draft, so the output is the non-speculative output (sample matching).
+            const spec_drafts: u32 = if (comptime speculative(Backend)) backend.speculative() else 0;
+            var sv: Spec = .{ .row = 0, .rows = 1, .logits = logits, .vocab = backend.vocab() };
+            var stats: SpecStats = .{};
+            var backend_ns: u64 = 0;
+            var sample_ns: u64 = 0;
+            // An error with an uncommitted verify leaves the model ahead of the recorded
+            // tokens: forget the cache (the next request resets).
+            errdefer if (sv.pending) if (request.cache) |cache| cache.invalidate();
             while (generated < limit) {
                 // Cancelation point between steps (server drain deadline); the device is idle here.
                 try io.checkCancel();
+                const row_logits = sv.current();
+                const sample_start = std.Io.Clock.awake.now(io);
                 const token = if (splitter.afterCall()) |space|
-                    try s.sampleFrom(logits, try afterCallTokens(tokenizer, special, request.tools.?.parallel, space, allowed))
+                    try s.sampleFrom(row_logits, try afterCallTokens(tokenizer, special, request.tools.?.parallel, space, allowed))
                 else
-                    try s.sample(logits);
+                    try s.sample(row_logits);
+                sample_ns += elapsed(io, sample_start);
+                // A batching backend may reuse the logits memory from here on
+                // (docs/specs/concurrent.md, "18c design").
+                if (comptime releases(Backend)) backend.sampled();
                 generated += 1;
                 if (std.mem.indexOfScalar(u32, special.eos, token) != null) {
                     finish = .stop;
@@ -115,12 +155,83 @@ pub fn Generation(comptime Backend: type, comptime Tokenizer: type, comptime Sin
                     break;
                 }
                 if (generated == limit) break;
+                if (comptime speculative(Backend)) {
+                    if (sv.pending) {
+                        // The next verified row is valid only if its draft was sampled.
+                        if (sv.row + 1 < sv.rows and token == sv.tokens[sv.row + 1]) {
+                            sv.row += 1;
+                            continue;
+                        }
+                        const m = sv.row + 1;
+                        sv.pending = false;
+                        stats.verified += sv.rows - 1;
+                        stats.accepted += m - 1;
+                        errdefer if (request.cache) |cache| cache.invalidate();
+                        const t0 = std.Io.Clock.awake.now(io);
+                        try backend.commit(m);
+                        const commit_ns = elapsed(io, t0);
+                        backend_ns += commit_ns;
+                        if (request.spec_policy) |policy| {
+                            policy.timeCommit(commit_ns);
+                            policy.observe(sv.probs[0 .. sv.rows - 1], m - 1);
+                        }
+                        if (request.cache) |cache| cache.record(sv.tokens[0..m]);
+                    }
+                    // Drafts: at most one fewer than the tokens still to sample (each verified
+                    // row yields at most one) and inside the context (the verify's last row).
+                    const room = backend.context() - @as(u32, @intCast(request.prompt.len)) - generated;
+                    const k = @min(spec_drafts, limit - generated - 1, room);
+                    if (k > 0) {
+                        errdefer if (request.cache) |cache| cache.invalidate();
+                        var t0 = std.Io.Clock.awake.now(io);
+                        const drafts = try backend.draft(token, k);
+                        const draft_ns = elapsed(io, t0);
+                        backend_ns += draft_ns;
+                        stats.drafted += k;
+                        sv.tokens[0] = token;
+                        @memcpy(sv.tokens[1..][0..k], drafts);
+                        // The policy may verify fewer drafts (never more): speed only.
+                        var verified = k;
+                        if (request.spec_policy) |policy| {
+                            policy.timeDraft(draft_ns);
+                            const probs = backend.draftProbs(k);
+                            @memcpy(sv.probs[0..k], probs);
+                            verified = policy.choose(probs);
+                        }
+                        t0 = std.Io.Clock.awake.now(io);
+                        sv.logits = try backend.verify(sv.tokens[0 .. verified + 1]);
+                        const verify_ns = elapsed(io, t0);
+                        backend_ns += verify_ns;
+                        if (request.spec_policy) |policy| policy.timeVerify(verified + 1, verify_ns);
+                        sv.rows = verified + 1;
+                        sv.row = 0;
+                        sv.pending = true;
+                        stats.verifies += 1;
+                        continue;
+                    }
+                }
+                sv.rows = 1;
+                sv.row = 0;
+                const step_start = std.Io.Clock.awake.now(io);
                 if (request.cache) |cache| {
                     errdefer cache.invalidate();
-                    logits = try backend.step(token);
+                    sv.logits = try backend.step(token);
                     cache.record(&.{token});
-                } else logits = try backend.step(token);
+                } else sv.logits = try backend.step(token);
+                backend_ns += elapsed(io, step_start);
             }
+            if (comptime speculative(Backend)) if (sv.pending) {
+                // The generation ended inside verified rows: keep the rows whose tokens were
+                // consumed (the last sampled token stays unprocessed, as without speculation).
+                errdefer if (request.cache) |cache| cache.invalidate();
+                const t0 = std.Io.Clock.awake.now(io);
+                try backend.commit(sv.row + 1);
+                backend_ns += elapsed(io, t0);
+                if (request.cache) |cache| cache.record(sv.tokens[0 .. sv.row + 1]);
+                sv.pending = false;
+                stats.verified += sv.row;
+                stats.accepted += sv.row;
+            };
             // An incomplete UTF-8 tail and a held partial delimiter are dropped;
             // bytes held for a stop string that never completed are released.
             utf8.finish();
@@ -134,9 +245,53 @@ pub fn Generation(comptime Backend: type, comptime Tokenizer: type, comptime Sin
             }
             result.cached_tokens = begin.start;
             result.cache_outcome = begin.outcome;
+            result.spec = stats;
+            result.backend_ns = backend_ns;
+            result.sample_ns = sample_ns;
             return result;
         }
     };
+}
+
+/// Speculative decoding state of a generation: verified logits rows and their tokens.
+const Spec = struct {
+    const max_rows = 8;
+    logits: []const f32,
+    vocab: usize,
+    rows: u32,
+    row: u32,
+    /// A verify is uncommitted (rows 0..row consumed so far).
+    pending: bool = false,
+    /// Verify tokens: the sampled token, then the drafts; the drafter's probabilities.
+    tokens: [max_rows]u32 = @splat(0),
+    probs: [max_rows]f32 = @splat(0),
+
+    fn current(self: *const Spec) []const f32 {
+        return self.logits[self.row * self.vocab ..][0..self.vocab];
+    }
+};
+
+/// Whether `Backend` offers speculative decoding (`speculative() u32` drafts per step,
+/// `draft`, `draftProbs`, `verify`, `commit`).
+/// Whether the backend wants to know when the last logits have been sampled.
+fn releases(comptime Backend: type) bool {
+    const T = switch (@typeInfo(Backend)) {
+        .pointer => |p| p.child,
+        else => Backend,
+    };
+    return @hasDecl(T, "sampled");
+}
+
+fn speculative(comptime Backend: type) bool {
+    const T = switch (@typeInfo(Backend)) {
+        .pointer => |p| p.child,
+        else => Backend,
+    };
+    return @hasDecl(T, "speculative") and @hasDecl(T, "draft") and @hasDecl(T, "draftProbs") and @hasDecl(T, "verify") and @hasDecl(T, "commit");
+}
+
+fn elapsed(io: std.Io, since: std.Io.Timestamp) u64 {
+    return @intCast(@max(since.durationTo(std.Io.Clock.awake.now(io)).nanoseconds, 0));
 }
 
 /// Starts `prompt` from the prefix cache: reset, restore or keep, then prefill the rest

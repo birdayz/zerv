@@ -61,6 +61,22 @@ Thermal throttling, swap pressure, shader compilation, and desktop use can swamp
 small improvements. Do not alter clocks, power limits, or drivers without an
 explicit experiment. Recheck memory before loading a large artifact.
 
+**Observed 2026-09-24 (per-wave probes of the native GEMM, [report](bench/2026-09-24-gemm-f16x-isa.md)):**
+
+- An 8-wave workgroup in CU mode puts waves 0, 2, 4, 6 on one SIMD and 1, 3, 5, 7 on
+  another (SIMD ids {1,3} or {0,2}); two workgroups share a WGP.
+- The SIMD arbiter is **strictly age-ordered** for free-running waves: with no barrier,
+  wave 0 finishes its whole loop first, then wave 2, and so on. One wave alone saturates the
+  WMMA pipe (1–4 active waves per SIMD: 109 / 217 / 339 / 444 µs, linear).
+- ACO models a gfx11 f16 WMMA 16×16×16 as 32 VALU cycles; ablations agree that every other
+  VALU instruction on the SIMD adds its cycle to the matrix pipe's time.
+- The first scalar load of the host-visible `io` buffer takes **~15 µs in the first round of
+  every dispatch** (all waves read one host address at once), 0.4 µs later and 0.5 µs from
+  device-local memory.
+- Kernel timing: one dispatch per timed sample reads 10–15% lower and ranks variants
+  differently from back-to-back dispatches (the clock ramps between fences). Compare
+  kernels with batched dispatches (`batch=` in the ISA lab).
+
 **Observed 2026-09-24 (sustained f16 GEMMs):**
 
 - The junction ("hotspot") temperature sits at **110 °C**, the limit, while board power
@@ -75,6 +91,35 @@ explicit experiment. Recheck memory before loading a large artifact.
 - Whether the cooler is performing normally is an open question. Reference 7900 XTX
   boards with a vapor-chamber defect reach 110 °C early. Fan and cooling settings were
   not changed.
+- **Identity (lspci, DMI):**
+  - GPU: Sapphire **NITRO+ RX 7900 XTX Vapor-X** (subsystem `1da2:e471`), a large
+    AIB cooler rather than the reference design. Power cap 339 W (default), range
+    305–350 W.
+  - Board: Gigabyte **X570 AORUS ELITE**.
+  - GPU fan control is firmware-automatic (`pwm1_enable` = 2) with zero-RPM at idle.
+    The overdrive fan-curve interface is not exposed with the current
+    `ppfeaturemask`.
+- **Thermal logger** ([tools/thermal_log.py](../tools/thermal_log.py), read-only).
+  - It reads every hwmon sensor plus amdgpu `gpu_metrics` v1.3: edge, hotspot, memory
+    and VR temperatures, fan RPM, power, clock, gfx voltage, and the firmware's
+    throttle reasons.
+  - Layouts are from Linux v7.2 `kgd_pp_interface.h`, `amdgpu_smu.h` and
+    `smu_v13_0_0_ppt.c`, pinned under `third_party/linux-amdgpu/` (sha256 `1a9f13c2…`,
+    `8c8ad6de…`, `3fdd5a86…`).
+  - A throttle bit means the firmware's throttling percentage for that limiter is
+    nonzero. One idle sample in 20–30 showed `TEMP_HOTSPOT` at 48 °C, so single
+    samples are noise; judge shares under load.
+- **Idle snapshot** (2026-09-24, CPU busy with other jobs,
+  [data](bench/data/2026-09-24-thermal/idle.summary.json)):
+  - GPU: edge 42 °C, hotspot 48 °C, memory 52 °C, VRs 44–45 °C, fan 0 RPM.
+  - CPU Tctl 70 °C; NVMe 45–49 °C.
+  - Gigabyte WMI sensors 36 / 40 / 70 / 40 / 47 / 50 °C. They are unlabeled; temp3
+    tracks the CPU.
+  - Case-fan RPMs are not visible. The board's ITE Super I/O needs the `it87` module,
+    which is not loaded, and loading it is a system change.
+- **Load test pending.** The edge-to-hotspot gap, fan RPM and case-sensor rise under a
+  sustained GEMM will show which of these limits the card: airflow (case fans help),
+  the fan curve, or die contact.
 
 Hardware-dependent defaults must be derived at runtime. Do not put `card1`,
 `Vulkan0`, 24 GiB, or 64-thread subgroups into generic engine assumptions.

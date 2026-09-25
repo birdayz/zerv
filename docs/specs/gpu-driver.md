@@ -13,7 +13,12 @@ Vulkan1.1/Linux x86_64 only initially; unsupported targets/capabilities fail exp
   to 128 kernels for three per-tile prefill plans in block 13d; reverted to 64 in 13e,
   which used one GEMM kernel per format, ~45 kernels in total. Raised to 128 again in
   block 16b: a kernel binds one weight bank, and the f16 mode's two WMMA kernels plus
-  the three f16-copy producers bring it to 71 kernels on 4 banks; FP32 needs 55.) Subgroup properties
+  the three f16-copy producers bring it to 71 kernels on 4 banks; FP32 needs 55.
+  Raised in block 17b to 192 kernels and 64 command objects: speculative verification
+  compiles one multi-row module per row count (5 kernels per rows pipeline), and the MTP
+  draft path records a draft command per (first-pass rows, drafts), 20 at 5 rows. A
+  command may retain 64 distinct kernels (was 32): with the KV cache split over several
+  buffers, the attention kernels exist once per KV buffer.) Subgroup properties
   (`vkGetPhysicalDeviceProperties2` + `VkPhysicalDeviceSubgroupProperties`, Vulkan 1.1
   core) are queried at open and exposed as `Device.subgroup`.
   The optional `Options.cooperative_matrix` (block 13g) enables
@@ -37,13 +42,39 @@ Vulkan1.1/Linux x86_64 only initially; unsupported targets/capabilities fail exp
   fixed storage-buffer bindings (1..8) plus bounded push-constant byte count (<=128,
   multiple of4 and device maximum). Descriptors use whole logical buffers, within
   maxStorageBufferRange. Referenced buffers outlive the kernel. No mutable descriptor
-  changes or specialization features yet. Entrypoint main; shader contract is caller's.
+  changes. Entrypoint main; shader contract is caller's.
+- **Specialization constants** (added 2026-09-24 for `--kv-page-tokens`,
+  [concurrent.md](concurrent.md)): `Kernel.Options.constants` holds up to 8 u32 values.
+  `constants[i]` is `constant_id = i`, given at pipeline creation as a
+  `VkSpecializationInfo`. The driver compiles them as literals, so there is no per-dispatch
+  cost. An ID the module does not declare has no effect (Vulkan). More than 8 is
+  `InvalidLayout`. The empty default passes no specialization info, exactly as before.
 - Commands own one reusable pool/primary command buffer/fence, fixed retained resource
   arrays (64 buffers/32 kernels). Record copy, barrier, dispatch with explicit bounds.
   No per-submit allocation, descriptor updates or rerecording. State guards reject
   illegal begin/end/submit/wait/reset/destroy transitions. Timeout leaves pending.
   Successful wait permits replay; reset releases recorded references. Objects cannot
   be copied after dependents take their address. Device destruction rejects children.
+
+- **Pipeline binaries** (added 2026-09-24, before implementation; evidence
+  [gemm_f16x ISA report](../bench/2026-09-24-gemm-f16x-isa.md), decision D7). Optional
+  `Options.pipeline_binaries`: when the device lists `VK_KHR_pipeline_binary` and its
+  dependency chain at Vulkan 1.1 (`VK_KHR_maintenance5`, `VK_KHR_dynamic_rendering`,
+  `VK_KHR_depth_stencil_resolve`, `VK_KHR_create_renderpass2`) and the `pipelineBinaries`
+  feature, `open` enables them (plus the `maintenance5` feature) and records the driver's
+  global key (`vkGetPipelineKeyKHR` with no create info; RADV: a hash of the driver build,
+  the GPU's compiler info and the compiler options) in `Device.pipeline_key` (32 bytes).
+  If anything is missing, `pipeline_key` stays null and `open` succeeds: native kernels are
+  an optimization with a fallback, not a requirement. The three KHR commands are fetched
+  with `vkGetDeviceProcAddr`; a null pointer counts as unsupported.
+  `Kernel.Options.binary` (data ≤ 1 MiB, binary key 1..32 bytes, expected global key):
+  when the device's key equals the expected key, the pipeline is created from the binary
+  (`vkCreatePipelineBinariesKHR` from key and data, then `vkCreateComputePipelines` with
+  `VkPipelineBinaryInfoKHR`; the binary handle is destroyed right after) and
+  `Kernel.native` is true; otherwise the kernel is created from its SPIR-V exactly as
+  without the option. A driver error on the binary path is returned, never retried with
+  SPIR-V. The binary's contents (machine code, register/LDS configuration, ABI) are the
+  caller's trusted contract, like the SPIR-V: the driver copies them without checks.
 
 Native public package hides driver details from future model code. ABI declarations
 are internal except testing; ordinary CPU tests do not link the driver. Explicit

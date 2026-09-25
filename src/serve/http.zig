@@ -1,6 +1,7 @@
 //! Bounded HTTP/1.1 server for Chat Completions v1 over an abstract Engine.
-//! One generation at a time (single-sequence model); a bounded wait queue; other
-//! requests beyond it get 503. Streaming uses SSE over chunked transfer encoding.
+//! Up to `Options.parallel` generations at a time (1: the single-sequence model); a
+//! bounded wait queue; other requests beyond it get 503. Streaming uses SSE over chunked
+//! transfer encoding.
 const std = @import("std");
 const api = @import("api.zig");
 const session = @import("../session/root.zig");
@@ -26,6 +27,7 @@ pub const Completion = struct {
     tool_call_failed: bool = false,
     cached_tokens: u32 = 0,
     cache_outcome: session.prefix.Outcome = .reset,
+    spec: session.SpecStats = .{},
 };
 pub const Prepared = struct { tokens: []const u32, thinking: bool };
 
@@ -34,7 +36,7 @@ pub const Engine = struct {
     context: *anyopaque,
     /// Render + tokenize + validate. May allocate from `arena`. No model access.
     prepareFn: *const fn (*anyopaque, std.mem.Allocator, *const api.ChatRequest, *api.ApiError) anyerror!Prepared,
-    /// Generate under the server's exclusive lock.
+    /// Generate; at most `Options.parallel` calls run at once.
     generateFn: *const fn (*anyopaque, std.mem.Allocator, *const api.ChatRequest, Prepared, Sink) anyerror!Completion,
     /// Asked after a failed generation: false when the engine can never generate again
     /// (e.g. the GPU device was lost). The server then fails every request and stops.
@@ -47,6 +49,8 @@ pub const Engine = struct {
 pub const Options = struct {
     max_connections: u32 = 64,
     max_waiting: u32 = 16,
+    /// Generations at once (`--parallel`; the engine must support that many).
+    parallel: u32 = 1,
     /// How long `run` lets admitted chat requests finish after a stop request.
     drain_timeout: std.Io.Duration = .fromSeconds(30),
     limits: api.Limits = .{},
@@ -57,7 +61,8 @@ pub const Server = struct {
     allocator: std.mem.Allocator,
     engine: Engine,
     options: Options,
-    busy: std.Io.Mutex = .init,
+    /// Generation permits (`options.parallel`).
+    busy: std.Io.Semaphore,
     waiting: std.atomic.Value(u32) = .init(0),
     connections: std.atomic.Value(u32) = .init(0),
     /// Connection tasks. Spawned only by the accept loop; canceled by `serve`/`run`.
@@ -88,10 +93,15 @@ pub const Server = struct {
         prompt_cached_tokens: std.atomic.Value(u64) = .init(0),
         /// Requests by prefix-cache outcome (reset, restore, keep).
         cache_outcomes: [3]std.atomic.Value(u64) = @splat(.init(0)),
+        /// Speculative decoding (session.SpecStats, summed).
+        spec_verifies: std.atomic.Value(u64) = .init(0),
+        spec_drafted: std.atomic.Value(u64) = .init(0),
+        spec_verified: std.atomic.Value(u64) = .init(0),
+        spec_accepted: std.atomic.Value(u64) = .init(0),
     };
 
     pub fn init(io: std.Io, allocator: std.mem.Allocator, engine: Engine, options: Options) Server {
-        return .{ .io = io, .allocator = allocator, .engine = engine, .options = options, .created = std.Io.Clock.real.now(io).toSeconds() };
+        return .{ .io = io, .allocator = allocator, .engine = engine, .options = options, .busy = .{ .permits = @max(options.parallel, 1) }, .created = std.Io.Clock.real.now(io).toSeconds() };
     }
 
     /// Accept until the listener fails or this task is canceled; then cancel every
@@ -255,8 +265,14 @@ pub const Server = struct {
                 \\zerv_prefix_cache_requests_total{{outcome="reset"}} {d}
                 \\zerv_prefix_cache_requests_total{{outcome="restore"}} {d}
                 \\zerv_prefix_cache_requests_total{{outcome="keep"}} {d}
+                \\# TYPE zerv_spec_verifies_total counter
+                \\zerv_spec_verifies_total {d}
+                \\# TYPE zerv_spec_draft_tokens_total counter
+                \\zerv_spec_draft_tokens_total{{stage="drafted"}} {d}
+                \\zerv_spec_draft_tokens_total{{stage="verified"}} {d}
+                \\zerv_spec_draft_tokens_total{{stage="accepted"}} {d}
                 \\
-            , .{ m.requests.load(.monotonic), m.rejected.load(.monotonic), m.overloaded.load(.monotonic), m.failed.load(.monotonic), m.prompt_tokens.load(.monotonic), m.completion_tokens.load(.monotonic), @as(f64, @floatFromInt(m.prefill_ns.load(.monotonic))) / 1e9, @as(f64, @floatFromInt(m.decode_ns.load(.monotonic))) / 1e9, self.waiting.load(.monotonic), m.tool_call_parse_failures.load(.monotonic), m.prompt_cached_tokens.load(.monotonic), m.cache_outcomes[0].load(.monotonic), m.cache_outcomes[1].load(.monotonic), m.cache_outcomes[2].load(.monotonic) });
+            , .{ m.requests.load(.monotonic), m.rejected.load(.monotonic), m.overloaded.load(.monotonic), m.failed.load(.monotonic), m.prompt_tokens.load(.monotonic), m.completion_tokens.load(.monotonic), @as(f64, @floatFromInt(m.prefill_ns.load(.monotonic))) / 1e9, @as(f64, @floatFromInt(m.decode_ns.load(.monotonic))) / 1e9, self.waiting.load(.monotonic), m.tool_call_parse_failures.load(.monotonic), m.prompt_cached_tokens.load(.monotonic), m.cache_outcomes[0].load(.monotonic), m.cache_outcomes[1].load(.monotonic), m.cache_outcomes[2].load(.monotonic), m.spec_verifies.load(.monotonic), m.spec_drafted.load(.monotonic), m.spec_verified.load(.monotonic), m.spec_accepted.load(.monotonic) });
             try request.respond(out.written(), .{ .extra_headers = &.{.{ .name = "content-type", .value = "text/plain; version=0.0.4" }} });
             return keep;
         }
@@ -309,19 +325,19 @@ pub const Server = struct {
             try respondError(arena, request, rejection);
             return keep;
         };
-        // Bounded queue for the single sequence slot.
+        // Bounded queue for the generation permits.
         if (self.waiting.fetchAdd(1, .acq_rel) >= self.options.max_waiting) {
             _ = self.waiting.fetchSub(1, .acq_rel);
             _ = self.metrics.overloaded.fetchAdd(1, .monotonic);
             try respondError(arena, request, .{ .status = .service_unavailable, .message = "server is at capacity; retry later", .kind = "server_error", .code = "overloaded" });
             return keep;
         }
-        self.busy.lock(self.io) catch {
+        self.busy.wait(self.io) catch {
             _ = self.waiting.fetchSub(1, .acq_rel);
             return false;
         };
         _ = self.waiting.fetchSub(1, .acq_rel);
-        defer self.busy.unlock(self.io);
+        defer self.busy.post(self.io);
 
         var id_buf: [40]u8 = undefined;
         const id = try std.fmt.bufPrint(&id_buf, "chatcmpl-{x:0>16}{x:0>8}", .{ self.counter.fetchAdd(1, .monotonic), @as(u32, @truncate(@as(u96, @bitCast(std.Io.Clock.real.now(self.io).nanoseconds)))) });
@@ -348,6 +364,10 @@ pub const Server = struct {
     fn record(self: *Server, done: Completion) void {
         _ = self.metrics.prompt_cached_tokens.fetchAdd(done.cached_tokens, .monotonic);
         _ = self.metrics.cache_outcomes[@intFromEnum(done.cache_outcome)].fetchAdd(1, .monotonic);
+        _ = self.metrics.spec_verifies.fetchAdd(done.spec.verifies, .monotonic);
+        _ = self.metrics.spec_drafted.fetchAdd(done.spec.drafted, .monotonic);
+        _ = self.metrics.spec_verified.fetchAdd(done.spec.verified, .monotonic);
+        _ = self.metrics.spec_accepted.fetchAdd(done.spec.accepted, .monotonic);
         if (done.tool_call_failed) {
             _ = self.metrics.tool_call_parse_failures.fetchAdd(1, .monotonic);
             std.log.warn("a generated tool call was malformed; generation stopped (see docs/specs/tool-calling.md)", .{});

@@ -132,6 +132,22 @@ pub fn build(b: *std.Build) void {
     b.step("gemm-bench-build", "Build the prefill GEMM component benchmark")
         .dependOn(&b.addInstallArtifact(gemm_benchmark, .{}).step);
 
+    const matvec_rows_benchmark = b.addExecutable(.{
+        .name = "zerv-matvec-rows-bench",
+        .use_llvm = true,
+        .use_lld = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/matvec_rows.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .imports = &.{ .{ .name = "zerv", .module = core }, .{ .name = "matvec_workload", .module = matvec_workload } },
+        }),
+    });
+    matvec_rows_benchmark.root_module.linkSystemLibrary("vulkan", .{ .use_pkg_config = .no });
+    b.step("matvec-rows-bench-build", "Build the multi-row decode projection benchmark (speculative verification)")
+        .dependOn(&b.addInstallArtifact(matvec_rows_benchmark, .{}).step);
+
     const model_profile = b.addExecutable(.{
         .name = "zerv-model-profile",
         .use_llvm = true,
@@ -163,6 +179,70 @@ pub fn build(b: *std.Build) void {
     prefix_check.root_module.linkSystemLibrary("vulkan", .{ .use_pkg_config = .no });
     b.step("prefix-check-build", "Build the real-model prefix-cache exactness check")
         .dependOn(&b.addInstallArtifact(prefix_check, .{}).step);
+
+    const kv_quality = b.addExecutable(.{
+        .name = "zerv-kv-quality",
+        .use_llvm = true,
+        .use_lld = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/kv_quality.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .imports = &.{.{ .name = "zerv", .module = core }},
+        }),
+    });
+    kv_quality.root_module.linkSystemLibrary("vulkan", .{ .use_pkg_config = .no });
+    b.step("kv-quality-build", "Build the long-context KV precision logits tool (block 17c)")
+        .dependOn(&b.addInstallArtifact(kv_quality, .{}).step);
+
+    const spec_check = b.addExecutable(.{
+        .name = "zerv-spec-check",
+        .use_llvm = true,
+        .use_lld = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/spec_check.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .imports = &.{.{ .name = "zerv", .module = core }},
+        }),
+    });
+    spec_check.root_module.linkSystemLibrary("vulkan", .{ .use_pkg_config = .no });
+    b.step("spec-check-build", "Build the real-model speculative verification exactness check")
+        .dependOn(&b.addInstallArtifact(spec_check, .{}).step);
+
+    const batch_check = b.addExecutable(.{
+        .name = "zerv-batch-check",
+        .use_llvm = true,
+        .use_lld = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/batch_check.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .imports = &.{.{ .name = "zerv", .module = core }},
+        }),
+    });
+    batch_check.root_module.linkSystemLibrary("vulkan", .{ .use_pkg_config = .no });
+    b.step("batch-check-build", "Build the real-model batched decode exactness check (block 18b.2)")
+        .dependOn(&b.addInstallArtifact(batch_check, .{}).step);
+
+    const mtp_check = b.addExecutable(.{
+        .name = "zerv-mtp-check",
+        .use_llvm = true,
+        .use_lld = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/mtp_check.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .imports = &.{.{ .name = "zerv", .module = core }},
+        }),
+    });
+    mtp_check.root_module.linkSystemLibrary("vulkan", .{ .use_pkg_config = .no });
+    b.step("mtp-check-build", "Build the MTP draft-layer capture tool (gate 2 input for the FP64 reference)")
+        .dependOn(&b.addInstallArtifact(mtp_check, .{}).step);
 
     const kernel_chain = b.addExecutable(.{
         .name = "zerv-kernel-chain",
@@ -247,6 +327,18 @@ pub fn build(b: *std.Build) void {
     const install_nfc_benchmark = b.addInstallArtifact(nfc_benchmark, .{});
     b.step("nfc-bench-build", "Build the native Unicode-9 NFC benchmark")
         .dependOn(&install_nfc_benchmark.step);
+
+    const sampler_benchmark = b.addExecutable(.{
+        .name = "zerv-sampler-bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/sampler.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "zerv", .module = core }},
+        }),
+    });
+    b.step("sampler-bench-build", "Build the token sampler component benchmark")
+        .dependOn(&b.addInstallArtifact(sampler_benchmark, .{}).step);
 
     const chat_benchmark = b.addExecutable(.{
         .name = "zerv-chat-bench",

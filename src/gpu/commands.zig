@@ -27,6 +27,11 @@ pub const Scope = enum {
     }
 };
 
+/// Command objects a device may hold at once (bounded child count; docs/specs/gpu-driver.md).
+pub const max_commands = 64;
+/// Distinct kernels one command may dispatch (retained until reset/deinit).
+pub const max_command_kernels = 64;
+
 pub const Commands = struct {
     pub const State = enum { initial, recording, executable, pending, invalid };
     device: *Device,
@@ -36,12 +41,12 @@ pub const Commands = struct {
     state: State = .initial,
     retained_buffers: [64]*Buffer = undefined,
     buffer_count: usize = 0,
-    retained_kernels: [32]*Kernel = undefined,
+    retained_kernels: [max_command_kernels]*Kernel = undefined,
     kernel_count: usize = 0,
 
     pub fn init(device: *Device) Error!Commands {
         try device.ready();
-        if (device.commands >= 32) return error.ResourceLimit;
+        if (device.commands >= max_commands) return error.ResourceLimit;
         var self: Commands = .{ .device = device };
         const pool_info: vk.VkCommandPoolCreateInfo = .{ .queueFamilyIndex = device.family };
         try device.check(vk.vkCreateCommandPool(device.handle, &pool_info, null, &self.pool));

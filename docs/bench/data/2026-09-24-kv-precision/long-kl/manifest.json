@@ -1,0 +1,100 @@
+{
+ "started_at": "2026-09-24T02:32:47.194113+00:00",
+ "argv": [
+  "tools/kv_quality.py",
+  "--output",
+  "docs/bench/data/2026-09-24-kv-precision/long-kl"
+ ],
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "workload_sha256": "4f17dd76f4a76f68e3fc01092b06e4fa113b2ec6a77fc6fbe7f8c4153c7763b6",
+ "text_sha256": "1e8b5556956199666e241b38cfe228624296e4f4d92971bddd369ab2df671544",
+ "zerv_tool_sha256": "e4e7bf4893ee0fa29fa7f73363c2cdabe028f2ccaca1f36f10d129b38a49a78e",
+ "llama_capture_sha256": "30e88767d224bfe878d9f76f75d9d30609e2ae89016359370ba0afc4827b9e5f",
+ "llama_pins": {
+  "/usr/lib/libllama.so.0.4.1": "c352cb4b1f5456dffbc4483ba1e0be7a547b21a0f7e63462ab8fb333f51245e1",
+  "/usr/lib/libggml-base.so.0.24.0": "7d9065538f5df6342613b4fa92e661d5ad8fd811c2dbe16ff0e4b62a77777073",
+  "/usr/lib/ggml/libggml-vulkan.so": "d09aac86141492bdf22daad0c61b5ded720f772b3f18d8167aae1f264532979a"
+ },
+ "prefix": 36000,
+ "steps": 256,
+ "runs": {
+  "zerv-f32": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/zerv-kv-quality",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/text.txt",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/zerv-f32",
+    "36000",
+    "256",
+    "f32"
+   ],
+   "stdout": "{\"kv\":\"f32\",\"text_tokens\":37758,\"prefix\":36000,\"steps\":256,\"context\":36288,\"prefill_ms\":67717.867232,\"decode_ms_per_step\":28.2590144140625}",
+   "logits_sha256": "6784d931fdf15dbb030cda6fdd539613ef0fb8b47d44ac0acee549a2325243d6"
+  },
+  "zerv-f16": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/zerv-kv-quality",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/text.txt",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/zerv-f16",
+    "36000",
+    "256",
+    "f16"
+   ],
+   "stdout": "{\"kv\":\"f16\",\"text_tokens\":37758,\"prefix\":36000,\"steps\":256,\"context\":36288,\"prefill_ms\":83441.739873,\"decode_ms_per_step\":25.09063841015625}",
+   "logits_sha256": "06790928f6e044cbef4b3cb44fcc7ae45e5fc1c587a8098e85b768e380844a4f"
+  },
+  "llama-f32": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/llama_batch_capture",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/zerv-f32/tokens.json",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/llama-f32/names.txt",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/llama-f32",
+    "36352",
+    "2048",
+    "512",
+    "1",
+    "f32",
+    "36000"
+   ],
+   "stdout": "{\"tokens\":36256,\"n_vocab\":248320,\"n_batch\":2048,\"n_ubatch\":512,\"flash\":1,\"kv\":\"f32\"}",
+   "logits_sha256": "c020a83800aa5b914dee287fc048a00110f403e7f6217c579b0c3c1fd4e92cd3"
+  },
+  "llama-f16": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/llama_batch_capture",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/zerv-f32/tokens.json",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/llama-f16/names.txt",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/llama-f16",
+    "36352",
+    "2048",
+    "512",
+    "1",
+    "f16",
+    "36000"
+   ],
+   "stdout": "{\"tokens\":36256,\"n_vocab\":248320,\"n_batch\":2048,\"n_ubatch\":512,\"flash\":1,\"kv\":\"f16\"}",
+   "logits_sha256": "00902af077c09bbb3506a587c681467776258e584c45889d5e5a4ea1bdc37941"
+  },
+  "llama-f16-repeat": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/llama_batch_capture",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/zerv-f32/tokens.json",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/llama-f16-repeat/names.txt",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl/llama-f16-repeat",
+    "36352",
+    "2048",
+    "512",
+    "1",
+    "f16",
+    "36000"
+   ],
+   "stdout": "{\"tokens\":36256,\"n_vocab\":248320,\"n_batch\":2048,\"n_ubatch\":512,\"flash\":1,\"kv\":\"f16\"}",
+   "logits_sha256": "00902af077c09bbb3506a587c681467776258e584c45889d5e5a4ea1bdc37941"
+  }
+ },
+ "finished_at": "2026-09-24T02:39:28.693162+00:00"
+}

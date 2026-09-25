@@ -6,6 +6,7 @@ const chat = @import("../chat/qwen38.zig");
 const bpe = @import("../tokenizer/bpe.zig");
 const model = @import("../model/root.zig");
 const session = @import("../session/root.zig");
+const batcher = @import("batcher.zig");
 
 pub const eos = [_][]const u8{ "<|im_end|>", "<|endoftext|>" };
 
@@ -20,6 +21,15 @@ pub const Native = struct {
     /// Present when the model has snapshot slots (docs/specs/prefix-cache.md).
     cache: ?session.prefix.Cache = null,
     seed_counter: std.atomic.Value(u64) = .init(0),
+    /// Speculative decoding: the adaptive verify-count policy (learns across requests);
+    /// null = verify every draft (`--spec-policy fixed`).
+    spec_policy: ?session.spec.Policy = null,
+    /// Sampler summation/draw order for every request (`--sampler-order`).
+    sampler_order: session.sampler.Order = .id,
+    /// Concurrent sequences (`--parallel N` > 1, docs/specs/concurrent.md "18c design"): the
+    /// batcher owning the model; generations run through it. Null: one generation at a time.
+    batch: ?*Batcher = null,
+    batch_backend: ?*ModelBackend = null,
 
     /// Resolve and verify profile token ids against the loaded tokenizer.
     /// `allocator` owns `whitespace_ids` until `deinit`.
@@ -72,6 +82,9 @@ pub const Native = struct {
     fn usable(ctx: *anyopaque) bool {
         const self: *Native = @ptrCast(@alignCast(ctx));
         const device = self.model.device;
+        // With batching another sequence's command may be pending right now: the scheduler
+        // task reports a command it could not complete instead.
+        if (self.batch_backend) |mb| return !device.lost and !mb.fatal.load(.acquire);
         return !device.lost and device.pending == 0;
     }
 
@@ -122,6 +135,22 @@ pub const Native = struct {
         pub fn loadSnapshot(b: Backend, slot: u32, position: u32) !void {
             try b.m.loadSnapshot(slot, position);
         }
+        /// Speculative decoding (docs/specs/speculative.md): drafts per step, 0 = off.
+        pub fn speculative(b: Backend) u32 {
+            return if (b.m.options.mtp) b.m.options.verify_rows - 1 else 0;
+        }
+        pub fn draft(b: Backend, token: u32, k: u32) ![]const u32 {
+            return b.m.draft(token, k);
+        }
+        pub fn draftProbs(b: Backend, k: u32) []const f32 {
+            return b.m.draftProbs(k);
+        }
+        pub fn verify(b: Backend, tokens: []const u32) ![]const f32 {
+            return b.m.verify(tokens);
+        }
+        pub fn commit(b: Backend, m: u32) !void {
+            try b.m.commit(m);
+        }
         pub fn prefill(b: Backend, tokens: []const u32) ![]const f32 {
             if (b.m.rows == 0) {
                 var logits: []const f32 = undefined;
@@ -133,14 +162,46 @@ pub const Native = struct {
     };
     const Generation = session.Generation(Backend, *const bpe.Tokenizer, http.Sink);
 
+    /// A generation's view of the batched model: its slot's operations through the batcher.
+    const SlotBackend = struct {
+        b: *Batcher,
+        slot: u32,
+        m: *model.Model,
+        pub fn context(s: SlotBackend) u32 {
+            return s.m.state_layout.context;
+        }
+        pub fn vocab(_: SlotBackend) usize {
+            return model.config.vocab;
+        }
+        pub fn reset(s: SlotBackend) !void {
+            try s.b.reset(s.slot);
+        }
+        pub fn prefill(s: SlotBackend, tokens: []const u32) ![]const f32 {
+            return s.b.prefill(s.slot, tokens);
+        }
+        pub fn step(s: SlotBackend, token: u32) ![]const f32 {
+            return s.b.step(s.slot, token);
+        }
+        pub fn sampled(s: SlotBackend) void {
+            s.b.sampled(s.slot);
+        }
+    };
+    const SlotGeneration = session.Generation(SlotBackend, *const bpe.Tokenizer, http.Sink);
+
+    fn ms(ns: u64) f64 {
+        return @as(f64, @floatFromInt(ns)) / 1e6;
+    }
+
     fn generate(ctx: *anyopaque, arena: std.mem.Allocator, request: *const api.ChatRequest, prepared: http.Prepared, sink: http.Sink) anyerror!http.Completion {
         const self: *Native = @ptrCast(@alignCast(ctx));
         var params = request.params;
+        params.order = self.sampler_order;
         if (!request.seed_given) {
             const now: u64 = @bitCast(@as(i64, @truncate(std.Io.Clock.real.now(self.io).nanoseconds)));
             params.seed = now ^ (self.seed_counter.fetchAdd(1, .monotonic) *% 0x9e3779b97f4a7c15);
         }
-        const result = try Generation.run(self.io, arena, .{ .m = self.model }, self.tokenizer, .{ .eos = &self.eos_ids, .whitespace = self.whitespace_ids, .tool_call = self.tool_call_id }, .{
+        const special: session.Special = .{ .eos = &self.eos_ids, .whitespace = self.whitespace_ids, .tool_call = self.tool_call_id };
+        const r: session.Request = .{
             .prompt = prepared.tokens,
             .max_tokens = request.max_tokens orelse self.model.state_layout.context,
             .params = params,
@@ -148,8 +209,46 @@ pub const Native = struct {
             .thinking = prepared.thinking,
             .tools = request.toolMode(),
             .cache = if (self.cache) |*c| c else null,
-        }, sink);
+            .spec_policy = if (self.spec_policy) |*p| p else null,
+        };
+        const result = if (self.batch) |b| slot: {
+            const slot = try b.join();
+            defer b.leave(slot);
+            break :slot try SlotGeneration.run(self.io, arena, .{ .b = b, .slot = slot, .m = self.model }, self.tokenizer, special, r, sink);
+        } else try Generation.run(self.io, arena, .{ .m = self.model }, self.tokenizer, special, r, sink);
         if (self.cache != null) std.log.info("prefix cache: {s}, reused {d} of {d} prompt tokens", .{ @tagName(result.cache_outcome), result.cached_tokens, result.prompt_tokens });
-        return .{ .finish = result.finish, .prompt_tokens = result.prompt_tokens, .completion_tokens = result.completion_tokens, .prefill_ns = result.prefill_ns, .decode_ns = result.decode_ns, .tool_calls = result.tool_calls, .tool_call_failed = result.tool_call_failed, .cached_tokens = result.cached_tokens, .cache_outcome = result.cache_outcome };
+        if (result.spec.verifies > 0) std.log.info("speculative: {d} of {d} verified drafts accepted ({d} drafted, {d} verifies, {d} tokens)", .{ result.spec.accepted, result.spec.verified, result.spec.drafted, result.spec.verifies, result.completion_tokens });
+        std.log.info("decode time: {d:.3} ms total, {d:.3} ms in backend calls, {d:.3} ms sampling, {d:.3} ms other host work", .{ ms(result.decode_ns), ms(result.backend_ns), ms(result.sample_ns), ms(result.decode_ns -| result.backend_ns -| result.sample_ns) });
+        return .{ .finish = result.finish, .prompt_tokens = result.prompt_tokens, .completion_tokens = result.completion_tokens, .prefill_ns = result.prefill_ns, .decode_ns = result.decode_ns, .tool_calls = result.tool_calls, .tool_call_failed = result.tool_call_failed, .cached_tokens = result.cached_tokens, .cache_outcome = result.cache_outcome, .spec = result.spec };
+    }
+};
+
+pub const Batcher = batcher.Batcher(*ModelBackend);
+
+/// The resident model as the batcher's backend (docs/specs/concurrent.md, "18c design"):
+/// called by the scheduler task only. A failed call that leaves a command pending (a
+/// timeout) or loses the device sets `fatal`.
+pub const ModelBackend = struct {
+    m: *model.Model,
+    rows: [batcher.max_slots]model.BatchRow = undefined,
+    fatal: std.atomic.Value(bool) = .init(false),
+
+    fn check(self: *ModelBackend, e: anyerror) anyerror {
+        if (self.m.device.lost or self.m.device.pending != 0) self.fatal.store(true, .release);
+        return e;
+    }
+    pub fn reset(self: *ModelBackend, slot: u32) !void {
+        self.m.select(slot) catch |e| return self.check(e);
+        self.m.reset() catch |e| return self.check(e);
+    }
+    pub fn prefillChunk(self: *ModelBackend, slot: u32, tokens: []const u32) !batcher.Chunk {
+        self.m.select(slot) catch |e| return self.check(e);
+        const c = self.m.nextChunk(@intCast(tokens.len));
+        const logits = self.m.runChunk(&self.m.prefill_commands[c.plan], c.plan, tokens[0..c.rows]) catch |e| return self.check(e);
+        return .{ .consumed = c.rows, .logits = if (c.rows == tokens.len) logits else null };
+    }
+    pub fn decodeBatch(self: *ModelBackend, rows: []const batcher.Row) ![]const f32 {
+        for (rows, self.rows[0..rows.len]) |r, *m| m.* = .{ .slot = r.slot, .token = r.token };
+        return self.m.decodeBatch(self.rows[0..rows.len]) catch |e| return self.check(e);
     }
 };

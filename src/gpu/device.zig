@@ -16,7 +16,19 @@ pub const Options = struct {
     /// extension, the feature, or required sizes for compute are unavailable. Also enables
     /// `computeFullSubgroups` when supported (`Device.full_subgroups`).
     subgroup_size_control: bool = false,
+    /// Enable `storageBuffer16BitAccess` alone (16-bit loads/stores and conversions, no
+    /// f16 arithmetic; e.g. an f16 KV cache). Implied by `cooperative_matrix`. `open` fails
+    /// with `UnsupportedFeature` if it is unavailable.
+    storage16: bool = false,
+    /// Enable `VK_KHR_pipeline_binary` (with its dependency chain at Vulkan 1.1) when the
+    /// device supports it, so kernels may be created from our own machine code
+    /// (`Kernel.Options.binary`). Unsupported is not an error: `Device.pipeline_key` stays
+    /// null and such kernels use their SPIR-V (docs/specs/gpu-driver.md, "Pipeline binaries").
+    pipeline_binaries: bool = false,
 };
+/// `VK_KHR_pipeline_binary` and the extensions it depends on at Vulkan 1.1
+/// (maintenance5 -> dynamic_rendering -> depth_stencil_resolve -> create_renderpass2).
+const pipeline_binary_extensions = [_][*:0]const u8{ "VK_KHR_pipeline_binary", "VK_KHR_maintenance5", "VK_KHR_dynamic_rendering", "VK_KHR_depth_stencil_resolve", "VK_KHR_create_renderpass2" };
 const cooperative_matrix_extensions = [_][]const u8{ "VK_KHR_cooperative_matrix", "VK_KHR_vulkan_memory_model" };
 
 /// Subgroup capabilities (VkPhysicalDeviceSubgroupProperties).
@@ -26,6 +38,11 @@ pub const Subgroup = struct {
     operations: u32 = 0,
     /// Compute shaders may use basic + ballot subgroup operations and a subgroup never
     /// spans more than `max_size` invocations.
+    /// Compute shaders may use subgroup arithmetic (reductions) with subgroups of at least
+    /// `min_size` invocations.
+    pub fn computeArithmeticFrom(self: Subgroup, min_size: u32) bool {
+        return self.size >= min_size and self.stages & vk.VK_SHADER_STAGE_COMPUTE_BIT != 0 and self.operations & vk.VK_SUBGROUP_FEATURE_ARITHMETIC_BIT != 0;
+    }
     pub fn computeBallotWithin(self: Subgroup, max_size: u32) bool {
         const needed = vk.VK_SUBGROUP_FEATURE_BASIC_BIT | vk.VK_SUBGROUP_FEATURE_BALLOT_BIT;
         return self.size >= 1 and self.size <= max_size and std.math.isPowerOfTwo(self.size) and
@@ -45,6 +62,8 @@ pub const Device = struct {
     subgroup: Subgroup = .{},
     /// Cooperative matrices (and f16 arithmetic/storage) are enabled on this device.
     cooperative_matrix: bool = false,
+    /// 16-bit storage buffer access is enabled (`Options.storage16` or cooperative matrices).
+    storage16: bool = false,
     /// Subgroup sizes a kernel may require (both 0 unless subgroup size control is enabled).
     subgroup_sizes: struct { min: u32 = 0, max: u32 = 0 } = .{},
     /// Kernels may require full subgroups (`Kernel.Options.full_subgroups`): the
@@ -54,6 +73,11 @@ pub const Device = struct {
     /// `VK_EXT_memory_budget` is supported: `heapBudget` can report memory in use by
     /// other processes (queried with `memoryBudget`).
     memory_budget: bool = false,
+    /// The driver's global pipeline-binary key (`vkGetPipelineKeyKHR` without create info)
+    /// when pipeline binaries are enabled; null otherwise.
+    pipeline_key: ?[32]u8 = null,
+    create_pipeline_binaries: ?vk.PFN_vkCreatePipelineBinariesKHR = null,
+    destroy_pipeline_binary: ?vk.PFN_vkDestroyPipelineBinaryKHR = null,
     budget: u64,
     allocated_bytes: u64 = 0,
     buffers: u32 = 0,
@@ -115,15 +139,20 @@ pub const Device = struct {
         var storage16: vk.VkPhysicalDevice16BitStorageFeatures = .{ .pNext = &memory_model, .storageBuffer16BitAccess = vk.VK_TRUE };
         var float16: vk.VkPhysicalDeviceShaderFloat16Int8Features = .{ .pNext = &storage16, .shaderFloat16 = vk.VK_TRUE };
         var coopmat: vk.VkPhysicalDeviceCooperativeMatrixFeaturesKHR = .{ .pNext = &float16, .cooperativeMatrix = vk.VK_TRUE };
-        var extensions: [3][*c]const u8 = undefined;
+        var extensions: [3 + pipeline_binary_extensions.len][*c]const u8 = undefined;
         var extension_count: u32 = 0;
         var sizes: vk.VkPhysicalDeviceSubgroupSizeControlFeatures = .{ .subgroupSizeControl = vk.VK_TRUE };
+        // 16-bit storage alone (a chain of its own; coopmat's chain includes it).
+        var storage16_only: vk.VkPhysicalDevice16BitStorageFeatures = .{ .storageBuffer16BitAccess = vk.VK_TRUE };
         if (options.cooperative_matrix) {
             try self.requireCooperativeMatrix();
             device_info.pNext = &coopmat;
             extensions[0] = "VK_KHR_cooperative_matrix";
             extensions[1] = "VK_KHR_vulkan_memory_model";
             extension_count = 2;
+        } else if (options.storage16) {
+            try self.requireStorage16();
+            device_info.pNext = &storage16_only;
         }
         if (options.subgroup_size_control) {
             sizes.computeFullSubgroups = if (try self.requireSubgroupSizeControl()) vk.VK_TRUE else 0;
@@ -132,13 +161,52 @@ pub const Device = struct {
             extensions[extension_count] = "VK_EXT_subgroup_size_control";
             extension_count += 1;
         }
+        var binaries: vk.VkPhysicalDevicePipelineBinaryFeaturesKHR = .{ .pipelineBinaries = vk.VK_TRUE };
+        const use_binaries = options.pipeline_binaries and try self.supportsPipelineBinaries();
+        if (use_binaries) {
+            binaries.pNext = @constCast(device_info.pNext);
+            device_info.pNext = &binaries;
+            for (pipeline_binary_extensions) |name_z| {
+                extensions[extension_count] = name_z;
+                extension_count += 1;
+            }
+        }
         device_info.enabledExtensionCount = extension_count;
         device_info.ppEnabledExtensionNames = if (extension_count == 0) null else &extensions;
         try self.check(vk.vkCreateDevice(self.physical, &device_info, null, &self.handle));
         self.cooperative_matrix = options.cooperative_matrix;
+        self.storage16 = options.cooperative_matrix or options.storage16;
         self.full_subgroups = sizes.computeFullSubgroups == vk.VK_TRUE and options.subgroup_size_control;
         vk.vkGetDeviceQueue(self.handle, self.family, 0, &self.queue);
+        if (use_binaries) try self.loadPipelineBinaries();
         return self;
+    }
+
+    /// The pipeline-binary extensions and the `pipelineBinaries` feature are supported.
+    fn supportsPipelineBinaries(self: *Device) Error!bool {
+        for (pipeline_binary_extensions) |wanted| {
+            if (!try self.hasExtension(std.mem.span(wanted))) return false;
+        }
+        var binaries: vk.VkPhysicalDevicePipelineBinaryFeaturesKHR = .{};
+        var features: vk.VkPhysicalDeviceFeatures2 = .{ .pNext = &binaries };
+        vk.vkGetPhysicalDeviceFeatures2(self.physical, &features);
+        return binaries.pipelineBinaries == vk.VK_TRUE;
+    }
+
+    /// Fetches the extension's entry points and the global key. A missing entry point or a
+    /// key that is not 32 bytes leaves `pipeline_key` null (kernels then use their SPIR-V).
+    fn loadPipelineBinaries(self: *Device) Error!void {
+        const create = vk.vkGetDeviceProcAddr(self.handle, "vkCreatePipelineBinariesKHR");
+        const destroy = vk.vkGetDeviceProcAddr(self.handle, "vkDestroyPipelineBinaryKHR");
+        const get_key = vk.vkGetDeviceProcAddr(self.handle, "vkGetPipelineKeyKHR");
+        if (create == null or destroy == null or get_key == null) return;
+        const getKey: vk.PFN_vkGetPipelineKeyKHR = @ptrCast(get_key.?);
+        var key: vk.VkPipelineBinaryKeyKHR = .{};
+        try self.check(getKey(self.handle, null, &key));
+        if (key.keySize != 32) return;
+        self.create_pipeline_binaries = @ptrCast(create.?);
+        self.destroy_pipeline_binary = @ptrCast(destroy.?);
+        self.pipeline_key = key.key[0..32].*;
     }
 
     /// The physical device lists device extension `wanted`.
@@ -214,6 +282,14 @@ pub const Device = struct {
         vk.vkGetPhysicalDeviceFeatures2(self.physical, &features);
         if (coopmat.cooperativeMatrix != vk.VK_TRUE or float16.shaderFloat16 != vk.VK_TRUE or storage16.storageBuffer16BitAccess != vk.VK_TRUE or memory_model.vulkanMemoryModel != vk.VK_TRUE)
             return error.UnsupportedFeature;
+    }
+
+    /// The storageBuffer16BitAccess feature (Vulkan 1.1 core) is supported.
+    fn requireStorage16(self: *Device) Error!void {
+        var storage16: vk.VkPhysicalDevice16BitStorageFeatures = .{};
+        var features: vk.VkPhysicalDeviceFeatures2 = .{ .pNext = &storage16 };
+        vk.vkGetPhysicalDeviceFeatures2(self.physical, &features);
+        if (storage16.storageBuffer16BitAccess != vk.VK_TRUE) return error.UnsupportedFeature;
     }
 
     pub fn name(self: *const Device) []const u8 {

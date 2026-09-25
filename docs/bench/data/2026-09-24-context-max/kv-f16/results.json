@@ -1,0 +1,132 @@
+{
+ "finished_at": "2026-09-24T03:09:59.566629+00:00",
+ "argv": [
+  "bench/context_max.py",
+  "--output",
+  "docs/bench/data/2026-09-24-context-max/kv-f16",
+  "--configs",
+  "kv-f16,kv-f16-host-snapshots,kv-f16-no-prefix-cache-no-spec,kv-f16-reserve0,kv-f16-no-prefix-cache-no-spec-reserve0"
+ ],
+ "binary_sha256": "2f46606918ecd2646c692d3070d0b94451d9b710e68e0b54da91b5fe73f35c11",
+ "results": [
+  {
+   "config": "kv-f16",
+   "cmd": [
+    "/home/USER/projects/zerv/zig-out/bin/zerv",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18093",
+    "--context",
+    "max",
+    "--kv-type",
+    "f16"
+   ],
+   "context": 88576,
+   "needed_mib": 22765,
+   "free_mib": 23789,
+   "vram_idle_mib": 769,
+   "vram_loaded_mib": 23286,
+   "served": true,
+   "reply": "OK"
+  },
+  {
+   "config": "kv-f16-host-snapshots",
+   "cmd": [
+    "/home/USER/projects/zerv/zig-out/bin/zerv",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18093",
+    "--context",
+    "max",
+    "--kv-type",
+    "f16",
+    "--prefix-cache-memory",
+    "host"
+   ],
+   "context": 106112,
+   "needed_mib": 22764,
+   "free_mib": 23789,
+   "vram_idle_mib": 769,
+   "vram_loaded_mib": 23286,
+   "served": true,
+   "reply": "OK"
+  },
+  {
+   "config": "kv-f16-no-prefix-cache-no-spec",
+   "cmd": [
+    "/home/USER/projects/zerv/zig-out/bin/zerv",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18093",
+    "--context",
+    "max",
+    "--kv-type",
+    "f16",
+    "--prefix-cache-slots",
+    "0",
+    "--spec-draft",
+    "0"
+   ],
+   "context": 119840,
+   "needed_mib": 22764,
+   "free_mib": 23789,
+   "vram_idle_mib": 769,
+   "vram_loaded_mib": 23281,
+   "served": true,
+   "reply": "OK"
+  },
+  {
+   "config": "kv-f16-reserve0",
+   "cmd": [
+    "/home/USER/projects/zerv/zig-out/bin/zerv",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18093",
+    "--context",
+    "max",
+    "--kv-type",
+    "f16",
+    "--vram-reserve-mib",
+    "0"
+   ],
+   "context": 102592,
+   "needed_mib": 23721,
+   "free_mib": 23789,
+   "vram_idle_mib": 769,
+   "vram_loaded_mib": 24243,
+   "served": true,
+   "reply": "OK"
+  },
+  {
+   "config": "kv-f16-no-prefix-cache-no-spec-reserve0",
+   "cmd": [
+    "/home/USER/projects/zerv/zig-out/bin/zerv",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18093",
+    "--context",
+    "max",
+    "--kv-type",
+    "f16",
+    "--prefix-cache-slots",
+    "0",
+    "--spec-draft",
+    "0",
+    "--vram-reserve-mib",
+    "0"
+   ],
+   "context": 135104,
+   "needed_mib": 23725,
+   "free_mib": 23789,
+   "vram_idle_mib": 769,
+   "vram_loaded_mib": 24243,
+   "served": true,
+   "reply": "OK"
+  }
+ ]
+}

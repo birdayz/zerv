@@ -4,7 +4,8 @@
 // A: quantized weight rows (k-contiguous, exact decode) or FP32 with arbitrary strides.
 // X, Y: FP32 in the activation arena. Row count n (tokens) and optionally M or K come
 // from the io block at run time. Rows t >= n are neither read meaningfully nor written.
-// FORMAT: 0 F32 (A_MCONTIG selects the coalesced loader), 2 Q4_0, 3 Q4_1, 13 Q5_K, 14 Q6_K.
+// FORMAT: 0 F32 (A_MCONTIG selects the coalesced loader), 2 Q4_0, 3 Q4_1, 8 Q8_0 (the MTP
+// layer's eh_proj, block 17b), 13 Q5_K, 14 Q6_K.
 // Tile 256 (M) x 32 (rows), 256 threads. A 64-thread group w (made uniform with
 // subgroupBroadcastFirst; valid for subgroup sizes 32 and 64, required by the host) owns
 // 8 X rows, read as wave-uniform vec4s (4 consecutive k) through the read-only X binding,
@@ -106,6 +107,27 @@ void decode_block(Raw r, uint b, bool live, uint mm) {
 }
 #endif
 
+#if FORMAT==8
+// Q8_0: d (f16) at bytes 0-1, 32 int8 at 2..33; value d*q, exact in FP32 (11 x 8 bits).
+// The 34-byte block starts at 0 or 2 mod 4 and lies in the 9 aligned words from b/4 (in
+// range: validate() bounds the tensor end rounded up to 4 bytes).
+struct Raw { uint w[9]; };
+Raw load_block(uint b) {
+    uint wb=b>>2u;
+    Raw r;
+    [[unroll]] for (uint i=0;i<9;i++) r.w[i]=aw[wb+i];
+    return r;
+}
+void decode_block(Raw r, uint b, bool live, uint mm) {
+    bool odd=(b&2u)!=0u;
+    float d=live ? unpackHalf2x16(odd ? r.w[0]>>16u : r.w[0]).x : 0.0;
+    [[unroll]] for (uint w=0;w<8;w++) {
+        uint q=odd ? r.w[w+1u] : (r.w[w]>>16u)|(r.w[w+1u]<<16u);
+        [[unroll]] for (uint e=0;e<4;e++) put_a(w*4u+e,mm,d*float(int(q<<(24u-8u*e))>>24));
+    }
+}
+#endif
+
 #if FORMAT==13
 // The five aligned 16-byte words one thread decodes for a row's 32-value group at k0:
 // header (d, dmin, scales), both high-bit words, and the group pair's 32 payload bytes.
@@ -138,7 +160,7 @@ void main() {
     // vec4 index of each of the wave's X rows at k = 0 (x_base, x_rs multiples of 4).
     uint xrow[XW];
     [[unroll]] for (uint j=0;j<XW;j++) xrow[j]=(xbase+min(trow+j,n-1u)*p.x_rs)/4u;
-#if FORMAT==2 || FORMAT==3 || FORMAT==13
+#if FORMAT==2 || FORMAT==3 || FORMAT==8 || FORMAT==13
     // The first tile's block; later tiles are loaded during the previous tile's FMAs.
     // This thread's row (mm = tid, VPT == BK), clamped like the loader's rb, so the
     // loads are in range for dead rows too (their values are multiplied by 0).
@@ -170,7 +192,7 @@ void main() {
             uint row=m0+mm;
             bool live=row<M;
             uint rb=abase+min(row,M-1u)*p.a_rs;
-#if FORMAT==2 || FORMAT==3
+#if FORMAT==2 || FORMAT==3 || FORMAT==8
             decode_block(raw, rb+(k0/32u)*BLOCK_BYTES, live, mm);
 #elif FORMAT==13
             // One thread per row and 32-value group: five aligned 16-byte words (loaded
@@ -216,7 +238,7 @@ void main() {
         }
 #endif
         barrier();
-#if FORMAT==2 || FORMAT==3
+#if FORMAT==2 || FORMAT==3 || FORMAT==8
         if (k0+BK<k_end) raw=load_block(pf_rb+((k0+BK)/32u)*BLOCK_BYTES);
 #elif FORMAT==13
         if (k0+BK<k_end) raw5=load_q5k(pf_rb,k0+BK);

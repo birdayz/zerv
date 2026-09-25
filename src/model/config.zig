@@ -33,7 +33,9 @@ pub fn linearIndex(layer: u32) u32 {
 }
 
 pub const Error = error{ UnsupportedModel, MissingTensor, WrongTensorShape, WrongTensorType } || gguf.ParseError;
-pub const Hyper = struct { eps: f32, rope_base: f64 };
+/// `context_length`: the trained context (`qwen35.context_length`); longer contexts are
+/// rejected.
+pub const Hyper = struct { eps: f32, rope_base: f64, context_length: u32 };
 
 const Expect = union(enum) { int: u64, string: []const u8 };
 const required = [_]struct { []const u8, Expect }{
@@ -85,12 +87,15 @@ pub fn hyper(container: *const gguf.Container) Error!Hyper {
         if ((got.scalar(i32) catch return error.UnsupportedModel) != want) return error.UnsupportedModel;
     }
     if (!(std.math.isFinite(eps) and eps > 0 and eps < 1e-3 and std.math.isFinite(base) and base > 1)) return error.UnsupportedModel;
-    return .{ .eps = eps, .rope_base = base };
+    const trained = integer((container.findMetadata("qwen35.context_length") orelse return error.UnsupportedModel)) catch return error.UnsupportedModel;
+    if (trained == 0 or trained > std.math.maxInt(u32)) return error.UnsupportedModel;
+    return .{ .eps = eps, .rope_base = base, .context_length = @intCast(trained) };
 }
 
 /// How the runtime consumes a tensor. Params are FP32 vectors read by operator kernels.
 pub const Role = enum { param, embedding, matrix };
-pub const Spec = struct { name: [64]u8 = undefined, len: u8 = 0, role: Role, k: u64, rows: u64 };
+/// `rows_only`: a matrix used only through multi-row projections (may be Q8_0).
+pub const Spec = struct { name: [64]u8 = undefined, len: u8 = 0, role: Role, k: u64, rows: u64, rows_only: bool = false };
 
 fn spec(role: Role, k: u64, rows: u64, comptime fmt: []const u8, args: anytype) Spec {
     var s: Spec = .{ .role = role, .k = k, .rows = rows };
@@ -148,7 +153,39 @@ pub fn tensors() [tensor_count]Spec {
     return out;
 }
 
+/// The MTP (nextn) layer's block index and inventory (block 17b, loaded only for
+/// speculative decoding; docs/specs/speculative.md).
+pub const mtp_layer = layers;
+pub const mtp_tensor_count = 15;
+pub fn mtpTensors() [mtp_tensor_count]Spec {
+    const il = mtp_layer;
+    return .{
+        spec(.param, hidden, 1, "blk.{d}.attn_norm.weight", .{il}),
+        spec(.param, hidden, 1, "blk.{d}.post_attention_norm.weight", .{il}),
+        spec(.matrix, hidden, ffn, "blk.{d}.ffn_gate.weight", .{il}),
+        spec(.matrix, hidden, ffn, "blk.{d}.ffn_up.weight", .{il}),
+        spec(.matrix, ffn, hidden, "blk.{d}.ffn_down.weight", .{il}),
+        spec(.matrix, hidden, 2 * heads * head_dim, "blk.{d}.attn_q.weight", .{il}),
+        spec(.matrix, hidden, kv_heads * head_dim, "blk.{d}.attn_k.weight", .{il}),
+        spec(.matrix, hidden, kv_heads * head_dim, "blk.{d}.attn_v.weight", .{il}),
+        spec(.param, head_dim, 1, "blk.{d}.attn_q_norm.weight", .{il}),
+        spec(.param, head_dim, 1, "blk.{d}.attn_k_norm.weight", .{il}),
+        spec(.matrix, heads * head_dim, hidden, "blk.{d}.attn_output.weight", .{il}),
+        rowsOnly(spec(.matrix, 2 * hidden, hidden, "blk.{d}.nextn.eh_proj.weight", .{il})),
+        spec(.param, hidden, 1, "blk.{d}.nextn.enorm.weight", .{il}),
+        spec(.param, hidden, 1, "blk.{d}.nextn.hnorm.weight", .{il}),
+        spec(.param, hidden, 1, "blk.{d}.nextn.shared_head_norm.weight", .{il}),
+    };
+}
+
+fn rowsOnly(s: Spec) Spec {
+    var r = s;
+    r.rows_only = true;
+    return r;
+}
+
 /// Map a GGUF tensor type to a projection format, rejecting types the runtime lacks.
+/// Q8_0 has only the multi-row module (the MTP's eh_proj).
 pub fn matrixFormat(kind: gguf.TensorType) Error!matvec.Format {
     return switch (kind) {
         .f32 => .f32,
@@ -156,6 +193,7 @@ pub fn matrixFormat(kind: gguf.TensorType) Error!matvec.Format {
         .q4_1 => .q4_1,
         .q5_k => .q5_k,
         .q6_k => .q6_k,
+        .q8_0 => .q8_0,
         else => error.WrongTensorType,
     };
 }
@@ -167,6 +205,6 @@ pub fn check(s: *const Spec, tensor: *const gguf.Tensor) Error!void {
     switch (s.role) {
         .param => if (tensor.kind != .f32) return error.WrongTensorType,
         .embedding => if (tensor.kind != .q4_0) return error.WrongTensorType,
-        .matrix => _ = try matrixFormat(tensor.kind),
+        .matrix => if (try matrixFormat(tensor.kind) == .q8_0 and !s.rows_only) return error.WrongTensorType,
     }
 }

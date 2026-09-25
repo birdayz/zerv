@@ -1,0 +1,78 @@
+{
+ "engine": "llama.cpp b29c606e28 (libllama pinned)",
+ "config": "fp32-kvf16",
+ "env": {
+  "GGML_VK_DISABLE_MMVQ": "1",
+  "GGML_VK_DISABLE_INTEGER_DOT_PRODUCT": "1",
+  "GGML_VK_DISABLE_COOPMAT": "1",
+  "GGML_VK_DISABLE_F16": "1"
+ },
+ "kv": "f16",
+ "batch": 2048,
+ "ubatch": 512,
+ "flash": true,
+ "tool_sha256": "8d718562392a6ee515f3403dafebebba7f09802d4fc4132a116eab7d6e2a3523",
+ "cases": {
+  "short-nothink": {
+   "tokens": 48,
+   "hidden_l_out_63": {
+    "count": 48,
+    "mean": 0.0002277213491162776,
+    "median": 0.00017299730977272894,
+    "p90": 0.00046139709326726967,
+    "max": 0.0008581143295701472
+   },
+   "logits": {
+    "count": 48,
+    "mean": 0.0001667446896841594,
+    "median": 0.00011946176242765713,
+    "p90": 0.00030299173993665406,
+    "max": 0.0007923112269927402
+   },
+   "logit_positions": 48,
+   "argmax_agree": 48,
+   "argmax_decided": 48,
+   "near_ties": 0,
+   "capture": {
+    "tokens": 48,
+    "n_vocab": 248320,
+    "n_batch": 2048,
+    "n_ubatch": 512,
+    "flash": 1,
+    "kv": "f16"
+   }
+  },
+  "long-think": {
+   "tokens": 221,
+   "hidden_l_out_63": {
+    "count": 221,
+    "mean": 0.0002177699604566236,
+    "median": 0.0001882246286102964,
+    "p90": 0.00032363254432992734,
+    "max": 0.0015661998298844217
+   },
+   "logits": {
+    "count": 221,
+    "mean": 0.00014677198827194995,
+    "median": 0.00012217786922257492,
+    "p90": 0.0002239344827457003,
+    "max": 0.0012002961070164458
+   },
+   "logit_positions": 221,
+   "argmax_agree": 221,
+   "argmax_decided": 221,
+   "near_ties": 0,
+   "capture": {
+    "tokens": 221,
+    "n_vocab": 248320,
+    "n_batch": 2048,
+    "n_ubatch": 512,
+    "flash": 1,
+    "kv": "f16"
+   }
+  }
+ },
+ "fixture": "tests/fixtures/model/qwen38-oracle.json",
+ "fixture_sha256": "ca02ef09dc43b4d5be93aedd5c49e5b1323fc1e4283bfca92aa5fd90f635e98e",
+ "oracle_dir": "third_party/model-oracle/2026-09-23-default-regen"
+}

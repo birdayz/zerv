@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "description": "Decode-heavy workload (block 17b gate 3, sampled): the decode-v1 cases (short prompts, 512 generated tokens) at temperature 0.8 with the fixed seed; the model's default top-k/top-p apply. Speculative outputs must equal non-speculative outputs byte for byte.",
+  "temperature": 0.8,
+  "seed": 1234,
+  "cases": [
+    {
+      "name": "code",
+      "max_tokens": 512,
+      "options": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a Python module that implements a least-recently-used cache class with get, put and delete methods, type hints and docstrings, followed by unittest test cases for eviction order, updates of existing keys and capacity 1. Output only the code."
+        }
+      ]
+    },
+    {
+      "name": "json",
+      "max_tokens": 512,
+      "options": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "Produce a JSON array of 12 fictional employees. Each object has the keys id (integer from 1), name, department (one of Engineering, Sales, Finance, Support), start_date (YYYY-MM-DD), salary (integer) and skills (array of 3 strings). Output only the JSON."
+        }
+      ]
+    },
+    {
+      "name": "think",
+      "max_tokens": 512,
+      "options": {
+        "reasoning_effort": "xhigh"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "A train leaves city A at 9:00 traveling at 80 km/h toward city B, 360 km away. A second train leaves city B at 10:00 traveling toward city A at 100 km/h. At what time do they meet, and how far from city A? Show your reasoning."
+        }
+      ]
+    },
+    {
+      "name": "prose",
+      "max_tokens": 512,
+      "options": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a short story of about 400 words about a lighthouse keeper who finds a message in a bottle."
+        }
+      ]
+    }
+  ]
+}

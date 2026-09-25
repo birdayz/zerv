@@ -38,9 +38,9 @@ test "Vulkan C ABI: every scoped structure, field offset and numeric constant" {
             checked_constants += 1;
         }
     }
-    try t.expectEqual(@as(usize, 56), checked_structs);
+    try t.expectEqual(@as(usize, 64), checked_structs);
     try t.expectEqual(structs.len, checked_structs);
-    try t.expectEqual(@as(usize, 78), checked_constants);
+    try t.expectEqual(@as(usize, 86), checked_constants);
     try t.expectEqual(constants.count(), checked_constants);
 }
 

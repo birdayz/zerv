@@ -13,10 +13,23 @@
 #extension GL_KHR_memory_scope_semantics : require
 #extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
 #extension GL_KHR_shader_subgroup_basic : require
+// SMALLN (block 18e, `--decode-precision f16`; docs/specs/concurrent.md "18e design"): a
+// 128 (M) x 16 (rows) tile for batched decode, 4 subgroups of 32 x 16. Per output element
+// the arithmetic is the same chain as the 128 x 128 tile (one WMMA per 16-k slice, k order,
+// from 0), so each row equals the large tile's result for the same X row. With k_chunk != 0
+// workgroup z runs the chain over k in [z k_chunk, (z + 1) k_chunk) (from 0) into
+// y_base + z y_bs; the reduce kernel adds the parts in z order (fixed per shape).
+#if SMALLN
+#define BM 128
+#define BN 16
+#define WM 32
+#define WN 16
+#else
 #define BM 128
 #define BN 128
 #define WM 64
 #define WN 64
+#endif
 #define TM (WM/16)
 #define TN (WN/16)
 #define BK 32
@@ -97,15 +110,29 @@ void main() {
     uint n=io[IO_COUNT];
     uint m0=gl_WorkGroupID.x*BM, t0=gl_WorkGroupID.y*BN;
     if (t0>=n) return; // uniform per workgroup
+#if SMALLN
+    uint wave=gl_SubgroupID, wm=wave, wn=0u;
+#else
     uint wave=gl_SubgroupID, wm=wave%2u, wn=wave/2u;
+#endif
     coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> acc[TM][TN];
     [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++)
         acc[i][j]=coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(0.0);
+#if SMALLN
+    uint kb=gl_WorkGroupID.z*p.k_chunk, ke=p.k_chunk!=0u ? min(p.k,kb+p.k_chunk) : p.k;
+    for (uint k0=kb;k0<ke;k0+=BK) {
+#else
     for (uint k0=0u;k0<p.k;k0+=BK) {
+#endif
         load_a(tid/2u, tid%2u, k0);
-        // X: 128 rows x 32 k = 2 passes of 8 values per thread, rounded to f16.
+        // X: BN rows x 32 k, 8 values per thread and pass, rounded to f16.
+#if SMALLN
+        if (tid<BN*4u) {
+            uint e=tid;
+#else
         [[unroll]] for (uint pass=0u;pass<2u;pass++) {
             uint e=tid+256u*pass;
+#endif
             uint tok=e/4u, qk=(e%4u)*8u;
             uint src=(p.x_base+min(t0+tok,n-1u)*p.x_rs+k0+qk)/4u;
             vec4 x0=xin4[src], x1=xin4[src+1u];
@@ -124,6 +151,12 @@ void main() {
         barrier();
     }
     // Y[t][m] at y_base + t*y_rs + m: the M x rows result is column-major, stride y_rs.
+#if SMALLN
+    uint yb=p.y_base+gl_WorkGroupID.z*p.y_bs;
+    [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++)
+        coopMatStore(acc[i][j], act, yb+(t0+wn*WN+j*16u)*p.y_rs+m0+wm*WM+i*16u, p.y_rs, gl_CooperativeMatrixLayoutColumnMajor);
+#else
     [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++)
         coopMatStore(acc[i][j], act, p.y_base+(t0+wn*WN+j*16u)*p.y_rs+m0+wm*WM+i*16u, p.y_rs, gl_CooperativeMatrixLayoutColumnMajor);
+#endif
 }

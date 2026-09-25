@@ -63,9 +63,19 @@ class MatvecFixtureTests(unittest.TestCase):
         directory = ROOT/"src/matvec/shaders"
         manifest = json.loads((directory/"manifest.json").read_text())
         self.assertEqual(manifest["source_sha256"], sha((ROOT/"src/matvec/matvec.comp").read_bytes()))
-        self.assertEqual(set(manifest["modules"]), set(TYPES) | {"f32_small", "q4_1_aligned", "q5_k_aligned"})
-        for name, record in manifest["modules"].items():
-            raw = (directory/(name+".spv")).read_bytes()
+        self.assertEqual(manifest["rows_source_sha256"], sha((ROOT/"src/matvec/matvec_rows.comp").read_bytes()))
+        single = set(TYPES) | {"f32_small", "q4_1_aligned", "q5_k_aligned"}
+        swiglu = {"swiglu_"+n for n in ("q4_0", "q4_1", "q5_k", "q6_k", "q4_1_aligned", "q5_k_aligned")}
+        # Fused multi-row modules (matvec.swigluRowsGroups): counts 1..4, K-quants 1..2.
+        kquant = {n for n in swiglu if "_k" in n}
+        one_set = single | swiglu | {f"rows{r}_{n}" for r in range(1, 6) for n in single | {"q8_0"}} | {f"rows{r}_{n}" for r in range(1, 5) for n in swiglu - kquant} | {f"rows{r}_{n}" for r in range(1, 3) for n in kquant}
+        # Two accumulation sets (docs/specs/matvec-push.md): fma at the top, separate/ below.
+        self.assertEqual(set(manifest["modules"]), one_set | {"separate/"+n for n in one_set})
+        for key, record in manifest["modules"].items():
+            separate = key.startswith("separate/")
+            name = key.removeprefix("separate/")
+            self.assertEqual(record["accum_fma"], not separate)
+            raw = (directory/(key+".spv")).read_bytes()
             self.assertEqual(sha(raw), record["sha256"])
             self.assertEqual(len(raw), record["bytes"])
             words = struct.unpack("<"+"I"*(len(raw)//4), raw)
@@ -80,9 +90,20 @@ class MatvecFixtureTests(unittest.TestCase):
                 if opcode == 71 and words[pos+2] == 42: no_contraction += 1
                 pos += count
             self.assertEqual(capabilities, [1])  # Shader only, no optional Float16/Int8/subgroups.
-            lanes = 256 if name == "f32" else 64
+            rows = name.startswith("rows")
+            lanes = 256 if name == "f32" or (rows and name.endswith("_f32")) else 64
             self.assertEqual(record["lanes"], lanes)
-            self.assertEqual(record["rows_per_group"], 1)
+            # Multi-row modules (block 17b): GROUP weight rows per workgroup, one module per
+            # exact input row count (rows<count>_<format>).
+            count = int(name[4]) if rows else 1
+            fused = "swiglu_" in name
+            if rows and fused:  # matvec.swigluRowsGroups (gate rows; 2x weight rows), both accumulations
+                groups, chunks = (1, 1, 2, 2), (4, 2, 3, 2)
+            else:  # matvec.rowsGroups
+                groups, chunks = ((1, 2, 2, 3, 2), (4, 2, 2, 2, 4)) if separate else ((1, 3, 3, 3, 3), (4, 2, 3, 2, 3))
+            self.assertEqual(record["rows_per_group"], groups[count-1] if rows else 1)
+            if rows: self.assertEqual((record["input_rows"], record["blocks_per_chunk"]), (count, chunks[count-1]))
+            self.assertEqual(record.get("swiglu", False), fused)
             self.assertEqual(record["aligned_words"], name.endswith("_aligned"))
             self.assertEqual(local_size, [(lanes, 1, 1)])
             self.assertGreater(no_contraction, 0)

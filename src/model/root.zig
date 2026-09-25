@@ -5,8 +5,15 @@ pub const gemm = @import("gemm.zig");
 pub const attention = @import("attention.zig");
 pub const Model = @import("runtime.zig").Model;
 pub const Options = @import("runtime.zig").Options;
+pub const BatchRow = @import("runtime.zig").BatchRow;
+pub const DecodePrecision = @import("runtime.zig").DecodePrecision;
+pub const max_pool_pages = @import("runtime.zig").max_pool_pages;
 pub const snapshot_bytes = @import("runtime.zig").snapshot_bytes;
 pub const vram_headroom = @import("runtime.zig").vram_headroom;
+pub const context_max = @import("runtime.zig").context_max;
+pub const ContextShape = @import("runtime.zig").ContextShape;
+pub const contextBytes = @import("runtime.zig").contextBytes;
+pub const fitContext = @import("runtime.zig").fitContext;
 pub const Capture = @import("runtime.zig").Capture;
 pub const Error = @import("runtime.zig").Error;
 pub const Hooks = @import("runtime.zig").Hooks;
@@ -20,3 +27,13 @@ pub const chunkFor = @import("runtime.zig").chunkFor;
 /// f16-mode producer kernels (model.comp with F16OUT; block 16b) and their modules.
 pub const F16Producer = @import("runtime.zig").HKernel;
 pub const f16ProducerModule = @import("runtime.zig").hModule;
+/// Fused prefill attention module (flash.comp, block 16a).
+pub const flashModule = @import("runtime.zig").flashModule;
+/// KV cache writers (qkprep: decode rows; qk_b: prefill rows) and their pushes.
+pub const qkprepModule = @import("runtime.zig").qkprepModule;
+pub const qkBModule = @import("runtime.zig").qkBModule;
+pub const QkPush = @import("runtime.zig").QkPush;
+pub const QkBPush = @import("runtime.zig").QkBPush;
+pub const KvType = layout.KvType;
+pub const flash_rows = @import("runtime.zig").flash_rows;
+pub const flash_groups = @import("runtime.zig").flash_groups;

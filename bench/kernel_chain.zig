@@ -4,6 +4,9 @@
 //!   norm_add: RMS norm with residual add over 5120 values (1 workgroup), with barriers
 //!   norm_add_nobarrier: the same dispatches without barriers (overlap allowed)
 //!   zero_link: an empty dispatch (zero kernel, count 0) with barriers = link overhead
+//!   rowsio_{host,device}_{1,96}: the norm gated on io[IO_COUNT] = 1 (ROWS_IO, as the model's
+//!     row-count-gated kernels), io in host-visible (as the model) or device-local memory,
+//!     1 or 96 workgroups (95 read io and return): the cost of the io read at dispatch start
 //! Usage: zerv-kernel-chain [N [NORM_SPV]]  (default 129 = norms per decode step)
 //!        zerv-kernel-chain compare SPV_A SPV_B ROWS   (bitwise norm output comparison
 //!        on ROWS random rows with residual add; prints the differing rows)
@@ -41,6 +44,10 @@ pub fn main(init: std.process.Init) !void {
     defer state.deinit() catch @panic("s");
     var io_buf = try gpu.Buffer.init(&device, 4096, .host);
     defer io_buf.deinit() catch @panic("io");
+    var io_dev = try gpu.Buffer.init(&device, 4096, .device);
+    defer io_dev.deinit() catch @panic("iod");
+    @memset(std.mem.bytesAsSlice(u32, try io_buf.mapped()), 0);
+    std.mem.bytesAsSlice(u32, try io_buf.mapped())[2] = 1; // IO_COUNT
     var staging = try gpu.Buffer.init(&device, 1 << 20, .host);
     defer staging.deinit() catch @panic("st");
     var prng = std.Random.DefaultPrng.init(7);
@@ -51,6 +58,7 @@ pub fn main(init: std.process.Init) !void {
         try up.begin();
         try up.copy(&staging, 0, &params, 0, 1 << 20);
         try up.copy(&staging, 0, &act, 0, 1 << 20);
+        try up.copy(&io_buf, 0, &io_dev, 0, 4096);
         try up.barrier(.transfer, .compute);
         try up.end();
         try up.run(w.timeout_ns);
@@ -61,10 +69,19 @@ pub fn main(init: std.process.Init) !void {
     defer norm.deinit() catch @panic("n");
     var zero = try gpu.Kernel.init(&device, try spv(a, io, "src/model/shaders/zero.spv"), &binds, @sizeOf(ZeroPush));
     defer zero.deinit() catch @panic("z");
+    const binds_dev = [_]*gpu.Buffer{ &params, &act, &state, &io_dev };
+    var norm_dev = try gpu.Kernel.init(&device, try spv(a, io, norm_path), &binds_dev, @sizeOf(NormPush));
+    defer norm_dev.deinit() catch @panic("nd");
     var out_buf: [1024]u8 = undefined;
     var stdout: std.Io.File.Writer = .init(.stdout(), io, &out_buf);
     const push: NormPush = .{ .x = 0, .a = 8192, .sum = 16384, .y = 24576, .w = 0, .stride = 0, .flags = 1, .eps = 1e-6 };
-    for ([_][]const u8{ "norm_add", "norm_add_nobarrier", "zero_link" }) |variant| {
+    var push_rows = push;
+    push_rows.flags |= 2; // ROWS_IO
+    const order_env = std.c.getenv("CHAIN_ORDER");
+    const reversed = order_env != null;
+    const fwd = [_][]const u8{ "norm_add", "norm_add_nobarrier", "zero_link", "rowsio_host_1", "rowsio_device_1", "rowsio_host_96", "rowsio_device_96" };
+    const rev = [_][]const u8{ "rowsio_device_96", "rowsio_host_96", "rowsio_device_1", "rowsio_host_1", "zero_link", "norm_add_nobarrier", "norm_add" };
+    for (if (reversed) rev else fwd) |variant| {
         var timing = try w.Timing.init(&device);
         defer timing.deinit() catch @panic("t");
         var cmd = try gpu.Commands.init(&device);
@@ -75,6 +92,10 @@ pub fn main(init: std.process.Init) !void {
         for (0..n) |_| {
             if (std.mem.eql(u8, variant, "zero_link")) {
                 try cmd.dispatch(&zero, std.mem.asBytes(&ZeroPush{ .first = 0, .count = 0 }), .{ 1, 1, 1 });
+            } else if (std.mem.startsWith(u8, variant, "rowsio_")) {
+                const groups: u32 = if (std.mem.endsWith(u8, variant, "_96")) 96 else 1;
+                const k = if (std.mem.indexOf(u8, variant, "device") != null) &norm_dev else &norm;
+                try cmd.dispatch(k, std.mem.asBytes(&push_rows), .{ groups, 1, 1 });
             } else try cmd.dispatch(&norm, std.mem.asBytes(&push), .{ 1, 1, 1 });
             if (!std.mem.eql(u8, variant, "norm_add_nobarrier")) try cmd.barrier(.compute, .compute);
         }
@@ -107,6 +128,10 @@ fn compare(a: std.mem.Allocator, io: std.Io, path_a: []const u8, path_b: []const
     defer state.deinit() catch @panic("s");
     var io_buf = try gpu.Buffer.init(&device, 4096, .host);
     defer io_buf.deinit() catch @panic("io");
+    var io_dev = try gpu.Buffer.init(&device, 4096, .device);
+    defer io_dev.deinit() catch @panic("iod");
+    @memset(std.mem.bytesAsSlice(u32, try io_buf.mapped()), 0);
+    std.mem.bytesAsSlice(u32, try io_buf.mapped())[2] = 1; // IO_COUNT
     std.mem.bytesAsSlice(u32, try io_buf.mapped())[2] = rows;
     var prng = std.Random.DefaultPrng.init(12345);
     for (std.mem.bytesAsSlice(f32, try params.mapped())) |*v| v.* = 0.5 + prng.random().float(f32);

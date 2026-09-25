@@ -22,6 +22,34 @@ Temperature 0 without penalties is exact argmax, lowest id on ties. Parameter
 ranges are validated; non-finite logits are an error. Draws are not bit-compatible
 with llama.cpp's RNG: only greedy output is compared token-for-token.
 
+**Summation orders (part of the definition; every path follows them, 2026-09-24):**
+- Top-p's denominator Σ exp(l − max) (f64 terms): over the top-k candidates in
+  descending (logit, id) order when top-k is active; otherwise over the whole candidate
+  set in its given order (id order for `sample`, the allowed list for `sampleFrom`),
+  like llama.cpp's softmax. Top-p's cumulative sum runs in descending (logit, id) order.
+- The draw: over the kept candidates in descending order when any truncation (top-k,
+  top-p, min-p) applies; otherwise over all candidates in their given order (no sort).
+- The exponential is `sampler.expNeg` (x ≤ 0; 0 below −708; within 2⁻⁵² relative of
+  `@exp`, measured), scalar and vector forms bit-identical, used by every path.
+- Consequence: `sample` never sorts the vocabulary. With top-k off it sorts only a
+  prefix found from a histogram of probability mass by distance below the maximum
+  (quarter-logit buckets, a strict logit range each, so the prefix is exactly the start
+  of the global descending order); the reference path (`fast_top_k = false`) sorts all
+  and must give the same draws (`tests/session.zig`). Measured:
+  [sampler benchmark](../bench/2026-09-24-sampler.md).
+- **Knob `--sampler-order id|sorted` (`sampler.Order`, `Params.order`; server option,
+  not an API field; default `id` = the orders above).** `sorted` is the definition of
+  builds before 2026-09-24 (commit 3c03b07), operation for operation: after top-k's
+  selection every candidate is sorted descending (logit, then id), top-p's denominator,
+  its cumulative sum and the draw all run in that order, with `@exp`. It sorts the whole
+  vocabulary when top-k is off. Both orders sample the same distribution, but one seed
+  draws different tokens under each when nothing truncates, and rarely otherwise
+  (rounding at a top-p cutoff). Gate: `tests/session.zig` checks `sorted` against draws
+  generated from the 3c03b07 sampler source
+  (`tests/reference/generate_sampler_sorted.zig`, fixture
+  `tests/fixtures/session/sampler-sorted.json`, cases in `tests/sampler_cases.zig`),
+  and that `id` differs on some case.
+
 ## Termination and text
 
 - EOS set resolved from the tokenizer: `<|im_end|>` (248046) and `<|endoftext|>`

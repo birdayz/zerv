@@ -126,6 +126,21 @@ streams across independent engines are not assumed.
    VRAM/host-memory growth.
 5. Only then compare speed at matched quality, per [performance protocol](../performance.md).
 
+6. **Shader compiler output (2026-09-24):** no shipped shader may spill VGPRs into LDS.
+   Mesa 26.2.3's ACO miscompiles such spills ([RCA](../bench/2026-09-24-aco-lds-spill.md)).
+   Run `tools/check_shader_spills.py` over `gpu-test` and the runtime model tools
+   whenever shaders, compile defines or tuning tables change. Tuning tools must
+   validate every candidate on the full fixture set of every format it would ship,
+   not only on the formats one model uses.
+
+7. **Tests run in ReleaseFast (2026-09-24):** test code must not use `std.debug.assert`
+   or `unreachable` to check test setup or results. In ReleaseFast they are undefined
+   behaviour, not failures. A failed assert in a test helper let LLVM drop the rest of a
+   GPU test, which then reported OK without checking anything
+   ([report](../bench/2026-09-24-paged-kv.md), "A silent test gap"). Use `try t.expect…`, or
+   make the helper choose valid parameters itself. Every parameterized case should leave
+   visible evidence that it ran to the end (e.g. its worst error).
+
 Every optimized kernel keeps a simple validated fallback for diagnosis until its
 coverage is strong. Record failing seeds/tensors as regression cases. "Proving
 correctness" here means reproducible evidence and explicit bounds/invariants,

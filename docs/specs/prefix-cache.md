@@ -20,9 +20,13 @@ conversation (bruh: about 12k tokens of tools and system prompt) plus a little n
 - `saveSnapshot(slot)` copies that state, as of `position`, into the slot.
 - `loadSnapshot(slot, p)` copies it back and sets `position = p`. The caller guarantees
   that the attention KV below `p` is unchanged since the save.
-- The KV is not copied. It stays in the state arena, and kernels read only keys below the
+- The KV is not copied. It stays in the KV buffers, and kernels read only keys below the
   current position.
 - Both are one recorded device copy with compute↔transfer barriers, synchronous.
+- **Slot memory** (`Options.snapshot_memory`, 2026-09-24): `.device` (default; VRAM,
+  save/load 0.5 ms) or `.host` (mapped system RAM, no VRAM; save 9.8 ms and load 15.3 ms
+  over PCIe, [measured](../bench/2026-09-24-host-memory.md)). The copy is the same;
+  results are bitwise identical (`zerv-prefix-check MODEL [fp32|f16] [host|device]`).
 
 ## Policy (`session.prefix.Cache`)
 
@@ -80,6 +84,9 @@ tokens are compared: the chat template, tools and sampling do not affect reuse.
 
 - `zerv --prefix-cache-slots N` (default 8; about 150 MiB of VRAM each). `0` disables
   the cache: every request resets, as before block 15.
+- `zerv --prefix-cache-memory device|host` (default device): where the slots live. Host
+  frees their VRAM (1.2 GB at 8 slots, for more context) at 10–19 ms of TTFT per request
+  on serving-v2.
 - Responses carry `usage.prompt_tokens_details.cached_tokens` = the start position (the
   OpenAI and llama-server field).
 - Metrics:
@@ -98,7 +105,10 @@ prompt boundary snapshot). This will be decided from the benchmark.
 
 1. **Model primitive:** `zerv-prefix-check` on the real model shows restore bit-identical
    to split at 11 positions (including off the chunk grid), keep bit-identical, and run
-   repeats bit-identical.
+   repeats bit-identical. Since 2026-09-24 the tool compares restore with split directly
+   (`restore_vs_split` records) and exits non-zero unless that gate holds (`gate_passed`);
+   comparisons with the cold run are informational, since split differs from cold off
+   the chunk grid.
 2. **Oracle:** split prefills (`CHUNK:SPLIT` modes) pass the FP64 gates on both the
    default and the long oracle.
 3. **Policy tests** (CPU, `tests/prefix.zig`):

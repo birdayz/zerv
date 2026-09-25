@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests/reference"))
-from vulkan_api import OPAQUE, inventory
+from vulkan_api import EXTENSION_COMMANDS, OPAQUE, inventory
 
 XML_SHA = "80e7394d0e787d6ec78b67aa324add6f96129fdd042ba640cc336a5481a208ee"
 PRIMITIVES = dict(void="void", char="u8", uint8_t="u8", uint32_t="u32", int32_t="i32", uint64_t="u64", size_t="usize", float="f32")
@@ -77,6 +77,7 @@ def main():
         lines.append(f'pub const {name} = {constant(name)};')
     for name in sorted(OPAQUE):
         lines.append(f'pub const {name} = opaque {{}};')
+    lines.append('pub const PFN_vkVoidFunction = ?*const fn () callconv(.c) void;')
     for name, node in sorted(types.items()):
         category = node.get("category")
         if category == "struct":
@@ -101,7 +102,10 @@ def main():
     for name, node in functions.items():
         params = [f'{n}: {t}' for n, t, _, _ in map(decl, node.findall("param"))]
         result = node.findtext("proto/type")
-        lines.append(f'pub extern fn {name}({", ".join(params)}) callconv(.c) {PRIMITIVES.get(result, result)};')
+        if name in EXTENSION_COMMANDS:  # fetched with vkGetDeviceProcAddr
+            lines.append(f'pub const PFN_{name} = *const fn ({", ".join(params)}) callconv(.c) {PRIMITIVES.get(result, result)};')
+        else:
+            lines.append(f'pub extern fn {name}({", ".join(params)}) callconv(.c) {PRIMITIVES.get(result, result)};')
     a.output.parent.mkdir(parents=True, exist_ok=True)
     with a.output.open("x") as f:
         f.write("\n".join(lines) + "\n")

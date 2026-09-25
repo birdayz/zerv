@@ -281,6 +281,17 @@ zig-out/bin/zerv-gpu-driver-bench
 python3 bench/run_gpu_driver.py --cpu 10 --output docs/bench/data/NEW-gpu-driver
 ```
 
+Shader spill gate (required when shaders, compile defines or tuning tables change;
+[RCA](bench/2026-09-24-aco-lds-spill.md)). Each command must report 0 FAIL (no VGPR
+spills in LDS); WARN lines are scratch spills (performance items):
+
+```sh
+python3 tools/check_shader_spills.py --log third_party/spill-gate/gpu-test.txt -- zig build gpu-test -Doptimize=ReleaseFast
+python3 tools/check_shader_spills.py --log third_party/spill-gate/spec.txt -- zig-out/bin/zerv-spec-check MODEL
+python3 tools/check_shader_spills.py --log third_party/spill-gate/mtp.txt -- zig-out/bin/zerv-mtp-check MODEL third_party/mtp-check/tokens-short-nothink.json third_party/spill-gate/mtp-dump
+python3 tools/check_shader_spills.py --log third_party/spill-gate/f16.txt -- zig-out/bin/zerv-model-profile MODEL 4096 512 600 2 f16 f16
+```
+
 GPU tests exercise actual transfers/compute and resource/state failures; default
 `zig build test` still needs no GPU/driver. Diagnostic shader compilation occurs
 only in the explicit external generator, not at runtime. The runner rebuilds both
@@ -311,6 +322,24 @@ This verified all 26 retained files here; the pinned URLs were downloaded during
 research. Existing mismatched files are refused, not replaced. Toolchain/driver
 identity changes require deliberate review; no automatic package install or weight
 download is part of this path.
+
+## Native machine code (`src/model/native/`)
+
+The f16 `gemm_f16x` kernel also ships as our own RDNA3 machine code in a RADV pipeline binary
+([spec](specs/prefill.md), [report](bench/2026-09-24-gemm-f16x-isa.md)). Ordinary builds only
+embed the files. Regenerating them needs the GPU with RADV, clang and the lab binary, and must
+be followed by the gates in the spec (`zig build gpu-test`, `verify_model.py --gemm-code`,
+serving outputs):
+
+```sh
+cc -std=gnu11 -O2 -Wall -Wextra -Ithird_party/vulkan/1.4.354/include \
+  bench/isa_lab/pipeline_binary_lab.c -lvulkan -lm -o third_party/isa-lab/pipeline_binary_lab
+python3 tools/build_native_gemm.py --output-dir third_party/NEW-native   # then review and copy
+```
+
+The binary is valid only where the driver's global pipeline key equals
+`gemm_f16x_q4_0.global` (same Mesa build, GPU and compiler options); elsewhere the server logs
+the fallback and runs the SPIR-V. `--gemm-code spirv` selects the SPIR-V explicitly.
 
 ## Resident GPU matvec — verified replay and measurements
 
@@ -392,6 +421,21 @@ python3 tools/verify_model.py --oracle-dir third_party/model-oracle/2026-09-23-d
 python3 tools/verify_model.py --fixture tests/fixtures/model/qwen38-oracle-long.json \
   --oracle-dir third_party/model-oracle/2026-09-23-long --modes 0,512,64 \
   --work-dir third_party/model-native/NEW-long --report docs/bench/data/NEW/report-long.json
+
+# Rerun a gate with an archived capture binary (every work dir keeps its copy), e.g. to
+# attribute a difference to a build: same flags plus --tool.
+python3 tools/verify_model.py --tool third_party/model-native/OLD/zerv-model-capture \
+  --oracle-dir third_party/model-oracle/2026-09-23-default-regen --modes 0 \
+  --work-dir third_party/model-native/NEW-rerun --report third_party/model-native/NEW-rerun.json
+
+# Interleaved (ABBA) A/B of zerv-model-profile binaries: per-phase decode/prefill GPU time.
+# An engine may carry its own arguments after "|", e.g. KV page sizes of one binary.
+python3 bench/race_profile.py --engine old=PATH --engine new=PATH --rounds 2 \
+  --output docs/bench/data/NEW-race --args 32768 512 30000 32 f16@native f32
+python3 bench/race_profile.py --engine "p128=PATH|32768 512 30000 32 f16@native f32@page=128" \
+  --engine "ctx=PATH|32768 512 30000 32 f16@native f32@page=context" --rounds 2 \
+  --output docs/bench/data/NEW-pages --args 32768 512 30000 32 f16@native f32
+# verify_model.py --kv-page-tokens N|context gates another KV page size (default 128).
 
 # End-to-end greedy equality through the real server (JSON and SSE).
 python3 tools/check_session.py --output docs/bench/data/NEW/session.json

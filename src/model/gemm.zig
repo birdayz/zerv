@@ -3,7 +3,7 @@
 const std = @import("std");
 const matvec = @import("../matvec/root.zig");
 
-pub const Variant = enum { f32_k, f32_m, q4_0, q4_1, q5_k, q6_k };
+pub const Variant = enum { f32_k, f32_m, q4_0, q4_1, q5_k, q6_k, q8_0 };
 pub const Push = extern struct {
     a_base: u32,
     a_rs: u32,
@@ -34,8 +34,10 @@ pub const m_from_keys: u32 = 1;
 pub const k_from_keys: u32 = 2;
 pub const Error = error{ InvalidShape, InvalidRange };
 
-pub fn variant(format: matvec.Format) Variant {
+/// GEMM variant of a projection format (Q8_0: the MTP layer's eh_proj, FP32 only).
+pub fn variant(format: matvec.Format) Error!Variant {
     return switch (format) {
+        .q8_0 => .q8_0,
         .f32 => .f32_k,
         .q4_0 => .q4_0,
         .q4_1 => .q4_1,
@@ -78,6 +80,8 @@ pub fn module(v: Variant, tile: Tile) Error![]align(4) const u8 {
         const q4_1 align(4) = @embedFile("shaders/gemm_q4_1.spv").*;
         const q5_k align(4) = @embedFile("shaders/gemm_q5_k.spv").*;
         const q6_k align(4) = @embedFile("shaders/gemm_q6_k.spv").*;
+        const q8_0 align(4) = @embedFile("shaders/gemm_q8_0.spv").*;
+        const q8_0_w align(4) = @embedFile("shaders/gemm_q8_0_w.spv").*;
         const q4_0_w align(4) = @embedFile("shaders/gemm_q4_0_w.spv").*;
         const q4_1_w align(4) = @embedFile("shaders/gemm_q4_1_w.spv").*;
         const q5_k_w align(4) = @embedFile("shaders/gemm_q5_k_w.spv").*;
@@ -91,6 +95,7 @@ pub fn module(v: Variant, tile: Tile) Error![]align(4) const u8 {
             .q4_1 => &M.q4_1,
             .q5_k => &M.q5_k,
             .q6_k => &M.q6_k,
+            .q8_0 => &M.q8_0,
         },
         .wide => switch (v) {
             .f32_k, .f32_m => error.InvalidShape,
@@ -98,6 +103,7 @@ pub fn module(v: Variant, tile: Tile) Error![]align(4) const u8 {
             .q4_1 => &M.q4_1_w,
             .q5_k => &M.q5_k_w,
             .q6_k => &M.q6_k_w,
+            .q8_0 => &M.q8_0_w,
         },
     };
 }
@@ -155,6 +161,34 @@ pub fn moduleF16x(v: Variant) Error![]align(4) const u8 {
     };
 }
 
+/// Machine code of the gemm_f16x kernel (docs/specs/prefill.md, "Native gemm_f16x machine
+/// code"): `.spirv` compiles the SPIR-V module (the previous behaviour); `.native` creates
+/// it from our RDNA3 pipeline binary when the driver's global key matches, else SPIR-V.
+pub const Code = enum { spirv, native };
+
+/// A driver pipeline binary of a kernel: data, binary key, and the driver global key it is
+/// valid for (src/model/native/, built by tools/build_native_gemm.py).
+pub const NativeCode = struct { data: []const u8, key: []const u8, global_key: *const [32]u8 };
+
+/// The native gemm_f16x binary (Q4_0 only), or null for other variants.
+pub fn nativeF16x(v: Variant) ?NativeCode {
+    const N = struct {
+        const data = @embedFile("native/gemm_f16x_q4_0.bin");
+        const key = @embedFile("native/gemm_f16x_q4_0.key");
+        const global = @embedFile("native/gemm_f16x_q4_0.global");
+    };
+    comptime std.debug.assert(N.global.len == 32 and N.key.len >= 1 and N.key.len <= 32);
+    return switch (v) {
+        .q4_0 => .{ .data = N.data, .key = N.key, .global_key = N.global[0..32] },
+        else => null,
+    };
+}
+
+/// The device must be opened with `pipeline_binaries` for this precision and code.
+pub fn needsPipelineBinaries(p: Precision, code: Code) bool {
+    return p == .f16 and code == .native;
+}
+
 /// Checks a gemm_f16x dispatch: no split-K, whole 256-row tiles (every row of every tile,
 /// up to `lim.rows`, may be read and written), f16 X rows 16-byte aligned (x_base and x_rs
 /// in halves, multiples of 8). Returns the grid.
@@ -196,6 +230,54 @@ pub fn validateF16(v: Variant, p: Push, lim: Limits, a_bytes: u64, act_bytes: u6
     if (y_end * 4 > act_bytes) return error.InvalidRange;
     if (v == .q5_k and p.a_bs % 16 != 0) return error.InvalidShape;
     return .{ p.m / f16_tile_m, lim.rows / f16_tile_n, grid[2] };
+}
+
+/// Batched decode in the f16 mode (`--decode-precision f16`, docs/specs/concurrent.md "18e
+/// design"): gemm_f16.comp with a 128 x 16 tile (-DSMALLN). Per output element the same
+/// arithmetic as `moduleF16`, so a row's result does not depend on the other rows.
+pub const f16n_tile_n = 16;
+
+/// Decode projections the f16 mode runs on the WMMA kernel (the prefill f16 set: Q4_0, Q4_1
+/// and Q5_K with M >= 4096 and M % 128 == 0); everything else stays FP32.
+pub fn f16DecodeEligible(v: Variant, M: u32) bool {
+    return f16Eligible(v, M, f16_tile_n);
+}
+
+pub fn moduleF16n(v: Variant) Error![]align(4) const u8 {
+    const M = struct {
+        const q4_0 align(4) = @embedFile("shaders/gemm_f16n_q4_0.spv").*;
+        const q4_1 align(4) = @embedFile("shaders/gemm_f16n_q4_1.spv").*;
+        const q5_k align(4) = @embedFile("shaders/gemm_f16n_q5_k.spv").*;
+    };
+    return switch (v) {
+        .q4_0 => &M.q4_0,
+        .q4_1 => &M.q4_1,
+        .q5_k => &M.q5_k,
+        else => error.InvalidShape,
+    };
+}
+
+/// K per split part of a 16-row f16 projection (0: no split): parts so that the grid has
+/// about `target` workgroups, each part a multiple of 256 k. A function of the shape only,
+/// so a row's arithmetic does not depend on the batch.
+pub fn f16nChunk(M: u32, K: u32, target: u32) u32 {
+    const tiles = M / f16_tile_m;
+    const parts = std.math.divCeil(u32, target, @max(tiles, 1)) catch unreachable;
+    if (parts <= 1) return 0;
+    const chunk = std.mem.alignForward(u32, std.math.divCeil(u32, K, parts) catch unreachable, 256);
+    return if (chunk >= K) 0 else chunk;
+}
+
+/// Checks a 16-row f16 WMMA dispatch for up to `lim.rows` rows (a multiple of 16: every row
+/// of every tile may be read and written; rows at or past the io count read the last row),
+/// optionally split over K (`k_chunk`, `lim.batches` parts at `y_bs` apart). Returns the grid.
+pub fn validateF16n(v: Variant, p: Push, lim: Limits, a_bytes: u64, act_bytes: u64) Error![3]u32 {
+    if (p.flags != 0 or p.a_group != 1 or p.k == 0) return error.InvalidShape;
+    if (p.k_chunk == 0 and lim.batches != 1) return error.InvalidShape;
+    if (!f16DecodeEligible(v, p.m) or lim.rows == 0 or lim.rows % f16n_tile_n != 0) return error.InvalidShape;
+    const grid = try validate(v, .narrow, p, lim, a_bytes, act_bytes); // split rules, extents
+    if (v == .q5_k and p.a_bs % 16 != 0) return error.InvalidShape;
+    return .{ p.m / f16_tile_m, lim.rows / f16n_tile_n, grid[2] };
 }
 
 /// Worst-case extents for validation before recording. Sizes are in elements (M, K,
@@ -245,6 +327,7 @@ fn checkA(v: Variant, p: Push, a_batches: u64, M: u64, K: u64, a_bytes: u64) Err
                 .q4_1 => .q4_1,
                 .q5_k => .q5_k,
                 .q6_k => .q6_k,
+                .q8_0 => .q8_0,
                 else => unreachable,
             };
             if (K % format.blockElements() != 0) return error.InvalidShape;

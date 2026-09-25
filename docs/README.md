@@ -158,4 +158,88 @@ finish independent tests and benchmark gates before advancing.
     - logits, captures and served outputs bitwise-identical;
     - prefill GPU time −18%;
     - 3223-token TTFT 3.04 s against llama-server's 3.39 s; 12k: 12.9 s against 12.46 s.
+55. [KV buffers](bench/2026-09-24-kv-buffers.md): the KV cache leaves the 4 GiB state
+    buffer; bitwise identical; context bound by free VRAM (38.7–49.4k), 37.8k-token prompt
+    answered correctly.
+54. [Speculative verification ≡ decode](bench/2026-09-24-spec-verify.md) (block 17b.1):
+    - N-row verify logits and committed state bitwise equal to N decode steps;
+    - exact-count multi-row matvec modules: verify + commit of 3 / 5 rows in 24.1 / 32.4 ms
+      against a 20.0 ms step (from 34.1 / 46.3).
+56. [Fused prefill attention, batched MTP catch-up, verify grid order](bench/2026-09-24-flash-attention.md)
+    (block 16a, inside 17): TTFT at 37.8k tokens 46.0 s against llama's 46.6 s; speculative
+    decode at 38k 80.8 against llama MTP 3's 76.3 tok/s; all outputs identical.
+57. [Decode baseline](bench/2026-09-24-decode-baseline.md) (block 17a): per-phase decode
+    profile, per-projection read rates (805 GB/s against a 920 GB/s roofline), competitor.
+58. [MTP speculative decoding](bench/2026-09-24-speculative.md) (block 17b.3): lossless in
+    every run; acceptance equal to llama.cpp's where outputs agree; faster than llama's best
+    on every decode-v1, serving-v2 and 38k case. Default since: 3 drafts, adaptive.
+59. [Host-resident embedding and snapshots](bench/2026-09-24-host-memory.md): embedding in
+    system RAM at no measured cost (682 MiB VRAM; now default); host snapshots cost 10–19 ms
+    of TTFT for 1.2 GB (knob).
+60. [`--context max`](bench/2026-09-24-context-max.md): the largest context per memory
+    configuration, 39.8k–60.1k with a 1 GiB reserve, up to 67.8k without; all served.
+61. [KV cache precision](bench/2026-09-24-kv-precision.md) (`--kv-type f16`, block 17c): context
+    ×2 (88.6k default), 38k decode 39.5 tok/s against llama's 35.8, KL to f32 about 900× below
+    llama's f16 KV; f32 stays the default (worst-token gate clause unmet).
+    [Research](research/kv-precision.md): layout, value ranges, llama.cpp's options, q8 notes.
+62. [Decode attention at long context](bench/2026-09-24-decode-attention-long.md): global-max and
+    parallel-combine passes, bitwise identical; 64k decode step 30.64 → 26.97 ms (+0.07 ms at
+    short context).
+63. [FMA matvec accumulation](bench/2026-09-24-fma-matvec.md): decode closer to FP64 on every oracle
+    case; with a re-tuned table, verify+commit of 3 / 4 / 5 rows −6 / −8 / −12%.
+    `--matvec-accumulation separate` keeps the previous arithmetic (byte-identical).
+64. [Token sampler](bench/2026-09-24-sampler.md): component benchmark; top-k off sorted the whole
+    vocabulary (29 ms per token), now a nucleus prefix (1.2 ms top-p, 0.18 ms min-p), same draws.
+    `--sampler-order sorted` keeps the previous order (golden-tested against its source).
+65. [Decode phase fusion](bench/2026-09-24-decode-fusion.md): 1.7 ms (8%) of each decode step is
+    dependency cost; gate+up+swiglu fused (`--decode-fusion`), plain decode +1.7%, bitwise identical.
+66. [MTP draft cost and draft vocabulary](bench/2026-09-24-draft-vocab.md): drafting is 16% of a
+    3-draft cycle; `--spec-draft-vocab 65536` gives +7–9% on English/code, but regresses
+    multilingual text (Chinese below plain decode), so it is opt-in. Outputs unchanged.
+67. [Verify FFN fusion](bench/2026-09-24-verify-fusion.md): gate+up+swiglu in one multi-row dispatch
+    (`--verify-fusion`), verify −1 to −2%, speculative decode +0.4–1.2%, bitwise identical.
+68. [RCA: ACO LDS-spill miscompile](bench/2026-09-24-aco-lds-spill.md): wrong K-quant multi-row
+    results traced to Mesa 26.2.3's pre-RA scheduler reordering LDS spill slots; 5 whys; spill
+    gate `tools/check_shader_spills.py`.
+69. [Host overhead](bench/2026-09-24-host-overhead.md): per-request decode time split (backend
+    calls / sampling / token handling, logged by the server); host work below 1% of decode.
+70. [DeltaNet scratch spill](bench/2026-09-24-delta-spill.md): 120 store addresses kept live across
+    the row loop; `--delta-state-out` removes the spill, byte-identical, decode +1.6%, TTFT −0.4–1%.
+71. [Own RDNA3 code through Vulkan](research/native-isa-via-vulkan.md) (approved for experiments, D7): `VK_KHR_pipeline_binary`
+    lets RADV run our own machine code; RADV's LLVM backend disables cooperative matrices.
+72. [Hand-scheduled `gemm_f16x` machine code](bench/2026-09-24-gemm-f16x-isa.md): generated RDNA3
+    kernel, bit-identical (23 configs, 91 M outputs); 1.20–1.23× the SPIR-V kernel at 512 rows,
+    1.22–1.40× at 3,328 rows (component). Found: the SPIR-V epilogue store burst (15%), the
+    host-memory `io` read at dispatch start (15 µs per dispatch). Integrated as
+    `--gemm-code native` (default): outputs identical, f16 TTFT −12% (3223 tokens), −10% (12k).
+73. [Tensile GEMM techniques](research/tensile-gemm-techniques.md): AMD's assembly GEMM generator,
+    read as research; not usable as a component (dense only, ROCm ABI, other k-order); six
+    candidate techniques for our generator, two of our findings confirmed (store remap).
+74. [HyperQwen's single-user protocol](bench/2026-09-24-hyperqwen-protocol.md): zerv 91.3 / 79.5 tok/s
+    (greedy / sampled, 3 drafts) vs llama-server MTP 68.2 / 59.8; HyperQwen (3090, README) 120 / 111.
+    Our speculative cycle is +46% over a plain step (theirs +12%): draft cost and acceptance.
+75. [Concurrent sequences](research/concurrent-sequences.md) (block 18a, research in progress): where zerv
+    assumes one sequence, llama.cpp's batching (per-slot drafts, chunked prefill, one recurrent state cell
+    per sequence), bruh's actual concurrency, memory model; six open items before the spec.
+76. [Concurrency baseline](bench/2026-09-24-concurrency-baseline.md): llama-server `-np 8` 40 → 156 tok/s
+    aggregate at 1 → 8 clients (MTP 3: 62 → 117); zerv flat at 50 / 87 (3 drafts), TTFT up to 72 s queued.
+77. [Spec: concurrent sequences](specs/concurrent.md) (block 18): `--parallel N`, `--decode-precision f32|f16`,
+    paged KV pool, batch invariance as the exactness contract, stages 18b–18e with gates.
+78. [Paged KV addressing, single sequence](bench/2026-09-24-paged-kv.md) (18b.1): KV pages behind a page
+    table; `--kv-page-tokens N|context` (specialization constant; `context` = the old layout); every gate
+    byte-identical at 128/256/context; default 128: +0.06% / +0.07% decode (f32 / f16 KV) at 30k, −0.3% at 4k;
+    a silently passing ReleaseFast test found and fixed; an older f16-KV baseline bisected to the FMA change.
+79. [Slots and batched decode](bench/2026-09-25-batched-decode.md) (18b.2): per-slot state and page tables,
+    `decodeBatch` with per-row slot entries; `zerv-batch-check` 399/399 rows bitwise equal to solo decoding;
+    single-sequence path byte-identical; model-level 158.6 tok/s at 4 rows, 172.8 at 8 (49.8 at 1).
+80. [`--parallel N` serving](bench/2026-09-25-parallel-serving.md) (18c): continuous batching scheduler; 60/60
+    concurrent responses byte-identical to solo; 49.4 / 91.4 / 147.6 / 161.8 tok/s at 1/2/4/8 clients against
+    llama-server's 39.8 / 65.2 / 99.1 / 143.0 (same session); TTFT p50 0.53 against 1.38 s at 8; llama-server
+    gives 3–5 different greedy outputs per prompt across concurrency levels.
+81. [Exact FP32 batched projection beyond 4 rows](bench/2026-09-25-fp32-batched-projection.md) (18e part 1,
+    negative): component splitting and row groups stay bitwise exact but gain at most 5%; the multi-row kernel is
+    stall-bound at ~5.2 TFMA/s from 4 rows on; the WMMA f16 decode mode comes next.
+82. [`--decode-precision f16`, kernel v1](bench/2026-09-25-f16-decode-mode.md) (18e part 2): WMMA batched decode
+    projections, batch-invariant within the mode (399/399), flat in rows (45.4 → 50.0 ms, 1 → 8 rows) but not yet
+    faster than FP32; kernel v2 design recorded.
 47. [Previous Ollama deployment](research/2026-09-23-previous-deployment.md) — Q4_K_M, KV q4_0, FA, 96–128k context.

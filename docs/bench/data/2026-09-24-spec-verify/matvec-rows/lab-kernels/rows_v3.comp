@@ -1,0 +1,273 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : require
+// Multi-row decode projection (block 17b, speculative verification; docs/specs/speculative.md):
+// Y[r] = W X[r] for r < count <= ROWS input vectors, each weight word read from memory once.
+// For every r the arithmetic is exactly matvec.comp's single-vector sequence: lane l owns
+// the same blocks (same lane partition), accumulates them in ascending order with the same
+// `precise` decode, multiply and add into the same two partial vectors, and the lanes
+// reduce with the same tree, so Y[r] is bitwise equal to a matvec.comp dispatch on X[r].
+// Data flow (not arithmetic) differs: a workgroup handles GROUP consecutive weight rows
+// (lane l does lane l's work for each, so every X load is reused GROUP times); each lane
+// loads a chunk of CB of its blocks per weight row (all loads in flight: full chunks are
+// unconditional, the tail goes block by block, as in matvec.comp's U loop), decodes them
+// once, then streams every input row over the chunk.
+// Quantized formats read X as vec4 (host-validated: input offset and stride multiples of
+// 4 floats; K is a multiple of 32); F32 reads it per element with matvec.comp's guards.
+// Push constants: matvec.comp's plus the row strides (floats) and count.
+#ifndef LANES
+#define LANES 64
+#endif
+#ifndef ROWS
+#define ROWS 5
+#endif
+#ifndef CB
+#define CB 4
+#endif
+#ifndef GROUP
+#define GROUP 1
+#endif
+layout(local_size_x=LANES) in;
+layout(set=0,binding=0,std430) readonly buffer W { uint weights[]; };
+layout(set=0,binding=1,std430) readonly buffer X4 { vec4 x4[]; };
+layout(set=0,binding=1,std430) readonly buffer X { float xs[]; };
+layout(set=0,binding=2,std430) writeonly buffer Y { float output_values[]; };
+layout(push_constant) uniform Params {
+    uint columns, rows, row_bytes, weight_offset, input_offset, output_offset, groups_x;
+    uint input_stride, output_stride, count;
+} p;
+shared float partials[GROUP*ROWS][LANES];
+
+uint word_at(uint b) {
+#if ALIGNED_WORDS
+    return weights[b>>2];
+#else
+    uint lo=weights[b>>2];
+    if ((b&2)==0) return lo;
+    return (lo>>16)|(weights[(b>>2)+1]<<16);
+#endif
+}
+float half_at(uint b) { return unpackHalf2x16(weights[b>>2]>>(8*(b&2))).x; }
+vec4 input4(uint c) { return x4[c>>2]; } // c: float index, a multiple of 4
+vec4 ubytes(uint w) { return vec4(float(w&255u),float((w>>8)&255u),float((w>>16)&255u),float(w>>24)); }
+vec4 sbytes(uint w) { return vec4(float(int(w<<24)>>24),float(int(w<<16)>>24),float(int(w<<8)>>24),float(int(w)>>24)); }
+vec4 accum(vec4 sum, vec4 w, vec4 x) {
+#if FMA1
+    precise vec4 added=fma(w,x,sum);
+#else
+    precise vec4 product=w*x;
+    precise vec4 added=sum+product;
+#endif
+    return added;
+}
+#if FORMAT==2 || FORMAT==3 || FORMAT==8
+// This lane's 8 values of the 32-value block at byte b (j = 4 * (lane % 4)): values
+// j..j+3 into w0, j+16..j+19 into w1, exactly as matvec.comp decodes them.
+void decode(uint b, uint j, out vec4 w0, out vec4 w1) {
+    float d=half_at(b);
+#if FORMAT==8
+    // Q8_0: d (f16) then 32 int8; d*q is exact in FP32 (11 x 8 significant bits).
+    precise vec4 v0=vec4(d)*sbytes(word_at(b+2+j)),v1=vec4(d)*sbytes(word_at(b+2+16+j));
+#else
+    uint q=word_at(b+PAYLOAD_OFFSET+j);
+    vec4 lo=ubytes(q&0x0f0f0f0fu),hi=ubytes((q>>4)&0x0f0f0f0fu);
+#if FORMAT==2
+    float nd=-8.0*d;
+    precise vec4 v0=fma(vec4(d),lo,vec4(nd)),v1=fma(vec4(d),hi,vec4(nd));
+#else
+    float minimum=half_at(b+2);
+    precise vec4 v0=fma(vec4(d),lo,vec4(minimum)),v1=fma(vec4(d),hi,vec4(minimum));
+#endif
+#endif
+    w0=v0; w1=v1;
+}
+#endif
+#if FORMAT==2 || FORMAT==3
+uvec3 fetch(uint b, uint j) {
+#if FORMAT==2
+    uint qa=b+PAYLOAD_OFFSET+j;
+    return uvec3(weights[b>>2],weights[qa>>2],weights[(qa>>2)+1]);
+#else
+    uint qa=b+PAYLOAD_OFFSET+j;
+    return uvec3(weights[b>>2],weights[(b+2)>>2],weights[qa>>2]);
+#endif
+}
+void unpack(uvec3 raw, uint b, out vec4 w0, out vec4 w1) {
+#if FORMAT==2
+    float d=unpackHalf2x16(raw.x>>(8*(b&2))).x;
+    uint qa=b+PAYLOAD_OFFSET;
+    uint q=(qa&2)==0 ? raw.y : ((raw.y>>16)|(raw.z<<16));
+    vec4 lo=ubytes(q&0x0f0f0f0fu),hi=ubytes((q>>4)&0x0f0f0f0fu);
+    float nd=-8.0*d;
+    precise vec4 v0=fma(vec4(d),lo,vec4(nd)),v1=fma(vec4(d),hi,vec4(nd));
+#else
+    float d=unpackHalf2x16(raw.x>>(8*(b&2))).x;
+    float minimum=unpackHalf2x16(raw.y>>(8*((b+2)&2))).x;
+    uint q=raw.z;
+    vec4 lo=ubytes(q&0x0f0f0f0fu),hi=ubytes((q>>4)&0x0f0f0f0fu);
+    precise vec4 v0=fma(vec4(d),lo,vec4(minimum)),v1=fma(vec4(d),hi,vec4(minimum));
+#endif
+    w0=v0; w1=v1;
+}
+#endif
+void main() {
+    uint lane=gl_LocalInvocationID.x;
+    uint row0=(gl_WorkGroupID.y*p.groups_x+gl_WorkGroupID.x)*GROUP;
+    if (row0>=p.rows) return; // Uniform across the entire workgroup, including barriers.
+    uint gn=min(GROUP,p.rows-row0); // weight rows of this group (uniform)
+    uint rs[GROUP]; // row starts; rows past the end repeat row0 (loaded, never accumulated)
+    [[unroll]] for (uint g=0;g<GROUP;g++) rs[g]=p.weight_offset+(g<gn ? row0+g : row0)*p.row_bytes;
+    uint n=p.count; // host-validated: 1 <= count <= ROWS
+    vec4 a[GROUP][ROWS],z[GROUP][ROWS];
+    [[unroll]] for (uint g=0;g<GROUP;g++) [[unroll]] for (uint r=0;r<ROWS;r++) { a[g][r]=vec4(0); z[g][r]=vec4(0); }
+#if FORMAT==0
+    // matvec.comp: lane l accumulates columns c = 4l + 4 LANES i, in order (all into a).
+    uint nb=(p.columns+LANES*4-1-lane*4)/(LANES*4); // this lane's vec4 steps
+    uint i0=0;
+    for (;i0+CB<=nb;i0+=CB) {
+        vec4 w[GROUP][CB];
+        [[unroll]] for (uint g=0;g<GROUP;g++) [[unroll]] for (uint k=0;k<CB;k++) {
+            w[g][k]=vec4(0);
+            uint c=lane*4+(i0+k)*LANES*4;
+            [[unroll]] for (uint e=0;e<4;e++) if (c+e<p.columns) w[g][k][e]=uintBitsToFloat(weights[(rs[g]>>2)+c+e]);
+        }
+        [[unroll]] for (uint r=0;r<ROWS;r++) if (r<n) {
+            [[unroll]] for (uint k=0;k<CB;k++) {
+                uint c=lane*4+(i0+k)*LANES*4;
+                vec4 x=vec4(0);
+                uint xo=p.input_offset+r*p.input_stride+c;
+                [[unroll]] for (uint e=0;e<4;e++) if (c+e<p.columns) x[e]=xs[xo+e];
+                [[unroll]] for (uint g=0;g<GROUP;g++) if (g<gn) a[g][r]=accum(a[g][r],w[g][k],x);
+            }
+        }
+    }
+    for (;i0<nb;i0++) {
+        uint c=lane*4+i0*LANES*4;
+        vec4 w[GROUP];
+        [[unroll]] for (uint g=0;g<GROUP;g++) {
+            w[g]=vec4(0);
+            [[unroll]] for (uint e=0;e<4;e++) if (c+e<p.columns) w[g][e]=uintBitsToFloat(weights[(rs[g]>>2)+c+e]);
+        }
+        [[unroll]] for (uint r=0;r<ROWS;r++) if (r<n) {
+            vec4 x=vec4(0);
+            uint xo=p.input_offset+r*p.input_stride+c;
+            [[unroll]] for (uint e=0;e<4;e++) if (c+e<p.columns) x[e]=xs[xo+e];
+            [[unroll]] for (uint g=0;g<GROUP;g++) if (g<gn) a[g][r]=accum(a[g][r],w[g],x);
+        }
+    }
+#elif FORMAT==2 || FORMAT==3
+    // LAB v3: raw words of chunk i0+CB fetched before chunk i0 is computed.
+    uint nblocks=p.columns/32,step=LANES/4,first=lane/4,j=(lane%4)*4;
+    uint nb=first<nblocks ? (nblocks-first+step-1)/step : 0u;
+    uint i0=0;
+    uvec3 raw[GROUP][CB];
+    if (CB<=nb) [[unroll]] for (uint g=0;g<GROUP;g++) [[unroll]] for (uint k=0;k<CB;k++) raw[g][k]=fetch(rs[g]+(first+k*step)*BLOCK_BYTES,j);
+    for (;i0+CB<=nb;i0+=CB) {
+        vec4 w0[GROUP][CB],w1[GROUP][CB];
+        [[unroll]] for (uint g=0;g<GROUP;g++) [[unroll]] for (uint k=0;k<CB;k++) unpack(raw[g][k],rs[g]+(first+(i0+k)*step)*BLOCK_BYTES,w0[g][k],w1[g][k]);
+#if PREFETCH
+        if (i0+2*CB<=nb) [[unroll]] for (uint g=0;g<GROUP;g++) [[unroll]] for (uint k=0;k<CB;k++) raw[g][k]=fetch(rs[g]+(first+(i0+CB+k)*step)*BLOCK_BYTES,j);
+#endif
+        [[unroll]] for (uint r=0;r<ROWS;r++) if (r<n) {
+            [[unroll]] for (uint k=0;k<CB;k++) {
+                uint xo=p.input_offset+r*p.input_stride+(first+(i0+k)*step)*32+j;
+                vec4 x0=input4(xo),x1=input4(xo+16);
+                [[unroll]] for (uint g=0;g<GROUP;g++) if (g<gn) {
+                    a[g][r]=accum(a[g][r],w0[g][k],x0);
+#if FMA1
+                    a[g][r]=accum(a[g][r],w1[g][k],x1);
+#else
+                    z[g][r]=accum(z[g][r],w1[g][k],x1);
+#endif
+                }
+            }
+        }
+#if !PREFETCH
+        if (i0+2*CB<=nb) [[unroll]] for (uint g=0;g<GROUP;g++) [[unroll]] for (uint k=0;k<CB;k++) raw[g][k]=fetch(rs[g]+(first+(i0+CB+k)*step)*BLOCK_BYTES,j);
+#endif
+    }
+    for (;i0<nb;i0++) {
+        vec4 w0[GROUP],w1[GROUP];
+        [[unroll]] for (uint g=0;g<GROUP;g++) { uint b=rs[g]+(first+i0*step)*BLOCK_BYTES; unpack(fetch(b,j),b,w0[g],w1[g]); }
+        [[unroll]] for (uint r=0;r<ROWS;r++) if (r<n) {
+            uint xo=p.input_offset+r*p.input_stride+(first+i0*step)*32+j;
+            vec4 x0=input4(xo),x1=input4(xo+16);
+            [[unroll]] for (uint g=0;g<GROUP;g++) if (g<gn) {
+                a[g][r]=accum(a[g][r],w0[g],x0);
+#if FMA1
+                a[g][r]=accum(a[g][r],w1[g],x1);
+#else
+                z[g][r]=accum(z[g][r],w1[g],x1);
+#endif
+            }
+        }
+    }
+#elif FORMAT==13 || FORMAT==14
+    // matvec.comp: eight lanes per 256-value block; lane l owns blocks l/8 + 8 i, in order;
+    // within a block, groups g = 0..7 in order (even g into a, odd into z).
+    uint nblocks=p.columns/256,first=lane/8,j=(lane%8)*4;
+    uint nb=first<nblocks ? (nblocks-first+7)/8 : 0u;
+    for (uint i=0;i<nb;i++) {
+      vec4 wg[GROUP][8];
+      [[unroll]] for (uint g=0;g<GROUP;g++) {
+        uint b=rs[g]+(first+i*8)*BLOCK_BYTES;
+        vec4 w[8];
+#if FORMAT==13
+        vec2 globals=unpackHalf2x16(word_at(b));
+        uint sa=word_at(b+4),sb=word_at(b+8),sc=word_at(b+12);
+        uint high=word_at(b+16+j);
+        uint qs[4];
+        [[unroll]] for (uint h=0;h<4;h++) qs[h]=word_at(b+48+h*32+j);
+        [[unroll]] for (uint g=0;g<8;g++) {
+            uint shift=(g%4)*8;
+            uint scale=(sa>>shift)&63,minimum=(sb>>shift)&63;
+            if (g>=4) {
+                scale=((sc>>shift)&15)|(((sa>>(shift+6))&3)<<4);
+                minimum=((sc>>(shift+4))&15)|(((sb>>(shift+6))&3)<<4);
+            }
+            uint q=((qs[g/2]>>(4*(g%2)))&0x0f0f0f0f)|(((high>>g)&0x01010101)<<4);
+            precise float d=globals.x*float(scale),bias=globals.y*float(minimum);
+            precise vec4 v=fma(vec4(d),ubytes(q),vec4(-bias));
+            w[g]=v;
+        }
+#else
+        float d=half_at(b+208);
+        uvec4 low=uvec4(word_at(b+j),word_at(b+32+j),word_at(b+64+j),word_at(b+96+j));
+        uvec2 high=uvec2(word_at(b+128+j),word_at(b+160+j));
+        uvec4 scales=uvec4(word_at(b+192),word_at(b+196),word_at(b+200),word_at(b+204));
+        [[unroll]] for (uint g=0;g<8;g++) {
+            uint q=((low[(g/4)*2+g%2]>>(4*((g%4)/2)))&0x0f0f0f0f)|(((high[g/4]>>(2*(g%4)))&0x03030303)<<4);
+            uint s=(scales[g/2]>>(16*(g%2)+8*(j/16)))&255;
+            precise float scale=d*float(int(s^128)-128);
+            precise vec4 v=fma(vec4(scale),ubytes(q),vec4(-32.0*scale));
+            w[g]=v;
+        }
+#endif
+        [[unroll]] for (uint h=0;h<8;h++) wg[g][h]=w[h];
+      }
+        [[unroll]] for (uint r=0;r<ROWS;r++) if (r<n) {
+            uint xo=p.input_offset+r*p.input_stride+(first+i*8)*256+j;
+            [[unroll]] for (uint h=0;h<8;h++) {
+                vec4 x=input4(xo+h*32);
+                [[unroll]] for (uint g=0;g<GROUP;g++) if (g<gn) {
+                    if (h%2==0) a[g][r]=accum(a[g][r],wg[g][h],x);
+                    else z[g][r]=accum(z[g][r],wg[g][h],x);
+                }
+            }
+        }
+    }
+#endif
+    [[unroll]] for (uint g=0;g<GROUP;g++) [[unroll]] for (uint r=0;r<ROWS;r++) {
+        precise vec4 v=a[g][r]+z[g][r];
+        precise float sum=(v.x+v.y)+(v.z+v.w);
+        partials[g*ROWS+r][lane]=sum;
+    }
+    barrier();
+    for (uint stride=LANES/2;stride>0;stride>>=1) {
+        if (lane<stride) [[unroll]] for (uint i=0;i<GROUP*ROWS;i++) { precise float value=partials[i][lane]+partials[i][lane+stride]; partials[i][lane]=value; }
+        barrier();
+    }
+    for (uint i=lane;i<GROUP*ROWS;i+=LANES) {
+        uint g=i/ROWS, r=i%ROWS;
+        if (g<gn && r<n) output_values[p.output_offset+r*p.output_stride+row0+g]=partials[i][0];
+    }
+}

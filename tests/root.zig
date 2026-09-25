@@ -17,6 +17,7 @@ test {
     _ = @import("model.zig");
     _ = @import("session.zig");
     _ = @import("serve.zig");
+    _ = @import("batcher.zig");
     _ = @import("tools.zig");
     _ = @import("prefix.zig");
 }

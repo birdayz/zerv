@@ -1,0 +1,83 @@
+{
+ "started_at": "2026-09-25T06:36:50.649858+00:00",
+ "argv": [
+  "run_concurrent.py",
+  "--output",
+  "../docs/bench/data/2026-09-25-parallel-serving/llama-greedy",
+  "--zerv-binary",
+  "../third_party/paged-ab/zerv-18c-2",
+  "--engines",
+  "llama-fa-ub512",
+  "--concurrency",
+  "1,2,4,8",
+  "--max-tokens",
+  "512",
+  "--requests-per-client",
+  "2",
+  "--reference",
+  "../docs/bench/data/2026-09-25-parallel-serving/reference-greedy/raw.jsonl"
+ ],
+ "host": {
+  "sysname": "Linux",
+  "nodename": "benchmark-host",
+  "release": "7.2.6-arch2-1",
+  "version": "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000",
+  "machine": "x86_64"
+ },
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "workload_sha256": "7be0cfd863a1d03756c8c1f52371c41e28942dedc84b416f7b63ae6975944922",
+ "zerv_sha256": "82044d431ad10487fd8a25f5a5c28f73d5eac45b94255f6b1339448d36faa5fe",
+ "llama_server_sha256": "0f401589a34aabc75a2371cb39d92d717212e27d9a0c6e2bf30a8d643bf77d85",
+ "levels": [
+  1,
+  2,
+  4,
+  8
+ ],
+ "parallel": 8,
+ "max_tokens": 512,
+ "requests_per_client": 2,
+ "context_per_slot": 4096,
+ "engines": {
+  "llama-fa-ub512": {
+   "cmd": [
+    "/usr/bin/llama-server",
+    "-m",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "18097",
+    "-c",
+    "32768",
+    "-np",
+    "8",
+    "-ngl",
+    "99",
+    "--spec-type",
+    "none",
+    "--no-context-shift",
+    "--no-webui",
+    "--jinja",
+    "--chat-template-file",
+    "/home/USER/projects/zerv/third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/official-template.jinja",
+    "--reasoning-format",
+    "deepseek",
+    "--cache-ram",
+    "0",
+    "-a",
+    "qwen3.8-27b",
+    "-fa",
+    "on",
+    "-b",
+    "2048",
+    "-ub",
+    "512"
+   ],
+   "env": {},
+   "vram_loaded": 19611439104
+  }
+ },
+ "client": "closed loop, python http.client streaming SSE (run_serving.stream_request)",
+ "finished_at": "2026-09-25T06:39:57.689864+00:00"
+}

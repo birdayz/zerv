@@ -1,0 +1,109 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : require
+// LAB v4 (Q4_0/Q4_1 only): exactly ROWS input rows (no runtime count branches), GROUP
+// weight rows per workgroup (no guards: rows past M recompute row0 and are not stored),
+// X addresses hoisted, block offsets incremental. FMA1=0 keeps matvec.comp's arithmetic.
+#ifndef LANES
+#define LANES 64
+#endif
+layout(local_size_x=LANES) in;
+layout(set=0,binding=0,std430) readonly buffer W { uint weights[]; };
+layout(set=0,binding=1,std430) readonly buffer X4 { vec4 x4[]; };
+layout(set=0,binding=2,std430) writeonly buffer Y { float output_values[]; };
+layout(push_constant) uniform Params {
+    uint columns, rows, row_bytes, weight_offset, input_offset, output_offset, groups_x;
+    uint input_stride, output_stride, count;
+} p;
+shared float partials[GROUP*ROWS][LANES];
+uint word_at(uint b) {
+    uint lo=weights[b>>2];
+    if ((b&2)==0) return lo;
+    return (lo>>16)|(weights[(b>>2)+1]<<16);
+}
+float half_at(uint b) { return unpackHalf2x16(weights[b>>2]>>(8*(b&2))).x; }
+vec4 ubytes(uint w) { return vec4(float(w&255u),float((w>>8)&255u),float((w>>16)&255u),float(w>>24)); }
+vec4 accum(vec4 sum, vec4 w, vec4 x) {
+#if FMA1
+    precise vec4 added=fma(w,x,sum);
+#else
+    precise vec4 product=w*x;
+    precise vec4 added=sum+product;
+#endif
+    return added;
+}
+void decode(uint b, uint j, out vec4 w0, out vec4 w1) {
+    float d=half_at(b);
+    uint q=word_at(b+PAYLOAD_OFFSET+j);
+    vec4 lo=ubytes(q&0x0f0f0f0fu),hi=ubytes((q>>4)&0x0f0f0f0fu);
+#if FORMAT==2
+    float nd=-8.0*d;
+    precise vec4 v0=fma(vec4(d),lo,vec4(nd)),v1=fma(vec4(d),hi,vec4(nd));
+#else
+    float minimum=half_at(b+2);
+    precise vec4 v0=fma(vec4(d),lo,vec4(minimum)),v1=fma(vec4(d),hi,vec4(minimum));
+#endif
+    w0=v0; w1=v1;
+}
+void main() {
+    uint lane=gl_LocalInvocationID.x;
+    uint row0=(gl_WorkGroupID.y*p.groups_x+gl_WorkGroupID.x)*GROUP;
+    if (row0>=p.rows) return;
+    uint gn=min(GROUP,p.rows-row0);
+    uint rs[GROUP];
+    [[unroll]] for (uint g=0;g<GROUP;g++) rs[g]=p.weight_offset+(g<gn ? row0+g : row0)*p.row_bytes;
+    vec4 a[GROUP][ROWS],z[GROUP][ROWS];
+    [[unroll]] for (uint g=0;g<GROUP;g++) [[unroll]] for (uint r=0;r<ROWS;r++) { a[g][r]=vec4(0); z[g][r]=vec4(0); }
+    uint nblocks=p.columns/32,step=LANES/4,first=lane/4,j=(lane%4)*4;
+    uint nb=first<nblocks ? (nblocks-first+step-1)/step : 0u;
+    uint xb=(p.input_offset+first*32+j)>>2; // vec4 index of row 0, block `first`
+    uint bo=first*BLOCK_BYTES;
+    uint i0=0;
+    for (;i0+CB<=nb;i0+=CB) {
+        vec4 w0[GROUP][CB],w1[GROUP][CB];
+        [[unroll]] for (uint g=0;g<GROUP;g++) [[unroll]] for (uint k=0;k<CB;k++) decode(rs[g]+bo+(i0+k)*(step*BLOCK_BYTES),j,w0[g][k],w1[g][k]);
+        [[unroll]] for (uint r=0;r<ROWS;r++) {
+            [[unroll]] for (uint k=0;k<CB;k++) {
+                uint xo=xb+r*(p.input_stride>>2)+(i0+k)*(step*8);
+                vec4 x0=x4[xo],x1=x4[xo+4];
+                [[unroll]] for (uint g=0;g<GROUP;g++) {
+                    a[g][r]=accum(a[g][r],w0[g][k],x0);
+#if FMA1
+                    a[g][r]=accum(a[g][r],w1[g][k],x1);
+#else
+                    z[g][r]=accum(z[g][r],w1[g][k],x1);
+#endif
+                }
+            }
+        }
+    }
+    for (;i0<nb;i0++) {
+        vec4 w0[GROUP],w1[GROUP];
+        [[unroll]] for (uint g=0;g<GROUP;g++) decode(rs[g]+bo+i0*(step*BLOCK_BYTES),j,w0[g],w1[g]);
+        [[unroll]] for (uint r=0;r<ROWS;r++) {
+            uint xo=xb+r*(p.input_stride>>2)+i0*(step*8);
+            vec4 x0=x4[xo],x1=x4[xo+4];
+            [[unroll]] for (uint g=0;g<GROUP;g++) {
+                a[g][r]=accum(a[g][r],w0[g],x0);
+#if FMA1
+                a[g][r]=accum(a[g][r],w1[g],x1);
+#else
+                z[g][r]=accum(z[g][r],w1[g],x1);
+#endif
+            }
+        }
+    }
+    [[unroll]] for (uint g=0;g<GROUP;g++) [[unroll]] for (uint r=0;r<ROWS;r++) {
+        precise vec4 v=a[g][r]+z[g][r];
+        precise float sum=(v.x+v.y)+(v.z+v.w);
+        partials[g*ROWS+r][lane]=sum;
+    }
+    barrier();
+    for (uint stride=LANES/2;stride>0;stride>>=1) {
+        if (lane<stride) [[unroll]] for (uint i=0;i<GROUP*ROWS;i++) { precise float value=partials[i][lane]+partials[i][lane+stride]; partials[i][lane]=value; }
+        barrier();
+    }
+    for (uint i=lane;i<GROUP*ROWS;i+=LANES) {
+        uint g=i/ROWS, r=i%ROWS;
+        if (g<gn) output_values[p.output_offset+r*p.output_stride+row0+g]=partials[i][0];
+    }
+}

@@ -289,5 +289,58 @@ higher precision. Short prompts are already about 2× faster than llama.
     compiler-level wall (D5), noted but not yet acted on.
   - The remaining 16b steps: Q4_1 and Q5_K ports, the 128-row plan, tail fill for
     M = 5120 shapes, then FP32.
+- **2026-09-24 D7 (user).** GPU kernel source language is free: whatever gives the best
+  kernel (GLSL, C/C++/HIP or OpenCL C via clang, LLVM IR, hand-written RDNA3 assembly),
+  compiled offline with the compiler as a build-time tool. Kernels are isolated GPU code;
+  the no-C++ rule applies to the host runtime (Zig, no linked C++ libraries), not to the
+  kernels. Loading our own machine code through `VK_KHR_pipeline_binary` on RADV is
+  approved for experiments ([research](../research/native-isa-via-vulkan.md)); adoption
+  follows the usual gates, as a per-config kernel source with SPIR-V fallback.
+  **Applied 2026-09-24:** hand-scheduled `gemm_f16x` (Q4_0), bit-identical, adopted as
+  `--gemm-code native` (default; `spirv` selectable): f16 TTFT −12% at 3,223 tokens
+  ([report](../bench/2026-09-24-gemm-f16x-isa.md)).
 - **2026-09-24 D6 (process).** Kernel variants are compared only in interleaved races
   on this card; separate runs drift ±3–4% with the thermal state.
+- **2026-09-24 17b.1 status (measured).** N-row verification is bitwise equal to N
+  decode steps (logits, committed state, follow-up steps; 11 real-model cases).
+  - The first multi-row matvec was ALU- and issue-bound: 5 rows cost 2.3 decode steps.
+  - Exact-count modules (one per row count, no per-row branches or per-weight-row
+    guards) with a per-count weight-row grouping bring verify + commit to 24.1 / 32.4 ms
+    for 3 / 5 rows, against a 20.0 ms step, without changing any arithmetic
+    ([report](../bench/2026-09-24-spec-verify.md)).
+  - Next lever, not taken: fma arithmetic in decode and verify (lab: 5 rows at 1.37×
+    instead of 1.70× a decode pass). It needs an FP64 re-gate of decode.
+- **2026-09-24 16a and 17b results (measured).**
+  - Fused prefill attention: 37.8k-token TTFT 46.0 s (f16) against llama's 46.6 s;
+    attention over an 8k prompt 2030 → 720 ms. The kernel runs at 18.6 TFLOP/s, not the
+    35 estimated; tuning is open ([report](../bench/2026-09-24-flash-attention.md)).
+  - MTP speculation (not the 1-draft rejection-sampling plan above): 3 drafts with sample
+    matching, adaptive verify count. It is lossless bit for bit and runs 2.1–2.4× plain
+    decode on code, json and think, 1.5× on prose. It beats llama's best everywhere
+    measured ([report](../bench/2026-09-24-speculative.md)). Default since 2026-09-24.
+  - Verify attention in (rows, chunks, KV heads) order: 38k 3-draft decode 58.4 → 81.1
+    tok/s.
+- **2026-09-24 D7 (knobs for context; user: "how far can we drive utilization of the
+  24G").** VRAM-for-speed trade-offs become explicit knobs, each measured:
+  `--embedding-memory` (host by default: no measured cost), `--prefix-cache-memory`
+  (device by default: host costs 10–19 ms TTFT), then `--context max` and a KV
+  precision knob ([host memory](../bench/2026-09-24-host-memory.md)). Next in 17c: `--context max`,
+  KV f16, matvec roofline (805 against 920 GB/s,
+  [baseline](../bench/2026-09-24-decode-baseline.md)).
+- **2026-09-24 17c results (measured).**
+  - `--context max` and `--kv-type f16`: context ×2 (88.6k by default), 38k plain decode
+    34.8 → 39.5 tok/s; f16 stays opt-in (one declared quality clause unmet;
+    [report](../bench/2026-09-24-kv-precision.md)).
+  - FMA accumulation in the matvec (the lever 08c rejected for changing bits): more
+    accurate against FP64, decode step unchanged, verify of 3 / 4 / 5 rows −6 / −8 / −12%
+    after a re-tune decided by an interleaved in-model race
+    ([report](../bench/2026-09-24-fma-matvec.md)).
+  - Decode attention at long context: two per-workgroup costs grew with the context
+    (every P·V workgroup re-reduced all chunk maxima; one combine workgroup per head
+    summed all chunks). Moving both into their own passes kept every value bit-identical
+    and cut the 64k step 30.64 → 26.97 ms; key pairs in the scores pass → 26.75
+    ([report](../bench/2026-09-24-decode-attention-long.md)).
+- **2026-09-24 D8 (process).** Separate-process component sweeps drifted 30–56% on
+  mid-size roles (single-row passes included) while the largest roles did not move.
+  Decisions between kernel variants use interleaved in-model races (D6), with the sweep
+  only to shortlist.

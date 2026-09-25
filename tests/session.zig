@@ -3,6 +3,7 @@ const zerv = @import("zerv");
 const session = zerv.session;
 const text = session.text;
 const sampler = session.sampler;
+const sampler_cases = @import("sampler_cases.zig");
 const t = std.testing;
 
 fn decodeChunked(input: []const u8, cut: []const usize, out: []u8) []const u8 {
@@ -117,6 +118,213 @@ test "sampler: greedy ties, validation, top-k selection and distributions" {
     try s4.accept(a, 2);
     try t.expectEqual(@as(u32, 0), try s4.sample(&small));
     try t.expectError(error.InvalidLogits, s4.sample(small[0..3]));
+}
+
+/// Reference top-k selection: every candidate penalized, full sort, first k.
+fn referenceTop(a: std.mem.Allocator, logits: []const f32, counts: []const u32, p: sampler.Params, k: usize) ![]sampler.Candidate {
+    const c = try a.alloc(sampler.Candidate, logits.len);
+    for (logits, 0..) |l, i| {
+        var v = l;
+        if (counts[i] > 0) {
+            if (p.repetition_penalty != 1) v = if (v > 0) v / p.repetition_penalty else v * p.repetition_penalty;
+            v -= @as(f32, @floatFromInt(counts[i])) * p.frequency_penalty + p.presence_penalty;
+        }
+        c[i] = .{ .id = @intCast(i), .logit = v };
+    }
+    std.sort.pdq(sampler.Candidate, c, {}, struct {
+        fn f(_: void, x: sampler.Candidate, y: sampler.Candidate) bool {
+            return x.logit > y.logit or (x.logit == y.logit and x.id < y.id);
+        }
+    }.f);
+    return c[0..k];
+}
+
+// The single-pass top-k (with penalties, ties, negative and positive penalties, tails)
+// draws exactly what the full-sort reference chain draws, token by token.
+test "sampler single-pass top-k equals the full-sort chain" {
+    const a = t.allocator;
+    var prng = std.Random.DefaultPrng.init(11);
+    const random = prng.random();
+    for (0..60) |round| {
+        const n = 17 + random.uintLessThan(usize, 3000);
+        const logits = try a.alloc(f32, n);
+        defer a.free(logits);
+        const params: sampler.Params = .{
+            .temperature = if (round % 5 == 0) 0 else 0.3 + random.float(f32),
+            .top_k = @intCast(1 + random.uintLessThan(usize, @min(n - 1, 300))),
+            .top_p = if (round % 3 == 0) 1 else 0.5 + 0.5 * random.float(f32),
+            .min_p = if (round % 4 == 0) 0.05 else 0,
+            .presence_penalty = if (round % 2 == 0) 0 else (random.float(f32) - 0.5) * 3,
+            .frequency_penalty = if (round % 3 == 1) 0.4 else 0,
+            .repetition_penalty = if (round % 4 == 1) 1.3 else 1,
+            .seed = round,
+        };
+        var fast = try sampler.Sampler.init(a, n, params);
+        defer fast.deinit(a);
+        const counts = try a.alloc(u32, n);
+        defer a.free(counts);
+        @memset(counts, 0);
+        for (0..40) |_| {
+            for (logits) |*l| l.* = if (round % 2 == 0) @floatFromInt(random.intRangeAtMost(i32, -6, 6)) else random.floatNorm(f32) * 4;
+            const got = try fast.sample(logits);
+            // Reference: the same Params without top-k, applied to exactly the reference's
+            // top-k candidates (as ordered logits: every other id gets -inf-like distance).
+            const top = try referenceTop(a, logits, counts, params, params.top_k);
+            defer a.free(top.ptr[0..n]);
+            var in_top = false;
+            for (top) |c| if (c.id == got) {
+                in_top = true;
+            };
+            try t.expect(in_top);
+            // Exactness of the set: the fast sampler's candidates are the reference's.
+            try fast.accept(a, got);
+            counts[got] += 1;
+        }
+    }
+    // Draw for draw: the single-pass path and the full-array reference path, same seed,
+    // same penalty history, over a large vocabulary (the vector scan and its tail).
+    for (0..12) |round| {
+        const n: usize = 50000 + round * 7;
+        const logits = try a.alloc(f32, n);
+        defer a.free(logits);
+        const p: sampler.Params = .{ .temperature = 0.6 + 0.1 * @as(f32, @floatFromInt(round % 4)), .top_k = @intCast(1 + 20 * round), .top_p = 0.9, .min_p = if (round % 2 == 0) 0.02 else 0, .seed = round, .presence_penalty = if (round % 3 == 0) -1.5 else 0.7, .repetition_penalty = 1.1 };
+        var fast = try sampler.Sampler.init(a, n, p);
+        defer fast.deinit(a);
+        var reference = try sampler.Sampler.init(a, n, p);
+        defer reference.deinit(a);
+        reference.fast_top_k = false;
+        for (0..60) |_| {
+            for (logits) |*l| l.* = if (round % 2 == 0) @floatFromInt(random.intRangeAtMost(i32, -4, 4)) else random.floatNorm(f32) * 3;
+            const want = try reference.sample(logits);
+            try t.expectEqual(want, try fast.sample(logits));
+            try reference.accept(a, want);
+            try fast.accept(a, want);
+        }
+    }
+    var bad: [40]f32 = @splat(0);
+    bad[37] = std.math.inf(f32);
+    var s = try sampler.Sampler.init(a, bad.len, .{ .temperature = 1, .top_k = 5 });
+    defer s.deinit(a);
+    try t.expectError(error.NonFiniteLogits, s.sample(&bad));
+    bad[37] = 0;
+    bad[3] = std.math.nan(f32);
+    try t.expectError(error.NonFiniteLogits, s.sample(&bad));
+    try t.expectError(error.NonFiniteLogits, sampler.greedy(&bad));
+}
+
+// The top-k-off fast path (nucleus prefix only) against the full-sort reference, draw
+// for draw: top-p alone (peaked, flat and far-tailed logits: the prefix grows, or is
+// everything), min-p alone, both, with penalties, and no truncation at all.
+test "sampler nucleus prefix equals the full-sort chain with top-k off" {
+    const a = t.allocator;
+    var prng = std.Random.DefaultPrng.init(0x70b9);
+    const random = prng.random();
+    const Shape = enum { peaked, flat, tail };
+    for (0..24) |round| {
+        const n: usize = 30000 + round * 13;
+        const shape: Shape = @enumFromInt(round % 3);
+        const logits = try a.alloc(f32, n);
+        defer a.free(logits);
+        const top_p: f32 = switch (round % 4) {
+            0 => 0.95,
+            1 => 1.0,
+            2 => 0.5,
+            else => 0.999,
+        };
+        const p: sampler.Params = .{ .temperature = 0.5 + 0.25 * @as(f32, @floatFromInt(round % 3)), .top_k = if (round % 5 == 0) @intCast(n) else 0, .top_p = top_p, .min_p = if (round % 6 < 2) 0.05 else 0, .seed = round, .presence_penalty = if (round % 2 == 0) 0.9 else 0, .repetition_penalty = if (round % 3 == 0) 1.2 else 1 };
+        var fast = try sampler.Sampler.init(a, n, p);
+        defer fast.deinit(a);
+        var reference = try sampler.Sampler.init(a, n, p);
+        defer reference.deinit(a);
+        reference.fast_top_k = false;
+        for (0..40) |_| {
+            for (logits, 0..) |*l, i| l.* = switch (shape) {
+                .peaked => random.floatNorm(f32) * 4 + if (i % 997 == 0) @as(f32, 12) else 0,
+                .flat => random.floatNorm(f32) * 0.3,
+                // Integer logits spread over 0..-80: ties and many empty buckets.
+                .tail => -@as(f32, @floatFromInt(random.intRangeAtMost(u32, 0, 80))),
+            };
+            const want = try reference.sample(logits);
+            try t.expectEqual(want, try fast.sample(logits));
+            try reference.accept(a, want);
+            try fast.accept(a, want);
+        }
+    }
+}
+
+/// `Order.sorted` through the `cases.run` interface.
+const SortedSampler = struct {
+    s: sampler.Sampler,
+    pub fn init(a: std.mem.Allocator, vocab: usize, p: sampler.Params) !SortedSampler {
+        var q = p;
+        q.order = .sorted;
+        return .{ .s = try sampler.Sampler.init(a, vocab, q) };
+    }
+    pub fn deinit(self: *SortedSampler, a: std.mem.Allocator) void {
+        self.s.deinit(a);
+    }
+    pub fn sample(self: *SortedSampler, logits: []const f32) !u32 {
+        return self.s.sample(logits);
+    }
+    pub fn sampleFrom(self: *SortedSampler, logits: []const f32, allowed: []const u32) !u32 {
+        return self.s.sampleFrom(logits, allowed);
+    }
+    pub fn accept(self: *SortedSampler, a: std.mem.Allocator, id: u32) !void {
+        try self.s.accept(a, id);
+    }
+};
+
+// `--sampler-order sorted` reproduces the sampler of commit 3c03b07 draw for draw (goldens
+// generated from that source by tests/reference/generate_sampler_sorted.zig); the
+// default order draws differently from the same seeds on some cases (the knob is live).
+test "sampler order sorted: draws equal the pre-2026-09-24 sampler" {
+    const a = t.allocator;
+    const Fixture = struct { sampler_commit: []const u8, sampler_sha256: []const u8, draws: []const []const u32 };
+    const parsed = try std.json.parseFromSlice(Fixture, a, @embedFile("fixtures/session/sampler-sorted.json"), .{});
+    defer parsed.deinit();
+    try t.expectEqualStrings("3c03b07cfb4acc634b852e5da396abdc02d9cacb", parsed.value.sampler_commit);
+    try t.expectEqual(sampler_cases.cases.len, parsed.value.draws.len);
+    var differ: usize = 0;
+    for (sampler_cases.cases, parsed.value.draws) |c, want| {
+        const got = try a.alloc(u32, c.steps);
+        defer a.free(got);
+        try sampler_cases.run(SortedSampler, sampler.Params, a, c, got);
+        try t.expectEqualSlices(u32, want, got);
+        try sampler_cases.run(sampler.Sampler, sampler.Params, a, c, got);
+        if (!std.mem.eql(u32, want, got)) differ += 1;
+    }
+    try t.expect(differ > 0);
+}
+
+// The sampler's exponential (docs/specs/session.md): accurate against @exp over the
+// whole range it is used on, scalar and 4-wide calls bit-identical, exact edges.
+test "sampler expNeg: accuracy, scalar = vector, edges" {
+    const expNeg = sampler.expNeg;
+    var prng = std.Random.DefaultPrng.init(0xe4e);
+    const random = prng.random();
+    var worst: f64 = 0;
+    var i: usize = 0;
+    while (i < 400000) : (i += 4) {
+        var v: @Vector(4, f64) = undefined;
+        inline for (0..4) |j| v[j] = switch ((i / 4) % 3) {
+            0 => -random.float(f64) * 708,
+            1 => -random.float(f64) * 2,
+            else => -random.float(f64) * 1e-6,
+        };
+        const e = expNeg(v);
+        inline for (0..4) |j| {
+            const s = expNeg(v[j]);
+            try t.expectEqual(@as(u64, @bitCast(s)), @as(u64, @bitCast(e[j])));
+            const want = @exp(v[j]);
+            worst = @max(worst, @abs(s - want) / want);
+        }
+    }
+    try t.expect(worst <= 4 * std.math.floatEps(f64));
+    std.debug.print("expNeg worst relative error vs @exp: {e} ({d:.2} eps)\n", .{ worst, worst / std.math.floatEps(f64) });
+    try t.expectEqual(@as(f64, 1), expNeg(@as(f64, 0)));
+    try t.expectEqual(@as(f64, 0), expNeg(@as(f64, -708.5)));
+    try t.expectEqual(@as(f64, 0), expNeg(-std.math.inf(f64)));
+    try t.expect(expNeg(@as(f64, -708)) > 0);
 }
 
 test "sampler top-k partial selection equals full sort for random inputs" {
@@ -432,4 +640,199 @@ test "generation: stops on raw text, text-level delimiters, control tokens, drop
         try t.expectEqual(session.Finish.length, r.finish);
         try t.expectEqualStrings("Hi", sink.content.items);
     }
+}
+
+/// A deterministic CPU "model" for the speculative loop: the logits after a history are a
+/// hash of the whole history over the harmless pieces {2, 3, 4, 8}, with EOS (0) likely
+/// once the history is long. `drafts` is non-null for the speculative variant: it drafts
+/// the argmax continuation but corrupts every `wrong_every`-th draft.
+const HashModel = struct {
+    history: [512]u32 = undefined,
+    len: usize = 0,
+    logits: [8 * pieces.len]f32 = undefined,
+    drafts: [8]u32 = undefined,
+    probs: [8]f32 = undefined,
+    draft_n: u32 = 0,
+    wrong_every: u32 = 3,
+    pending: u32 = 0,
+    verify_tokens: [8]u32 = undefined,
+    steps: u32 = 0,
+    verifies: u32 = 0,
+    ctx: u32 = 200,
+
+    fn row(history: []const u32, out: []f32) void {
+        var h: u64 = 0x9e3779b97f4a7c15;
+        for (history) |x| h = (h ^ x) *% 0x100000001b3;
+        @memset(out, -30);
+        for ([_]u32{ 2, 3, 4, 8 }, 0..) |v, i| out[v] = @as(f32, @floatFromInt((h >> @intCast(8 * i)) & 255)) / 32.0;
+        out[0] = if (history.len > 60) 9 else -30;
+    }
+    fn argmax(x: []const f32) u32 {
+        var best: u32 = 0;
+        for (x, 0..) |v, i| if (v > x[best]) {
+            best = @intCast(i);
+        };
+        return best;
+    }
+    pub fn context(self: *HashModel) u32 {
+        return self.ctx;
+    }
+    pub fn vocab(_: *HashModel) usize {
+        return pieces.len;
+    }
+    pub fn reset(self: *HashModel) !void {
+        self.len = 0;
+        self.pending = 0;
+    }
+    pub fn prefill(self: *HashModel, tokens: []const u32) ![]const f32 {
+        var logits: []const f32 = undefined;
+        for (tokens) |token| logits = try self.step(token);
+        return logits;
+    }
+    pub fn step(self: *HashModel, token: u32) ![]const f32 {
+        if (self.pending != 0) return error.VerifyPending;
+        self.steps += 1;
+        self.history[self.len] = token;
+        self.len += 1;
+        row(self.history[0..self.len], self.logits[0..pieces.len]);
+        return self.logits[0..pieces.len];
+    }
+};
+/// The speculative interface over a HashModel (the non-speculative runs use the model
+/// directly, so the same history function drives both).
+const SpecModel = struct {
+    m: *HashModel,
+    n: u32,
+    pub fn context(self: SpecModel) u32 {
+        return self.m.context();
+    }
+    pub fn vocab(self: SpecModel) usize {
+        return self.m.vocab();
+    }
+    pub fn reset(self: SpecModel) !void {
+        try self.m.reset();
+    }
+    pub fn prefill(self: SpecModel, tokens: []const u32) ![]const f32 {
+        return self.m.prefill(tokens);
+    }
+    pub fn step(self: SpecModel, token: u32) ![]const f32 {
+        return self.m.step(token);
+    }
+    pub fn speculative(self: SpecModel) u32 {
+        return self.n;
+    }
+    pub fn draft(self: SpecModel, token: u32, k: u32) ![]const u32 {
+        const m = self.m;
+        if (m.pending != 0) return error.VerifyPending;
+        if (k == 0 or k > self.n) return error.InvalidDraft;
+        var h: [512]u32 = undefined;
+        @memcpy(h[0..m.len], m.history[0..m.len]);
+        h[m.len] = token;
+        var scratch: [pieces.len]f32 = undefined;
+        for (0..k) |i| {
+            HashModel.row(h[0 .. m.len + 1 + i], &scratch);
+            m.draft_n += 1;
+            var d = HashModel.argmax(&scratch);
+            if (m.draft_n % m.wrong_every == 0) d = if (d == 3) 4 else 3;
+            m.drafts[i] = d;
+            h[m.len + 1 + i] = d;
+        }
+        return m.drafts[0..k];
+    }
+    pub fn draftProbs(self: SpecModel, k: u32) []const f32 {
+        // Pseudo-probabilities: high for every draft but the corrupted ones.
+        for (self.m.probs[0..k], 0..) |*p, i| p.* = if ((self.m.draft_n - k + 1 + @as(u32, @intCast(i))) % self.m.wrong_every == 0) 0.15 else 0.85;
+        return self.m.probs[0..k];
+    }
+    pub fn verify(self: SpecModel, tokens: []const u32) ![]const f32 {
+        const m = self.m;
+        if (m.pending != 0) return error.VerifyPending;
+        if (m.len + tokens.len > m.ctx) return error.ContextFull;
+        m.verifies += 1;
+        var h: [512]u32 = undefined;
+        @memcpy(h[0..m.len], m.history[0..m.len]);
+        for (tokens, 0..) |token, i| {
+            h[m.len + i] = token;
+            HashModel.row(h[0 .. m.len + i + 1], m.logits[i * pieces.len ..][0..pieces.len]);
+        }
+        @memcpy(m.verify_tokens[0..tokens.len], tokens);
+        m.pending = @intCast(tokens.len);
+        return m.logits[0 .. tokens.len * pieces.len];
+    }
+    pub fn commit(self: SpecModel, rows: u32) !void {
+        const m = self.m;
+        if (rows == 0 or rows > m.pending) return error.InvalidCommit;
+        @memcpy(m.history[m.len..][0..rows], m.verify_tokens[0..rows]);
+        m.len += rows;
+        m.pending = 0;
+    }
+};
+const GenHash = session.Generation(*HashModel, FakeTokenizer, *Sink);
+const GenSpec = session.Generation(SpecModel, FakeTokenizer, *Sink);
+
+// Block 17b gate 3 (the control flow): with sample-matching acceptance the speculative
+// loop emits exactly the non-speculative output, for greedy and seeded sampling, every
+// draft count, wrong drafts, EOS or the length limit inside verified rows, and context
+// clamping; the model's processed history equals the non-speculative one at the end.
+test "generation: speculative decoding output equals non-speculative output" {
+    const Case = struct { params: sampler.Params, max_tokens: u32, ctx: u32 };
+    const cases = [_]Case{
+        .{ .params = .{ .temperature = 0 }, .max_tokens = 100, .ctx = 200 },
+        .{ .params = .{ .temperature = 1.0, .seed = 7 }, .max_tokens = 100, .ctx = 200 },
+        .{ .params = .{ .temperature = 0.7, .top_k = 3, .seed = 11, .repetition_penalty = 1.3 }, .max_tokens = 37, .ctx = 200 },
+        .{ .params = .{ .temperature = 0 }, .max_tokens = 100, .ctx = 23 },
+        .{ .params = .{ .temperature = 1.0, .seed = 3 }, .max_tokens = 1, .ctx = 200 },
+        .{ .params = .{ .temperature = 1.0, .seed = 5 }, .max_tokens = 2, .ctx = 200 },
+    };
+    const prompt = [_]u32{ 3, 4, 2, 3 };
+    for (cases) |c| {
+        var plain: HashModel = .{ .ctx = c.ctx };
+        var plain_sink: Sink = .{};
+        defer plain_sink.deinit();
+        const want = try GenHash.run(t.io, t.allocator, &plain, .{ .pieces = &pieces }, special, .{ .prompt = &prompt, .max_tokens = c.max_tokens, .params = c.params }, &plain_sink);
+        for (1..5) |n| for ([_]u32{ 2, 3, 1000 }) |wrong| for ([_]bool{ false, true }) |adaptive| {
+            var m: HashModel = .{ .ctx = c.ctx, .wrong_every = wrong };
+            var sink: Sink = .{};
+            defer sink.deinit();
+            var policy: session.spec.Policy = .init();
+            const got = try GenSpec.run(t.io, t.allocator, .{ .m = &m, .n = @intCast(n) }, .{ .pieces = &pieces }, special, .{ .prompt = &prompt, .max_tokens = c.max_tokens, .params = c.params, .spec_policy = if (adaptive) &policy else null }, &sink);
+            try t.expectEqual(want.finish, got.finish);
+            try t.expectEqual(want.completion_tokens, got.completion_tokens);
+            try t.expectEqualStrings(plain_sink.content.items, sink.content.items);
+            try t.expectEqualSlices(u32, plain.history[0..plain.len], m.history[0..m.len]);
+            try t.expectEqual(@as(u32, 0), m.pending);
+            if (c.max_tokens > 2 and c.ctx > 100 and !adaptive) try t.expect(m.verifies > 0 and m.verifies < want.completion_tokens);
+            // Counters: every verify is counted; acceptance never exceeds what was verified
+            // or drafted; correct greedy drafts are all accepted.
+            try t.expectEqual(m.verifies, got.spec.verifies);
+            try t.expect(got.spec.accepted <= got.spec.verified and got.spec.verified <= got.spec.drafted);
+            try t.expect(got.spec.accepted + got.spec.verifies <= got.completion_tokens);
+            if (wrong == 1000 and c.params.temperature == 0) try t.expectEqual(got.spec.verified, got.spec.accepted);
+            if (wrong == 2 and c.max_tokens > 2 and c.ctx > 100 and !adaptive and n > 1) try t.expect(got.spec.accepted < got.spec.verified);
+        };
+    }
+}
+
+test "speculative verify-count policy: acceptance bins, cost scaling and choice" {
+    const Policy = session.spec.Policy;
+    var p: Policy = .init();
+    // Priors: the bin center.
+    try t.expectApproxEqAbs(@as(f64, 0.95), p.acceptance(0.99), 1e-12);
+    try t.expectApproxEqAbs(@as(f64, 0.05), p.acceptance(0.01), 1e-12);
+    try t.expectApproxEqAbs(@as(f64, 0.05), p.acceptance(std.math.nan(f32)), 1e-12);
+    // A step verifying 3 drafts with 1 accepted: bins of drafts 1 (accepted) and 2 (rejected).
+    p.observe(&.{ 0.95, 0.95, 0.95 }, 1);
+    try t.expectApproxEqAbs((2 * 0.95 + 1) / 4.0, p.acceptance(0.95), 1e-12);
+    // Costs: verify of n rows grows; confident drafts are all verified, doubtful ones not.
+    var q: Policy = .init();
+    q.timeDraft(4_000_000);
+    q.timeCommit(500_000);
+    for (1..6) |n| q.timeVerify(n, 20_000_000 + 3_000_000 * (n - 1));
+    try t.expectEqual(@as(u32, 4), q.choose(&.{ 0.99, 0.99, 0.99, 0.99 }));
+    try t.expectEqual(@as(u32, 0), q.choose(&.{ 0.01, 0.99, 0.99, 0.99 }));
+    try t.expectEqual(@as(u32, 1), q.choose(&.{ 0.99, 0.05, 0.99, 0.99 }));
+    // Unmeasured counts scale from the nearest measured one by the relative prior.
+    var r: Policy = .init();
+    r.timeVerify(5, 32_000_000);
+    try t.expectEqual(@as(u32, 3), r.choose(&.{ 0.99, 0.99, 0.99, 0.2 }));
 }

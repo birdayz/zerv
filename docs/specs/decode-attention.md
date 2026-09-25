@@ -137,3 +137,31 @@ else is unchanged.
    `attn_pregate` and downstream tensors.
 3. **Serving:** greedy equality.
 4. **Speed:** no decode regression (per-phase profile at ~40 and ~3.2K positions).
+
+## Long-context passes — block 17c (2026-09-24; implemented, bitwise identical — [evidence](../bench/2026-09-24-decode-attention-long.md))
+
+At 64k keys the decode step spent 4.3 ms in pass 3 and part of pass 2's 4.0 ms on work
+that grows with the chunk count per workgroup:
+- every P·V workgroup (chunks × 4 of them) recomputed its 6 heads' global maximum from
+  all live chunk maxima: quadratic in the context;
+- the combine ran one workgroup per head (24 per row) that summed all live chunks
+  serially.
+
+**Change (same arithmetic, same summation order):**
+- `attn_gmax` (between scores and P·V; grid rows × 1 × 4 KV heads): the maximum of the
+  live chunk maxima per (row, head), exactly the code P·V ran, written to `gmax`
+  (heads × decode rows words). P·V reads it. Max is order-free, so every value is
+  unchanged.
+- `attn_cblock` (grid blocks × 24 heads × rows): the 8-chunk block sums of `apart` and
+  `asum` in chunk order, to `bpart` / `bsum` (heads × rows × ceil(chunks/8) blocks). The
+  combine then adds the block sums in block order: exactly the loop it ran before
+  (block sums, then the running total), split across workgroups.
+- Push layouts: `PvPush` gains `gmax`; `CombinePush` reads `bpart`, `bsum`, `blocks`.
+- Scores on key pairs: one workgroup per two chunks, thread t owns keys 2t and 2t+1
+  (one 64-bit / 32-bit load per dim), each chunk's maximum reduced over its 32 threads.
+  Per-key arithmetic unchanged. Requires an even context (`layout.state`).
+- P·V in two waves (128 threads): wave w accumulates key lanes 2w and 2w+1 for all 256
+  dims (4 dims per thread, one V load per key) and adds them; wave 1's (l2+l3) goes
+  through LDS to wave 0, which writes (l0+l1)+(l2+l3). Per-dim arithmetic unchanged.
+- **Gates:** captures and logits byte-identical to the previous build on both oracles
+  in every mode; GPU attention test (FP64 bound); `zerv-spec-check` 11/11.

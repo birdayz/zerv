@@ -1,0 +1,51 @@
+{
+ "started_at": "2026-09-24T02:48:57.891483+00:00",
+ "argv": [
+  "tools/kv_quality.py",
+  "--output",
+  "docs/bench/data/2026-09-24-kv-precision/long-kl-r2",
+  "--runs",
+  "zerv-f16,zerv-f32"
+ ],
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "workload_sha256": "4f17dd76f4a76f68e3fc01092b06e4fa113b2ec6a77fc6fbe7f8c4153c7763b6",
+ "text_sha256": "1e8b5556956199666e241b38cfe228624296e4f4d92971bddd369ab2df671544",
+ "zerv_tool_sha256": "8e6450f4c2b586bf40540cd6134b27b4422305d141fba25723509fb8827391c2",
+ "llama_capture_sha256": "30e88767d224bfe878d9f76f75d9d30609e2ae89016359370ba0afc4827b9e5f",
+ "llama_pins": {
+  "/usr/lib/libllama.so.0.4.1": "c352cb4b1f5456dffbc4483ba1e0be7a547b21a0f7e63462ab8fb333f51245e1",
+  "/usr/lib/libggml-base.so.0.24.0": "7d9065538f5df6342613b4fa92e661d5ad8fd811c2dbe16ff0e4b62a77777073",
+  "/usr/lib/ggml/libggml-vulkan.so": "d09aac86141492bdf22daad0c61b5ded720f772b3f18d8167aae1f264532979a"
+ },
+ "prefix": 36000,
+ "steps": 256,
+ "runs": {
+  "zerv-f16": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl-r2/zerv-kv-quality",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl-r2/text.txt",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl-r2/zerv-f16",
+    "36000",
+    "256",
+    "f16"
+   ],
+   "stdout": "{\"kv\":\"f16\",\"text_tokens\":37758,\"prefix\":36000,\"steps\":256,\"context\":36288,\"prefill_ms\":67311.914055,\"decode_ms_per_step\":24.91611256640625}",
+   "logits_sha256": "06790928f6e044cbef4b3cb44fcc7ae45e5fc1c587a8098e85b768e380844a4f"
+  },
+  "zerv-f32": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl-r2/zerv-kv-quality",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl-r2/text.txt",
+    "/home/USER/projects/zerv/third_party/kv-quality/long-kl-r2/zerv-f32",
+    "36000",
+    "256",
+    "f32"
+   ],
+   "stdout": "{\"kv\":\"f32\",\"text_tokens\":37758,\"prefix\":36000,\"steps\":256,\"context\":36288,\"prefill_ms\":68065.999661,\"decode_ms_per_step\":28.0994949453125}",
+   "logits_sha256": "6784d931fdf15dbb030cda6fdd539613ef0fb8b47d44ac0acee549a2325243d6"
+  }
+ },
+ "finished_at": "2026-09-24T02:51:56.138841+00:00"
+}

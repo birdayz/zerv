@@ -212,7 +212,7 @@ const Fake = struct {
         try sink.emit(.{ .content = "Hello" });
         try sink.emit(.{ .content = " w\u{f6}rld" });
         const limited = request.max_tokens != null and request.max_tokens.? < 3;
-        return .{ .finish = if (limited) .length else .stop, .prompt_tokens = @intCast(prepared.tokens.len), .completion_tokens = 3, .prefill_ns = 1, .decode_ns = 1 };
+        return .{ .finish = if (limited) .length else .stop, .prompt_tokens = @intCast(prepared.tokens.len), .completion_tokens = 3, .prefill_ns = 1, .decode_ns = 1, .spec = .{ .verifies = 1, .drafted = 3, .verified = 2, .accepted = 1 } };
     }
 };
 
@@ -333,6 +333,11 @@ test "HTTP server: real sockets, JSON and SSE framing, errors, keep-alive" {
     try t.expect(std.mem.indexOf(u8, out.written(), "zerv_rejected_total 3\n") != null);
     try t.expect(std.mem.indexOf(u8, out.written(), "zerv_completion_tokens_total 27\n") != null);
     try t.expect(std.mem.indexOf(u8, out.written(), "zerv_tool_call_parse_failures_total 0\n") != null);
+    // Speculative counters are summed over the 3 plain (non-tool) requests.
+    try t.expect(std.mem.indexOf(u8, out.written(), "zerv_spec_verifies_total 3\n") != null);
+    try t.expect(std.mem.indexOf(u8, out.written(), "zerv_spec_draft_tokens_total{stage=\"drafted\"} 9\n") != null);
+    try t.expect(std.mem.indexOf(u8, out.written(), "zerv_spec_draft_tokens_total{stage=\"verified\"} 6\n") != null);
+    try t.expect(std.mem.indexOf(u8, out.written(), "zerv_spec_draft_tokens_total{stage=\"accepted\"} 3\n") != null);
 }
 
 const Gated = struct {

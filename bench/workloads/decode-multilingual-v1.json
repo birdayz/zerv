@@ -1,0 +1,83 @@
+{
+ "version": 1,
+ "description": "Multilingual decode workload (2026-09-24, draft-vocabulary study): short prompts in five languages asking for a long answer in that language, 512 generated tokens, greedy, thinking off. Non-English text uses more high-id tokens, which a reduced draft head cannot propose.",
+ "temperature": 0,
+ "seed": 1234,
+ "cases": [
+  {
+   "name": "chinese",
+   "max_tokens": 512,
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "请用中文写一篇关于长江的散文，介绍它的源头、流经的主要城市、历史上的重要事件以及今天面临的生态保护问题。不少于八段。"
+    }
+   ]
+  },
+  {
+   "name": "japanese",
+   "max_tokens": 512,
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "日本語で、京都の四季の魅力について詳しく説明するエッセイを書いてください。春の桜、夏の祭り、秋の紅葉、冬の雪景色について、それぞれ具体的な場所や行事を挙げてください。"
+    }
+   ]
+  },
+  {
+   "name": "russian",
+   "max_tokens": 512,
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Напишите на русском языке подробный рассказ о путешествии по Транссибирской магистрали: города, природа, люди в поезде, еда и впечатления. Не менее восьми абзацев."
+    }
+   ]
+  },
+  {
+   "name": "german",
+   "max_tokens": 512,
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Schreiben Sie auf Deutsch eine ausführliche Erklärung, wie ein Verbrennungsmotor funktioniert, mit den vier Takten, den wichtigsten Bauteilen, typischen Wartungsarbeiten und einem Vergleich mit Elektromotoren."
+    }
+   ]
+  },
+  {
+   "name": "korean",
+   "max_tokens": 512,
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "한국어로 서울의 역사와 현대 문화에 대해 자세한 글을 써 주세요. 조선 시대, 한국 전쟁 이후의 발전, 음식, 대중문화를 포함해 주세요."
+    }
+   ]
+  }
+ ]
+}

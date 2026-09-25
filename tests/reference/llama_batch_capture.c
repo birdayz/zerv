@@ -4,7 +4,10 @@
 // batch settings, requests logits for every position, and records the named F32 tensors
 // (e.g. l_out-63) for every token. The precision path is whatever ggml selects under the
 // caller's environment (default = llama-server's default).
-// Usage: llama_batch_capture MODEL TOKENS.json NAMES.txt OUT_DIR N_CTX N_BATCH N_UBATCH FLASH(0|1) KV(f16|f32)
+// Usage: llama_batch_capture MODEL TOKENS.json NAMES.txt OUT_DIR N_CTX N_BATCH N_UBATCH FLASH(0|1) KV(f16|f32) [LOGITS_FROM]
+// LOGITS_FROM = P > 0 (block 17c, long-context KV quality): tokens 0..P-1 go in batches of
+// N_BATCH with logits only for position P-1, then every later token is decoded alone
+// (llama's single-token path) with logits; logits.bin holds rows P-1, P, ..., N-1.
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -16,7 +19,7 @@
 #include "llama.h"
 
 #define MAX_NAMES 64
-#define MAX_TOKENS 16384
+#define MAX_TOKENS 65536
 
 struct capture {
     char names[MAX_NAMES][64];
@@ -109,7 +112,8 @@ static int parse_tokens(const char * json, llama_token * out) {
 }
 
 int main(int argc, char ** argv) {
-    if (argc != 10) die("usage: MODEL TOKENS.json NAMES.txt OUT_DIR N_CTX N_BATCH N_UBATCH FLASH KV");
+    if (argc != 10 && argc != 11) die("usage: MODEL TOKENS.json NAMES.txt OUT_DIR N_CTX N_BATCH N_UBATCH FLASH KV [LOGITS_FROM]");
+    const int logits_from = argc == 11 ? atoi(argv[10]) : 0;
     const int n_ctx = atoi(argv[5]), n_batch = atoi(argv[6]), n_ubatch = atoi(argv[7]), flash = atoi(argv[8]);
     const bool kv_f16 = strcmp(argv[9], "f16") == 0;
     if (!kv_f16 && strcmp(argv[9], "f32") != 0) die("KV must be f16 or f32");
@@ -126,6 +130,7 @@ int main(int argc, char ** argv) {
     static llama_token tokens[MAX_TOKENS];
     const int n = parse_tokens(tokens_json, tokens);
     if (n <= 0 || n > n_ctx) die("token count exceeds context");
+    if (logits_from < 0 || logits_from >= n) die("LOGITS_FROM must be below the token count");
     char path[4096];
     snprintf(path, sizeof path, "%s/tensors.bin", argv[4]);
     c.blob = fopen(path, "wbx");
@@ -159,21 +164,26 @@ int main(int argc, char ** argv) {
     const int n_vocab = llama_vocab_n_tokens(vocab);
 
     struct llama_batch batch = llama_batch_init(n_batch, 0, 1);
-    for (int first = 0; first < n; first += n_batch) {
-        const int count = n - first < n_batch ? n - first : n_batch;
+    for (int first = 0; first < n;) {
+        // Before LOGITS_FROM: full batches ending at it; from it on: one token per batch.
+        const int limit = logits_from > 0 && first < logits_from ? logits_from : n;
+        const int step = logits_from > 0 && first >= logits_from ? 1 : n_batch;
+        const int count = limit - first < step ? limit - first : step;
         batch.n_tokens = count;
         for (int i = 0; i < count; ++i) {
             batch.token[i] = tokens[first + i];
             batch.pos[i] = first + i;
             batch.n_seq_id[i] = 1;
             batch.seq_id[i][0] = 0;
-            batch.logits[i] = 1;
+            batch.logits[i] = logits_from == 0 || first + i >= logits_from - 1;
         }
         if (llama_decode(ctx, batch) != 0 || c.failed) die("decode failed");
         for (int i = 0; i < count; ++i) {
+            if (!batch.logits[i]) continue;
             const float * logits = llama_get_logits_ith(ctx, i);
             if (!logits || fwrite(logits, sizeof(float), (size_t) n_vocab, logits_file) != (size_t) n_vocab) die("logits");
         }
+        first += count;
     }
     llama_batch_free(batch);
     if (fclose(logits_file) || fclose(c.blob) || fclose(c.index)) die("close failed");

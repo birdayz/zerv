@@ -91,3 +91,32 @@ Rejected, retained in data: multi-row activation-reuse tiles (NR=2/4/8, with and
 without exact decode), U=2/8, RADV cswave32 (process-local compiler experiment),
 and FMA dot accumulation. FMA accumulation passed the tolerance gates but changes
 output bits for ~3-4% GPU time, so it violates the no-behavior-change requirement.
+
+## FMA accumulation — block 17c (specified 2026-09-24, replacing "strict separate multiply and add"; implemented, gates passed, verify table re-tuned — [evidence](../bench/2026-09-24-fma-matvec.md))
+
+- **Change:** every dot-product step of `matvec.comp` and `matvec_rows.comp` becomes
+  `sum = fma(w, x, sum)` (one rounding) instead of `round(sum + round(w*x))`. The weight
+  decode, the lane partition, the block order per lane, the two partial vectors and the
+  reduction tree are unchanged. `accum()` is the single place; both kernels share its
+  text.
+- **Why now:** 08c rejected it only because it changed output bits under a
+  no-behavior-change rule. Since block 10 the criterion is the FP64 model gates. The
+  lab measured it at 3–4% for decode and 5-row verify 1.70× → 1.37× a decode pass (with
+  G = 4; [spec-verify](../bench/2026-09-24-spec-verify.md)). One rounding per step is also
+  at least as accurate.
+- **Exactness that remains:** multi-row ≡ single-row, bitwise, per row (the same
+  sequence of fused steps), so speculative verify stays ≡ decode. Fixtures whose
+  products and sums are exactly representable (isolated columns, cancellation, zero
+  input, half domains, row ramp) are unchanged, because fma equals multiply-then-add
+  there; the other fixture cases keep their FP64 bounds.
+- **Knob (2026-09-24, user rule: changes stay selectable):**
+  `Options.matvec_accumulation` / `--matvec-accumulation fma|separate`, default fma.
+  `separate` selects the pre-FMA arithmetic (`ACCUM_FMA 0`, modules in
+  `src/matvec/shaders/separate/`) with its own verify table (`matvec.rowsGroups`), and
+  reproduces the pre-FMA captures and logits byte for byte on both oracles.
+- **Gates:** `zig build gpu-test` (all 48 fixtures in both layouts; multi-row ≡ single
+  row on all fixtures and shapes); `tools/verify_model.py` FP64 gates on the default and
+  long oracles in every mode (captures change; the bounds decide); `zerv-spec-check`
+  11/11; `zerv-mtp-check` scenario C and the FP64 MTP reference; `zerv-prefix-check`.
+  Then decode step, verify + commit per count, and serving decode-v1 against the
+  previous numbers, and a per-count re-tune of GROUP/CB.

@@ -23,6 +23,7 @@ pub const VK_MAX_EXTENSION_NAME_SIZE = 256;
 pub const VK_MAX_MEMORY_HEAPS = 16;
 pub const VK_MAX_MEMORY_TYPES = 32;
 pub const VK_MAX_PHYSICAL_DEVICE_NAME_SIZE = 256;
+pub const VK_MAX_PIPELINE_BINARY_KEY_SIZE_KHR = 32;
 pub const VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT = 1;
 pub const VK_MEMORY_PROPERTY_HOST_CACHED_BIT = 8;
 pub const VK_MEMORY_PROPERTY_HOST_COHERENT_BIT = 4;
@@ -63,18 +64,25 @@ pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR = 10
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 = 1000059000;
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT = 1000237000;
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2 = 1000059006;
+pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_BINARY_FEATURES_KHR = 1000483000;
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 = 1000059001;
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES = 1000082000;
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES = 1000094000;
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES = 1000225002;
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES = 1000225000;
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES = 1000211000;
+pub const VK_STRUCTURE_TYPE_PIPELINE_BINARY_CREATE_INFO_KHR = 1000483001;
+pub const VK_STRUCTURE_TYPE_PIPELINE_BINARY_HANDLES_INFO_KHR = 1000483009;
+pub const VK_STRUCTURE_TYPE_PIPELINE_BINARY_INFO_KHR = 1000483002;
+pub const VK_STRUCTURE_TYPE_PIPELINE_BINARY_KEY_KHR = 1000483003;
+pub const VK_STRUCTURE_TYPE_PIPELINE_CREATE_INFO_KHR = 1000483007;
 pub const VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO = 30;
 pub const VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO = 18;
 pub const VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_REQUIRED_SUBGROUP_SIZE_CREATE_INFO = 1000225001;
 pub const VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO = 16;
 pub const VK_STRUCTURE_TYPE_SUBMIT_INFO = 4;
 pub const VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET = 35;
+pub const VK_SUBGROUP_FEATURE_ARITHMETIC_BIT = 4;
 pub const VK_SUBGROUP_FEATURE_BALLOT_BIT = 8;
 pub const VK_SUBGROUP_FEATURE_BASIC_BIT = 1;
 pub const VK_SUCCESS = 0;
@@ -82,6 +90,7 @@ pub const VK_TIMEOUT = 2;
 pub const VK_TRUE = 1;
 pub const VK_UUID_SIZE = 16;
 pub const VkAllocationCallbacks = opaque {};
+pub const PFN_vkVoidFunction = ?*const fn () callconv(.c) void;
 pub const VkAccessFlags = VkFlags;
 pub const VkApplicationInfo = extern struct {
     sType: VkStructureType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -536,6 +545,11 @@ pub const VkPhysicalDeviceMemoryProperties2 = extern struct {
     pNext: ?*anyopaque = null,
     memoryProperties: VkPhysicalDeviceMemoryProperties = std.mem.zeroes(VkPhysicalDeviceMemoryProperties),
 };
+pub const VkPhysicalDevicePipelineBinaryFeaturesKHR = extern struct {
+    sType: VkStructureType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_BINARY_FEATURES_KHR,
+    pNext: ?*anyopaque = null,
+    pipelineBinaries: VkBool32 = std.mem.zeroes(VkBool32),
+};
 pub const VkPhysicalDeviceProperties = extern struct {
     apiVersion: u32 = std.mem.zeroes(u32),
     driverVersion: u32 = std.mem.zeroes(u32),
@@ -596,9 +610,48 @@ pub const VkPhysicalDeviceVulkanMemoryModelFeatures = extern struct {
     vulkanMemoryModelAvailabilityVisibilityChains: VkBool32 = std.mem.zeroes(VkBool32),
 };
 pub const VkPipeline = ?*opaque {};
+pub const VkPipelineBinaryCreateInfoKHR = extern struct {
+    sType: VkStructureType = VK_STRUCTURE_TYPE_PIPELINE_BINARY_CREATE_INFO_KHR,
+    pNext: ?*const anyopaque = null,
+    pKeysAndDataInfo: [*c]const VkPipelineBinaryKeysAndDataKHR = null,
+    pipeline: VkPipeline = null,
+    pPipelineCreateInfo: [*c]const VkPipelineCreateInfoKHR = null,
+};
+pub const VkPipelineBinaryDataKHR = extern struct {
+    dataSize: usize = std.mem.zeroes(usize),
+    pData: ?*anyopaque = null,
+};
+pub const VkPipelineBinaryHandlesInfoKHR = extern struct {
+    sType: VkStructureType = VK_STRUCTURE_TYPE_PIPELINE_BINARY_HANDLES_INFO_KHR,
+    pNext: ?*const anyopaque = null,
+    pipelineBinaryCount: u32 = std.mem.zeroes(u32),
+    pPipelineBinaries: [*c]VkPipelineBinaryKHR = null,
+};
+pub const VkPipelineBinaryInfoKHR = extern struct {
+    sType: VkStructureType = VK_STRUCTURE_TYPE_PIPELINE_BINARY_INFO_KHR,
+    pNext: ?*const anyopaque = null,
+    binaryCount: u32 = std.mem.zeroes(u32),
+    pPipelineBinaries: [*c]const VkPipelineBinaryKHR = null,
+};
+pub const VkPipelineBinaryKHR = ?*opaque {};
+pub const VkPipelineBinaryKeyKHR = extern struct {
+    sType: VkStructureType = VK_STRUCTURE_TYPE_PIPELINE_BINARY_KEY_KHR,
+    pNext: ?*anyopaque = null,
+    keySize: u32 = std.mem.zeroes(u32),
+    key: [VK_MAX_PIPELINE_BINARY_KEY_SIZE_KHR]u8 = std.mem.zeroes([VK_MAX_PIPELINE_BINARY_KEY_SIZE_KHR]u8),
+};
+pub const VkPipelineBinaryKeysAndDataKHR = extern struct {
+    binaryCount: u32 = std.mem.zeroes(u32),
+    pPipelineBinaryKeys: [*c]const VkPipelineBinaryKeyKHR = null,
+    pPipelineBinaryData: [*c]const VkPipelineBinaryDataKHR = null,
+};
 pub const VkPipelineBindPoint = i32;
 pub const VkPipelineCache = ?*opaque {};
 pub const VkPipelineCreateFlags = VkFlags;
+pub const VkPipelineCreateInfoKHR = extern struct {
+    sType: VkStructureType = VK_STRUCTURE_TYPE_PIPELINE_CREATE_INFO_KHR,
+    pNext: ?*anyopaque = null,
+};
 pub const VkPipelineLayout = ?*opaque {};
 pub const VkPipelineLayoutCreateFlags = VkFlags;
 pub const VkPipelineLayoutCreateInfo = extern struct {
@@ -745,3 +798,7 @@ pub extern fn vkCmdDispatch(commandBuffer: VkCommandBuffer, groupCountX: u32, gr
 pub extern fn vkEnumerateDeviceExtensionProperties(physicalDevice: VkPhysicalDevice, pLayerName: [*c]const u8, pPropertyCount: [*c]u32, pProperties: [*c]VkExtensionProperties) callconv(.c) VkResult;
 pub extern fn vkGetPhysicalDeviceFeatures2(physicalDevice: VkPhysicalDevice, pFeatures: [*c]VkPhysicalDeviceFeatures2) callconv(.c) void;
 pub extern fn vkGetPhysicalDeviceMemoryProperties2(physicalDevice: VkPhysicalDevice, pMemoryProperties: [*c]VkPhysicalDeviceMemoryProperties2) callconv(.c) void;
+pub extern fn vkGetDeviceProcAddr(device: VkDevice, pName: [*c]const u8) callconv(.c) PFN_vkVoidFunction;
+pub const PFN_vkCreatePipelineBinariesKHR = *const fn (device: VkDevice, pCreateInfo: [*c]const VkPipelineBinaryCreateInfoKHR, pAllocator: ?*const VkAllocationCallbacks, pBinaries: [*c]VkPipelineBinaryHandlesInfoKHR) callconv(.c) VkResult;
+pub const PFN_vkDestroyPipelineBinaryKHR = *const fn (device: VkDevice, pipelineBinary: VkPipelineBinaryKHR, pAllocator: ?*const VkAllocationCallbacks) callconv(.c) void;
+pub const PFN_vkGetPipelineKeyKHR = *const fn (device: VkDevice, pPipelineCreateInfo: [*c]const VkPipelineCreateInfoKHR, pPipelineKey: [*c]VkPipelineBinaryKeyKHR) callconv(.c) VkResult;

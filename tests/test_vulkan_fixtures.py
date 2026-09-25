@@ -16,9 +16,9 @@ class VulkanFixturesTests(unittest.TestCase):
         data = json.loads((ROOT / "tests/fixtures/gpu/abi.json").read_text())
         self.assertEqual(data["generator_sha256"], sha("tests/reference/generate_vulkan_abi.py"))
         self.assertEqual(data["helper_sha256"], sha("tests/reference/vulkan_api.py"))
-        self.assertEqual(len(data["structs"]), 56)
-        self.assertEqual(len({s["name"] for s in data["structs"]}), 56)
-        self.assertEqual(len(data["constants"]), 78)
+        self.assertEqual(len(data["structs"]), 64)
+        self.assertEqual(len({s["name"] for s in data["structs"]}), 64)
+        self.assertEqual(len(data["constants"]), 86)
         for s in data["structs"]:
             self.assertGreater(s["size"], 0)
             self.assertEqual(s["size"] % s["alignment"], 0)

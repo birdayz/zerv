@@ -14,9 +14,20 @@ layout(local_size_x=LANES) in;
 layout(set=0,binding=0,std430) readonly buffer W { uint weights[]; };
 layout(set=0,binding=1,std430) readonly buffer X { float input_values[]; };
 layout(set=0,binding=2,std430) writeonly buffer Y { float output_values[]; };
+#if SWIGLU
+// Fused FFN input (block 17c): workgroup i computes row i of gate and of up (two weight
+// regions of one buffer) with exactly the single-row module's per-row arithmetic, and
+// writes g, u and silu(g) * u (the model's swiglu kernel's expression).
+layout(push_constant) uniform Params {
+    uint columns, rows, row_bytes, weight_offset, input_offset, output_offset, groups_x, up_offset, u_offset, y_offset;
+} p;
+shared float partials_up[LANES];
+float silu(float x) { return x/(1.0+exp(-x)); }
+#else
 layout(push_constant) uniform Params {
     uint columns, rows, row_bytes, weight_offset, input_offset, output_offset, groups_x;
 } p;
+#endif
 shared float partials[LANES];
 
 // A packed row may start on either half of a uint32. Extract four logical
@@ -39,16 +50,26 @@ vec4 coeff4(uint w, uint mask, uint bias) {
 }
 // Unsigned bytes of a word as exact FP32 values (0..255).
 vec4 ubytes(uint w) { return vec4(float(w&255u),float((w>>8)&255u),float((w>>16)&255u),float(w>>24)); }
+// ACCUM_FMA 1 (default): one rounding per step, sum + w*x as a fused multiply-add
+// (block 17c, docs/specs/matvec-push.md "FMA accumulation"); 0: the previous strict
+// multiply then add (`--matvec-accumulation separate`). matvec and matvec_rows must
+// stay identical.
+#ifndef ACCUM_FMA
+#define ACCUM_FMA 1
+#endif
 vec4 accum(vec4 sum, vec4 w, vec4 x) {
+#if ACCUM_FMA
+    precise vec4 added=fma(w,x,sum);
+    return added;
+#else
     precise vec4 product=w*x;
     precise vec4 added=sum+product;
     return added;
+#endif
 }
-void main() {
-    uint lane=gl_LocalInvocationID.x;
-    uint row=gl_WorkGroupID.y*p.groups_x+gl_WorkGroupID.x;
-    if (row>=p.rows) return; // Uniform across the entire workgroup, including barriers.
-    uint row_start=p.weight_offset+row*p.row_bytes;
+// Lane `lane`'s partial dot product of the row starting at byte `row_start` with X
+// (the per-lane accumulation and the lane's final sum; the lanes are reduced by the caller).
+float lanePartial(uint lane, uint row_start) {
     vec4 a=vec4(0),z=vec4(0);
 #if FORMAT==0
     for (uint c=lane*4;c<p.columns;c+=LANES*4) {
@@ -146,11 +167,36 @@ void main() {
 #endif
     precise vec4 v=a+z;
     precise float sum=(v.x+v.y)+(v.z+v.w);
-    partials[lane]=sum;
+    return sum;
+}
+void main() {
+    uint lane=gl_LocalInvocationID.x;
+    uint row=gl_WorkGroupID.y*p.groups_x+gl_WorkGroupID.x;
+    if (row>=p.rows) return; // Uniform across the entire workgroup, including barriers.
+#if SWIGLU
+    partials[lane]=lanePartial(lane,p.weight_offset+row*p.row_bytes);
+    partials_up[lane]=lanePartial(lane,p.up_offset+row*p.row_bytes);
+    barrier();
+    for (uint stride=LANES/2;stride>0;stride>>=1) {
+        if (lane<stride) {
+            precise float value=partials[lane]+partials[lane+stride]; partials[lane]=value;
+            precise float value_up=partials_up[lane]+partials_up[lane+stride]; partials_up[lane]=value_up;
+        }
+        barrier();
+    }
+    if (lane==0) {
+        float g=partials[0], u=partials_up[0];
+        output_values[p.output_offset+row]=g;
+        output_values[p.u_offset+row]=u;
+        output_values[p.y_offset+row]=silu(g)*u;
+    }
+#else
+    partials[lane]=lanePartial(lane,p.weight_offset+row*p.row_bytes);
     barrier();
     for (uint stride=LANES/2;stride>0;stride>>=1) {
         if (lane<stride) { precise float value=partials[lane]+partials[lane+stride]; partials[lane]=value; }
         barrier();
     }
     if (lane==0) output_values[p.output_offset+row]=partials[0];
+#endif
 }

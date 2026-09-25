@@ -465,3 +465,77 @@ the compute range and `computeFullSubgroups`. `Model.init` fails with
 4. **Serving:** served f16-mode outputs are byte-identical before and after. TTFT is
    measured interleaved against the previous build and llama-server (3223-token and
    12k prompts, warm-up ≥ 10 s, junction temperature recorded).
+
+## Native `gemm_f16x` machine code (specified 2026-09-24, before integration; implemented, gates 1–4 passed the same day — [evidence](../bench/2026-09-24-gemm-f16x-isa.md))
+
+**What.** For the `gemm_f16x` (Q4_0) kernel, the model can create the pipeline from our own
+RDNA3 machine code (a RADV pipeline binary) instead of compiling the SPIR-V. Interface,
+bindings, push constants, grid, validation and producers are unchanged; only the machine
+code differs.
+
+**Arithmetic.** Bit-identical to the SPIR-V kernel by construction (same WMMA sequence per
+output in k order, same f16 dequantization ops) and by test (component gate below).
+
+**Artifacts** (`src/model/native/`): `gemm_f16x_q4_0.bin` (RADV 26.2.3 pipeline binary),
+`.key` (its binary key), `.global` (the driver global key it is valid for),
+`gemm_f16x_q4_0.s` (the generated assembly), `manifest.json` (hashes of all of them, of the
+generator, of the SPIR-V the placeholder was compiled from, tool and driver versions).
+Regenerated only by `tools/build_native_gemm.py` (needs the GPU, RADV and clang); ordinary
+builds embed the files.
+
+**Knob** `--gemm-code spirv|native` (`Model.Options.gemm_code`), f16 mode only:
+
+| Value | Behaviour |
+| --- | --- |
+| `native` (default since the gates passed) | device opened with `pipeline_binaries`; `gemm_f16x` from the binary when the global key matches, else from SPIR-V |
+| `spirv` | the previous behaviour: no pipeline-binary extension, SPIR-V only |
+
+On a key mismatch (other Mesa build, other GPU, driver debug options) the SPIR-V kernel runs
+and the server says so at startup (`gemm_f16x: native|spirv (reason)`). `Model.gemm_native`
+reports what was created. Other kernels and the FP32 mode are unaffected.
+
+**Gates.**
+
+1. Component: `bench/isa_lab/sweep.py` PASS (all shapes, tails, alignments, subnormals).
+2. Driver: `tests/gpu_*.zig` — a kernel from the binary equals the SPIR-V kernel bitwise on
+   a small GEMM; a wrong expected global key falls back (`native` false, SPIR-V results);
+   malformed binary options are rejected before driver calls.
+3. Model: f16-mode intermediates and logits bitwise identical with `native` and `spirv`
+   (`tools/verify_model.py --precision f16` hashes unchanged).
+4. Serving: served f16-mode outputs byte-identical; TTFT interleaved against `spirv` and
+   llama-server (3223-token and 12k prompts), junction temperature recorded.
+
+## Fused prefill attention — block 16a (2026-09-24; implemented, gates passed — [evidence](../bench/2026-09-24-flash-attention.md))
+
+Replaces the materialized path (score GEMM, row softmax, P·V GEMM through a
+24 × chunk × context FP32 score region) with one kernel, `flash.comp`. FP32 in both
+prefill precisions; the f16 mode changes only projections.
+
+- **Semantics** (unchanged): row r of a chunk at position p0 + r attends to keys
+  0..p0 + r of its KV head (head / 6), scale 1/16, softmax, then P·V; output `pregate`.
+- **Kernel.** Workgroup = one KV head and 8 query rows; six 64-thread groups, one per
+  query head of that KV head. Per 128-key tile:
+  - Scores: lane l owns keys 2l and 2l + 1. Q rows are wave-uniform and read as scalars.
+    K is read from the cache directly (coalesced), 4 dims ahead of the FMAs. Each score
+    sums 32-dim partial fma chains.
+  - Causal and live-key mask (keys ≥ p0 + count are never read: undefined contents),
+    row maxima and sums with subgroup reductions; with 32-wide subgroups the two halves
+    of a group combine through LDS.
+  - Online softmax: m' = max(m, tile max), a = exp(m − m'), l' = l·a + Σ exp(s − m').
+  - P to LDS per group; lane l accumulates head dims 4l..4l + 3 of the 8 rows over the
+    tile's keys (V rows read directly, 4 keys ahead), then O = O·a + O_tile.
+  - Output O / l.
+- **Host rules.** Compute subgroups of 32 or 64 with arithmetic, aligned to 64-thread
+  groups (`Subgroup.computeArithmeticFrom(32)`, as the scalar-X GEMM assumes). The kernel
+  exists once per KV buffer, like the other KV kernels.
+- **VRAM.** No score region: 24 × chunk × context × 4 bytes (384 MiB at 512 × 8192,
+  1.4 GiB at 512 × 28k) leave the activation arena, which also removes the arena's 4 GiB
+  limit on context × chunk.
+- **Gates.**
+  1. Component (`tests/model_gpu.zig`): against FP64 with a first-order bound (dot
+     products, exponentials, n-term accumulation, rescaling), p0/count across row-block
+     and tile edges, a context not a multiple of 64, NaN in cache entries past the live
+     keys and in query rows past the count, untouched outputs past the count.
+  2. Model: `tools/verify_model.py` FP64 gates, default oracles modes 1/13/512/512:17,
+     long oracle modes 13/128/512/512:300.
+  3. Long-prompt serving with the answer checked (`bench/workloads/long-v1.json`).

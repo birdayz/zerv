@@ -6,6 +6,8 @@ pub const Location = @import("device.zig").Location;
 pub const Buffer = @import("buffer.zig").Buffer;
 pub const Kernel = @import("kernel.zig").Kernel;
 pub const max_kernels = @import("kernel.zig").max_kernels;
+pub const max_commands = @import("commands.zig").max_commands;
+pub const max_command_kernels = @import("commands.zig").max_command_kernels;
 pub const Commands = @import("commands.zig").Commands;
 pub const Scope = @import("commands.zig").Scope;
 

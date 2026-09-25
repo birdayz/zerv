@@ -1,0 +1,92 @@
+{
+ "started_at": "2026-09-24T01:25:28.868651+00:00",
+ "argv": [
+  "bench/run_serving.py",
+  "--workload",
+  "bench/workloads/serving-v2.json",
+  "--output",
+  "docs/bench/data/2026-09-24-host-memory/serving-v2-embedding",
+  "--engines",
+  "zerv-f16@prefix-cache-memory=device;zerv-f16@embedding-memory=device,prefix-cache-memory=device",
+  "--repeats",
+  "2"
+ ],
+ "host": {
+  "system": "Linux",
+  "node": "benchmark-host",
+  "release": "7.2.6-arch2-1",
+  "version": "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000",
+  "machine": "x86_64",
+  "processor": ""
+ },
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "workload_sha256": "9ac7b1e8c519ef3055866f266d95dcbb67e0d307caf267c70495eb76c81babe8",
+ "zerv_sha256": "cfbc6e0738292cda20dca2f70da5c850735cf7d8a8ce6afb5374a3195cfcf42b",
+ "llama_server_sha256": "0f401589a34aabc75a2371cb39d92d717212e27d9a0c6e2bf30a8d643bf77d85",
+ "llama_version": "version: 0.4.1-dev (build 10964, commit b29c606e28)\nbuilt with GNU 16.2.1 for Linux x86_64",
+ "template_sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041",
+ "build": [
+  "/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig",
+  "build",
+  "server",
+  "-Doptimize=ReleaseFast",
+  "-Dcpu=native"
+ ],
+ "context": 8192,
+ "repeats": 2,
+ "engines": {
+  "zerv-f16@prefix-cache-memory=device": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/serving-bench/serving-v2-embedding/zerv",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18090",
+    "--context",
+    "8192",
+    "--prefill-precision",
+    "f16",
+    "--prefix-cache-memory",
+    "device"
+   ],
+   "env": {},
+   "load_s": 7.508837784989737,
+   "vram_idle_before": 807378944,
+   "vram_loaded": 18851434496,
+   "vram_peak": 18954477568,
+   "host_memory": {
+    "VmHWM": "15474324 kB",
+    "VmRSS": "69024 kB"
+   }
+  },
+  "zerv-f16@embedding-memory=device,prefix-cache-memory=device": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/serving-bench/serving-v2-embedding/zerv",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18090",
+    "--context",
+    "8192",
+    "--prefill-precision",
+    "f16",
+    "--embedding-memory",
+    "device",
+    "--prefix-cache-memory",
+    "device"
+   ],
+   "env": {},
+   "load_s": 8.019099409983028,
+   "vram_idle_before": 807378944,
+   "vram_loaded": 19566592000,
+   "vram_peak": 19669635072,
+   "host_memory": {
+    "VmHWM": "15474128 kB",
+    "VmRSS": "72392 kB"
+   }
+  }
+ },
+ "vram_before": 807378944,
+ "client": "python http.client streaming SSE; TTFT = first reasoning/content delta; decode rate = (completion_tokens-1)/(last_delta-first_delta)",
+ "finished_at": "2026-09-24T01:26:50.044617+00:00"
+}

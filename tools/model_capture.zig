@@ -1,7 +1,11 @@
 //! Verification tool: run a teacher-forced token sequence through the native model and
 //! write named intermediates + logits in the libllama capture format. Also checks that
 //! capture and plain steps produce bit-identical logits and that reset reproduces them.
-//! Usage: zerv-model-capture MODEL TOKENS.json NAMES.txt OUT_DIR CONTEXT [CHUNK CAPTURE_MIB [PRECISION]]
+//! Usage: zerv-model-capture MODEL TOKENS.json NAMES.txt OUT_DIR CONTEXT[:KV_MIB][@OPTION...] [CHUNK CAPTURE_MIB [PRECISION[@native|@spirv]]]
+//! KV_MIB caps each KV buffer (forces the KV caches into several buffers; model.md).
+//! OPTION: a KV cache type, f32 (default) or f16 (model.md, "KV precision"), or a matvec
+//! accumulation, fma (default) or separate (matvec-push.md), or page=N|page=context, the KV
+//! page tokens (concurrent.md, "Addressing"; default 128).
 //! CHUNK > 0 selects batched prefill (teacher-forced in chunks of CHUNK tokens).
 //! CHUNK:SPLIT additionally ends a chunk at token SPLIT, as a prefix-cache restore at
 //! SPLIT does (docs/specs/prefix-cache.md); the plain replays are split there as well.
@@ -28,23 +32,44 @@ pub fn main(init: std.process.Init) !void {
     var names: std.ArrayList([]const u8) = .empty;
     var it = std.mem.tokenizeAny(u8, names_file.bytes, "\n\r ");
     while (it.next()) |name| try names.append(a, name);
-    const context = try std.fmt.parseInt(u32, args[5], 10);
+    var parts = std.mem.splitScalar(u8, args[5], '@');
+    const ctx_arg = parts.first();
+    var kv_type: model.KvType = .f32;
+    var accumulation: zerv.matvec.Accumulation = .fma;
+    var kv_page: u32 = model.layout.default_kv_page;
+    while (parts.next()) |option| {
+        if (std.mem.startsWith(u8, option, "page=")) kv_page = try parsePage(option["page=".len..]) //
+        else if (std.meta.stringToEnum(model.KvType, option)) |kv| kv_type = kv //
+        else if (std.meta.stringToEnum(zerv.matvec.Accumulation, option)) |acc| accumulation = acc //
+        else return error.Usage;
+    }
+    const ctx_colon = std.mem.indexOfScalar(u8, ctx_arg, ':');
+    const context = try std.fmt.parseInt(u32, ctx_arg[0 .. ctx_colon orelse ctx_arg.len], 10);
+    const kv_mib: u64 = if (ctx_colon) |c| try std.fmt.parseInt(u64, ctx_arg[c + 1 ..], 10) else 0;
     const chunk_arg = if (args.len >= 8) args[6] else "0";
     const colon = std.mem.indexOfScalar(u8, chunk_arg, ':');
     const chunk: u32 = try std.fmt.parseInt(u32, chunk_arg[0 .. colon orelse chunk_arg.len], 10);
     const split: u32 = if (colon) |c| try std.fmt.parseInt(u32, chunk_arg[c + 1 ..], 10) else 0;
     if (split > 0 and (chunk == 0 or split >= tokens.tokens.len)) return error.Usage;
     const capture_mib: u64 = if (args.len >= 8) try std.fmt.parseInt(u64, args[7], 10) else 512;
-    const precision: model.gemm.Precision = if (args.len == 9) std.meta.stringToEnum(model.gemm.Precision, args[8]) orelse return error.Usage else .fp32;
+    // PRECISION[@native|@spirv]: the gemm_f16x machine code (`Model.Options.gemm_code`).
+    var precision: model.gemm.Precision = .fp32;
+    var gemm_code: model.gemm.Code = .spirv;
+    if (args.len == 9) {
+        var pp = std.mem.splitScalar(u8, args[8], '@');
+        precision = std.meta.stringToEnum(model.gemm.Precision, pp.first()) orelse return error.Usage;
+        while (pp.next()) |option| gemm_code = std.meta.stringToEnum(model.gemm.Code, option) orelse return error.Usage;
+    }
 
-    var device = try zerv.gpu.Device.open(.{ .max_allocated_bytes = 23 * 1024 * 1024 * 1024, .cooperative_matrix = model.gemm.deviceNeeds(precision).cooperative_matrix, .subgroup_size_control = model.gemm.deviceNeeds(precision).subgroup_size_control });
+    var device = try zerv.gpu.Device.open(.{ .max_allocated_bytes = 23 * 1024 * 1024 * 1024, .cooperative_matrix = model.gemm.deviceNeeds(precision).cooperative_matrix, .subgroup_size_control = model.gemm.deviceNeeds(precision).subgroup_size_control, .storage16 = kv_type == .f16, .pipeline_binaries = model.gemm.needsPipelineBinaries(precision, gemm_code) });
     defer device.deinit() catch @panic("live device resources");
     const load_start = std.Io.Clock.awake.now(io);
     var m: model.Model = undefined;
-    try m.init(&device, &container, .{ .context = context, .prefill_rows = chunk, .prefill_precision = precision });
+    try m.init(&device, &container, .{ .context = context, .prefill_rows = chunk, .prefill_precision = precision, .kv_capacity = kv_mib * 1024 * 1024, .kv_type = kv_type, .kv_page_tokens = kv_page, .matvec_accumulation = accumulation, .gemm_code = gemm_code });
     defer m.deinit();
+    std.debug.print("gemm_f16x: {s}\n", .{m.gemmCodeStatus()});
     const load_ns = load_start.durationTo(std.Io.Clock.awake.now(io)).nanoseconds;
-    std.debug.print("loaded banks={d} pipelines={d} load_ms={d}\n", .{ m.bank_count, m.pipeline_count, @divTrunc(load_ns, std.time.ns_per_ms) });
+    std.debug.print("loaded banks={d} kv_buffers={d} kv_pages={d}x{d} pipelines={d} kernels={d} load_ms={d}\n", .{ m.bank_count, m.state_layout.kv_buffers, m.state_layout.pages, m.state_layout.page, m.pipeline_count, device.kernels, @divTrunc(load_ns, std.time.ns_per_ms) });
 
     var capture_buffer = try zerv.gpu.Buffer.init(&device, capture_mib * 1024 * 1024, .host);
     defer capture_buffer.deinit() catch @panic("capture buffer in use");
@@ -256,4 +281,9 @@ fn prefillMode(io: std.Io, a: std.mem.Allocator, m: *model.Model, captures: []mo
     try summary_writer.interface.flush();
     std.debug.print("prefill chunk={d} tokens={d} captures/chunk={d} mismatches plain={d} replay={d} prefill_ms={d}\n", .{ chunk, tokens.len, captures[0].count, mismatches[0], mismatches[1], @divTrunc(prefill_ns[0], std.time.ns_per_ms) });
     if (mismatches[0] != 0 or mismatches[1] != 0) return error.NondeterministicLogits;
+}
+
+/// `context` (0: one page) or a token count.
+fn parsePage(text: []const u8) !u32 {
+    return if (std.mem.eql(u8, text, "context")) 0 else try std.fmt.parseInt(u32, text, 10);
 }

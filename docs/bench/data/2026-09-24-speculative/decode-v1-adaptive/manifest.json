@@ -1,0 +1,204 @@
+{
+ "started_at": "2026-09-23T21:45:28.720871+00:00",
+ "argv": [
+  "bench/run_serving.py",
+  "--workload",
+  "bench/workloads/decode-v1.json",
+  "--output",
+  "docs/bench/data/2026-09-24-speculative/decode-v1-adaptive",
+  "--engines",
+  "zerv-spec2,zerv-spec3,zerv-spec4,llama-fa-ub512-mtp2,llama-fa-ub512-mtp4",
+  "--repeats",
+  "2",
+  "--port",
+  "18092"
+ ],
+ "host": {
+  "system": "Linux",
+  "node": "benchmark-host",
+  "release": "7.2.6-arch2-1",
+  "version": "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000",
+  "machine": "x86_64",
+  "processor": ""
+ },
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "workload_sha256": "0c182814783f0bc42e1a164185bef4512be82bb78ab5722c51e0dc21626cc66a",
+ "zerv_sha256": "6e3178c8eaa54fe3246251cf9c5909004dde193c9b13bade1a0398d1ecdd9040",
+ "llama_server_sha256": "0f401589a34aabc75a2371cb39d92d717212e27d9a0c6e2bf30a8d643bf77d85",
+ "llama_version": "version: 0.4.1-dev (build 10964, commit b29c606e28)\nbuilt with GNU 16.2.1 for Linux x86_64",
+ "template_sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041",
+ "build": [
+  "/home/USER/projects/zerv/.tools/zig-x86_64-linux-0.16.0/zig",
+  "build",
+  "server",
+  "-Doptimize=ReleaseFast",
+  "-Dcpu=native"
+ ],
+ "context": 8192,
+ "repeats": 2,
+ "engines": {
+  "zerv-spec2": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/serving-bench/decode-v1-adaptive/zerv",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18092",
+    "--context",
+    "8192",
+    "--spec-draft",
+    "2"
+   ],
+   "env": {},
+   "load_s": 7.50917729298817,
+   "vram_idle_before": 839196672,
+   "vram_loaded": 20351578112,
+   "vram_peak": 20454621184,
+   "host_memory": {
+    "VmHWM": "15734176 kB",
+    "VmRSS": "69628 kB"
+   }
+  },
+  "zerv-spec3": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/serving-bench/decode-v1-adaptive/zerv",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18092",
+    "--context",
+    "8192",
+    "--spec-draft",
+    "3"
+   ],
+   "env": {},
+   "load_s": 7.302935853018425,
+   "vram_idle_before": 839196672,
+   "vram_loaded": 20361596928,
+   "vram_peak": 20464640000,
+   "host_memory": {
+    "VmHWM": "15734708 kB",
+    "VmRSS": "70236 kB"
+   }
+  },
+  "zerv-spec4": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/serving-bench/decode-v1-adaptive/zerv",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18092",
+    "--context",
+    "8192",
+    "--spec-draft",
+    "4"
+   ],
+   "env": {},
+   "load_s": 10.178054760035593,
+   "vram_idle_before": 839196672,
+   "vram_loaded": 20371283968,
+   "vram_peak": 20474327040,
+   "host_memory": {
+    "VmHWM": "15735736 kB",
+    "VmRSS": "79600 kB"
+   }
+  },
+  "llama-fa-ub512-mtp2": {
+   "cmd": [
+    "/usr/bin/llama-server",
+    "-m",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "18092",
+    "-c",
+    "8192",
+    "-np",
+    "1",
+    "-ngl",
+    "99",
+    "--no-context-shift",
+    "--no-webui",
+    "--jinja",
+    "--chat-template-file",
+    "/home/USER/projects/zerv/third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/official-template.jinja",
+    "--reasoning-format",
+    "deepseek",
+    "--cache-ram",
+    "0",
+    "-a",
+    "qwen3.8-27b",
+    "--spec-type",
+    "draft-mtp",
+    "--spec-draft-n-max",
+    "2",
+    "-fa",
+    "on",
+    "-b",
+    "2048",
+    "-ub",
+    "512"
+   ],
+   "env": {},
+   "load_s": 6.914329638995696,
+   "vram_idle_before": 839196672,
+   "vram_loaded": 17508573184,
+   "vram_peak": 17561456640,
+   "host_memory": {
+    "VmHWM": "15837880 kB",
+    "VmRSS": "1110188 kB"
+   }
+  },
+  "llama-fa-ub512-mtp4": {
+   "cmd": [
+    "/usr/bin/llama-server",
+    "-m",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "18092",
+    "-c",
+    "8192",
+    "-np",
+    "1",
+    "-ngl",
+    "99",
+    "--no-context-shift",
+    "--no-webui",
+    "--jinja",
+    "--chat-template-file",
+    "/home/USER/projects/zerv/third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/official-template.jinja",
+    "--reasoning-format",
+    "deepseek",
+    "--cache-ram",
+    "0",
+    "-a",
+    "qwen3.8-27b",
+    "--spec-type",
+    "draft-mtp",
+    "--spec-draft-n-max",
+    "4",
+    "-fa",
+    "on",
+    "-b",
+    "2048",
+    "-ub",
+    "512"
+   ],
+   "env": {},
+   "load_s": 6.800527015002444,
+   "vram_idle_before": 839196672,
+   "vram_loaded": 17822822400,
+   "vram_peak": 17876389888,
+   "host_memory": {
+    "VmHWM": "15839088 kB",
+    "VmRSS": "1111844 kB"
+   }
+  }
+ },
+ "vram_before": 839196672,
+ "client": "python http.client streaming SSE; TTFT = first reasoning/content delta; decode rate = (completion_tokens-1)/(last_delta-first_delta)",
+ "finished_at": "2026-09-23T21:50:34.399353+00:00"
+}

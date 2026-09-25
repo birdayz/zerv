@@ -107,7 +107,7 @@ pub fn main(init: std.process.Init) !void {
         const format = try zerv.model.config.matrixFormat(tensor.kind);
         const K: u32 = @intCast(tensor.dims[0]);
         const M: u32 = @intCast(tensor.dims[1]);
-        const v = gemm.variant(format);
+        const v = try gemm.variant(format);
         if (only_variant) |ov| if (ov != v) continue;
         var weights = try gpu.Buffer.init(&device, tensor.data.len + 64, .device);
         defer weights.deinit() catch @panic("w");

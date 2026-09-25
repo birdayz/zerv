@@ -144,7 +144,7 @@ test "native Vulkan bounded children, retained references and cross-device rejec
         kernel_count += 1;
     }
     try t.expectError(error.ResourceLimit, gpu.Kernel.init(&device, &workload.shader, &.{ &buffers[0], &buffers[1] }, 4));
-    var commands: [32]gpu.Commands = undefined;
+    var commands: [gpu.max_commands]gpu.Commands = undefined;
     var command_count: usize = 0;
     defer for (commands[0..command_count]) |*cmd| cmd.deinit() catch @panic("command cleanup");
     for (&commands) |*cmd| {
@@ -157,12 +157,13 @@ test "native Vulkan bounded children, retained references and cross-device rejec
     for (1..64) |i| try cmd.copy(&buffers[0], 0, &buffers[i], 0, 4);
     try t.expectError(error.ResourceLimit, cmd.copy(&buffers[0], 0, &buffers[64], 0, 4));
     try t.expectEqual(@as(u32, 0), buffers[64].references);
-    for (kernels[0..32]) |*kernel| try cmd.dispatch(kernel, &.{ 1, 0, 0, 0 }, .{ 1, 1, 1 });
-    try t.expectError(error.ResourceLimit, cmd.dispatch(&kernels[32], &.{ 1, 0, 0, 0 }, .{ 1, 1, 1 }));
-    try t.expectEqual(@as(u32, 0), kernels[32].references);
+    const n = gpu.max_command_kernels;
+    for (kernels[0..n]) |*kernel| try cmd.dispatch(kernel, &.{ 1, 0, 0, 0 }, .{ 1, 1, 1 });
+    try t.expectError(error.ResourceLimit, cmd.dispatch(&kernels[n], &.{ 1, 0, 0, 0 }, .{ 1, 1, 1 }));
+    try t.expectEqual(@as(u32, 0), kernels[n].references);
     try cmd.reset();
     try t.expectEqual(@as(u32, 0), buffers[63].references);
-    try t.expectEqual(@as(u32, 0), kernels[31].references);
+    try t.expectEqual(@as(u32, 0), kernels[n - 1].references);
     var other = try gpu.Device.open(.{ .max_allocated_bytes = 1024 * 1024 });
     defer other.deinit() catch @panic("other device cleanup");
     var other_buffer = try gpu.Buffer.init(&other, 16, .device);
