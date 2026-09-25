@@ -1,7 +1,7 @@
 //! Verification tool: run a teacher-forced token sequence through the native model and
 //! write named intermediates + logits in the libllama capture format. Also checks that
 //! capture and plain steps produce bit-identical logits and that reset reproduces them.
-//! Usage: zerv-model-capture MODEL TOKENS.json NAMES.txt OUT_DIR CONTEXT[:KV_MIB][@OPTION...] [CHUNK CAPTURE_MIB [PRECISION[@native|@spirv]]]
+//! Usage: zerv-model-capture MODEL TOKENS.json NAMES.txt OUT_DIR CONTEXT[:KV_MIB][@OPTION...] [CHUNK CAPTURE_MIB [PRECISION[@native|@spirv][@small=on|off]]]
 //! KV_MIB caps each KV buffer (forces the KV caches into several buffers; model.md).
 //! OPTION: a KV cache type, f32 (default) or f16 (model.md, "KV precision"), or a matvec
 //! accumulation, fma (default) or separate (matvec-push.md), or page=N|page=context, the KV
@@ -52,20 +52,27 @@ pub fn main(init: std.process.Init) !void {
     const split: u32 = if (colon) |c| try std.fmt.parseInt(u32, chunk_arg[c + 1 ..], 10) else 0;
     if (split > 0 and (chunk == 0 or split >= tokens.tokens.len)) return error.Usage;
     const capture_mib: u64 = if (args.len >= 8) try std.fmt.parseInt(u64, args[7], 10) else 512;
-    // PRECISION[@native|@spirv]: the gemm_f16x machine code (`Model.Options.gemm_code`).
+    // PRECISION[@native|@spirv][@small=on|off]: gemm_f16x machine code, 32-row tile (`Options`).
     var precision: model.gemm.Precision = .fp32;
     var gemm_code: model.gemm.Code = .spirv;
+    var small_tile = true;
     if (args.len == 9) {
         var pp = std.mem.splitScalar(u8, args[8], '@');
         precision = std.meta.stringToEnum(model.gemm.Precision, pp.first()) orelse return error.Usage;
-        while (pp.next()) |option| gemm_code = std.meta.stringToEnum(model.gemm.Code, option) orelse return error.Usage;
+        while (pp.next()) |option| {
+            if (std.mem.eql(u8, option, "small=on")) {
+                small_tile = true;
+            } else if (std.mem.eql(u8, option, "small=off")) {
+                small_tile = false;
+            } else gemm_code = std.meta.stringToEnum(model.gemm.Code, option) orelse return error.Usage;
+        }
     }
 
     var device = try zerv.gpu.Device.open(.{ .max_allocated_bytes = 23 * 1024 * 1024 * 1024, .cooperative_matrix = model.gemm.deviceNeeds(precision).cooperative_matrix, .subgroup_size_control = model.gemm.deviceNeeds(precision).subgroup_size_control, .storage16 = kv_type == .f16, .pipeline_binaries = model.gemm.needsPipelineBinaries(precision, gemm_code) });
     defer device.deinit() catch @panic("live device resources");
     const load_start = std.Io.Clock.awake.now(io);
     var m: model.Model = undefined;
-    try m.init(&device, &container, .{ .context = context, .prefill_rows = chunk, .prefill_precision = precision, .kv_capacity = kv_mib * 1024 * 1024, .kv_type = kv_type, .kv_page_tokens = kv_page, .matvec_accumulation = accumulation, .gemm_code = gemm_code });
+    try m.init(&device, &container, .{ .context = context, .prefill_rows = chunk, .prefill_precision = precision, .kv_capacity = kv_mib * 1024 * 1024, .kv_type = kv_type, .kv_page_tokens = kv_page, .matvec_accumulation = accumulation, .gemm_code = gemm_code, .f16_small_tile = small_tile });
     defer m.deinit();
     std.debug.print("gemm_f16x: {s}\n", .{m.gemmCodeStatus()});
     const load_ns = load_start.durationTo(std.Io.Clock.awake.now(io)).nanoseconds;

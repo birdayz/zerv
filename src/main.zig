@@ -17,6 +17,9 @@ const usage =
     \\            [--delta-state-out on]  (DeltaNet kernels without the 128-VGPR scratch spill, same values; off: previous modules)
     \\            [--kv-type f32]  (attention KV cache: f32 exact, f16 half the bytes; docs/specs/model.md)
     \\            [--parallel 1]  (N > 1: up to N requests decode together in one batch, each bit-identical to decoding alone; speculative decoding and the prefix cache are off; --context is per request, KV for N of them)
+    \\            [--f16-small-tile on]  (f16 prefill: short chunks whose 128-row tiles would leave the GPU idle use a 32-row tile; same values; off: previous kernels)
+    \\            [--prefill-stall-ms 100]  (--parallel > 1: while a prompt prefills, running requests get a token at least every N ms plus one 4-layer segment; chunk: only between 512-token chunks)
+    \\            [--prefill-order shortest]  (--parallel > 1: pending prompt with the fewest remaining tokens next; fifo: arrival order)
     \\            [--kv-page-tokens 128]  (KV page size, a multiple of 128; context: one page, the layout before paging; same values)
     \\            [--vram-reserve-mib 1024]  (with --context max: VRAM left free for other processes)
     \\            [--embedding-memory host]  (host: token embedding in system RAM, 682 MiB less VRAM, no measured cost; device: in VRAM)
@@ -56,6 +59,9 @@ pub fn main(init: std.process.Init) !void {
     var kv_type: zerv.model.KvType = .f32;
     var kv_page: u32 = zerv.model.layout.default_kv_page;
     var parallel: u32 = 1;
+    var f16_small_tile = true;
+    var stall: zerv.serve.batcher.Stall = .{ .ns = 100 * std.time.ns_per_ms };
+    var prefill_order: zerv.serve.batcher.Order = .shortest;
     var decode_fusion = true;
     var verify_fusion = true;
     var delta_state_out = true;
@@ -93,7 +99,10 @@ pub fn main(init: std.process.Init) !void {
         else if (std.mem.eql(u8, arg, "--gemm-code")) gemm_code = std.meta.stringToEnum(zerv.model.gemm.Code, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--matvec-accumulation")) accumulation = std.meta.stringToEnum(zerv.matvec.Accumulation, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--kv-type")) kv_type = std.meta.stringToEnum(zerv.model.KvType, value) orelse return error.InvalidArguments //
+        else if (std.mem.eql(u8, arg, "--f16-small-tile")) f16_small_tile = try parseSwitch(value) //
         else if (std.mem.eql(u8, arg, "--parallel")) parallel = try std.fmt.parseInt(u32, value, 10) //
+        else if (std.mem.eql(u8, arg, "--prefill-stall-ms")) stall = if (std.mem.eql(u8, value, "chunk")) .chunk else .{ .ns = try std.fmt.parseInt(u64, value, 10) * std.time.ns_per_ms } //
+        else if (std.mem.eql(u8, arg, "--prefill-order")) prefill_order = std.meta.stringToEnum(zerv.serve.batcher.Order, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--kv-page-tokens")) kv_page = if (std.mem.eql(u8, value, "context")) 0 else try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--embedding-memory")) embedding_memory = std.meta.stringToEnum(zerv.gpu.Location, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--spec-draft")) spec_draft = try std.fmt.parseInt(u32, value, 10) //
@@ -155,7 +164,7 @@ pub fn main(init: std.process.Init) !void {
     const context_name = if (context == zerv.model.context_max) "max" else std.fmt.bufPrint(&context_text, "{d}", .{context}) catch unreachable;
     std.debug.print("zerv: loading {s} on {s} (context {s}, prefill chunk {d}, prefill precision {s}, KV {s}, prefix cache slots {d} = {d} MiB of {s} memory, speculative drafts {d}, {s})\n", .{ path, device.name(), context_name, prefill_chunk, @tagName(precision), @tagName(kv_type), snapshot_slots, snapshot_slots * zerv.model.snapshot_bytes / (1024 * 1024), @tagName(snapshot_memory), spec_draft, if (spec_adaptive) "adaptive" else "fixed" });
     var model: zerv.model.Model = undefined;
-    model.init(&device, &container, .{ .context = context, .prefill_rows = prefill_chunk, .prefill_precision = precision, .snapshots = snapshot_slots, .snapshot_memory = snapshot_memory, .embedding_memory = embedding_memory, .context_reserve = reserve_mib * 1024 * 1024, .kv_type = kv_type, .kv_page_tokens = kv_page, .decode_fusion = decode_fusion, .verify_fusion = verify_fusion, .delta_state_out = delta_state_out, .gemm_code = gemm_code, .matvec_accumulation = accumulation, .verify_rows = if (spec_draft > 0) spec_draft + 1 else 0, .mtp = spec_draft > 0, .draft_vocab = draft_vocab, .slots = parallel, .batch_rows = if (parallel > 1) parallel else 0 }) catch |e| {
+    model.init(&device, &container, .{ .context = context, .prefill_rows = prefill_chunk, .prefill_precision = precision, .snapshots = snapshot_slots, .snapshot_memory = snapshot_memory, .embedding_memory = embedding_memory, .context_reserve = reserve_mib * 1024 * 1024, .kv_type = kv_type, .kv_page_tokens = kv_page, .decode_fusion = decode_fusion, .verify_fusion = verify_fusion, .delta_state_out = delta_state_out, .gemm_code = gemm_code, .matvec_accumulation = accumulation, .verify_rows = if (spec_draft > 0) spec_draft + 1 else 0, .mtp = spec_draft > 0, .draft_vocab = draft_vocab, .slots = parallel, .batch_rows = if (parallel > 1) parallel else 0, .f16_small_tile = f16_small_tile }) catch |e| {
         if (e == error.InvalidKvPage) std.debug.print("zerv: --kv-page-tokens must be context or a positive multiple of {d} up to {d}\n", .{ zerv.model.layout.kv_page_quantum, zerv.model.layout.max_kv_page });
         if (e == error.InvalidDraftVocab) std.debug.print("zerv: --spec-draft-vocab must be full or 1..{d}\n", .{zerv.model.config.vocab});
         if (e == error.InvalidContext) std.debug.print("zerv: --context must be positive and even (the attention kernels read key pairs), and with --prefill-chunk > 0 a multiple of 32 (e.g. {d})\n", .{if (prefill_chunk > 0) context / 32 * 32 else context / 2 * 2});
@@ -171,7 +180,13 @@ pub fn main(init: std.process.Init) !void {
     if (context == zerv.model.context_max) std.debug.print("zerv: context max = {d} tokens\n", .{model.state_layout.context});
     std.debug.print("zerv: gemm_f16x: {s}\n", .{model.gemmCodeStatus()});
     std.debug.print("zerv: KV cache: {d} pages of {d} tokens\n", .{ model.state_layout.pages, model.state_layout.page });
-    if (parallel > 1) std.debug.print("zerv: parallel: {d} sequences of up to {d} tokens, batched decode\n", .{ parallel, model.state_layout.context });
+    if (parallel > 1) {
+        std.debug.print("zerv: parallel: {d} sequences of up to {d} tokens, batched decode, prefill order {s}, ", .{ parallel, model.state_layout.context, @tagName(prefill_order) });
+        switch (stall) {
+            .chunk => std.debug.print("decode steps between prefill chunks\n", .{}),
+            .ns => |ns| std.debug.print("decode steps at least every {d} ms during prefill ({d} segments per chunk)\n", .{ ns / std.time.ns_per_ms, zerv.model.prefill_segments }),
+        }
+    }
     std.debug.print("zerv: FFN input fused in {d} (decode) and {d} (verify) of {d} layers\n", .{ model.fused_ffn_layers, model.fused_verify_layers, zerv.model.config.layers });
     if (model.vram.free) |free| std.debug.print("zerv: VRAM: needed {d} MiB of {d} MiB free\n", .{ model.vram.needed >> 20, free >> 20 }) //
     else std.debug.print("zerv: VRAM: needed {d} MiB (the driver reports no budget; not checked)\n", .{model.vram.needed >> 20});
@@ -182,11 +197,10 @@ pub fn main(init: std.process.Init) !void {
     native.sampler_order = sampler_order;
     // --parallel N > 1: the batcher owns the model on its scheduler task.
     var model_backend: zerv.serve.ModelBackend = .{ .m = &model };
-    var batch = try zerv.serve.Batcher.init(io, &model_backend, .{ .slots = parallel, .vocab = zerv.model.config.vocab });
+    var batch = try zerv.serve.Batcher.init(io, &model_backend, .{ .slots = parallel, .vocab = zerv.model.config.vocab, .stall = stall, .order = prefill_order });
     var scheduler: ?std.Io.Future(void) = null;
     if (parallel > 1) {
-        native.batch = &batch;
-        native.batch_backend = &model_backend;
+        try native.attachBatcher(&batch, &model_backend);
         scheduler = try io.concurrent(zerv.serve.Batcher.run, .{&batch});
     }
     defer if (scheduler) |*task| {
@@ -194,7 +208,7 @@ pub fn main(init: std.process.Init) !void {
         task.await(io);
         const st = batch.stats;
         const span: f64 = @floatFromInt(@max(st.last_ns - st.first_ns, 1));
-        std.debug.print("zerv: batcher: {d} batches ({d} rows, {d} partial), {d} prefill chunks; GPU busy {d:.1}% (decode {d:.1}%, prefill {d:.1}%) over {d:.1} s; batches by rows:", .{ st.batches, st.batch_rows, st.partial_batches, st.prefill_chunks, 100 * @as(f64, @floatFromInt(st.batch_ns + st.prefill_ns)) / span, 100 * @as(f64, @floatFromInt(st.batch_ns)) / span, 100 * @as(f64, @floatFromInt(st.prefill_ns)) / span, span / 1e9 });
+        std.debug.print("zerv: batcher: {d} batches ({d} rows, {d} partial, {d} inside prefill chunks), {d} prefill chunks ({d} units, {d} aborted); GPU busy {d:.1}% (decode {d:.1}%, prefill {d:.1}%) over {d:.1} s; batches by rows:", .{ st.batches, st.batch_rows, st.partial_batches, st.batches_in_chunk, st.prefill_chunks, st.prefill_units, st.aborted_chunks, 100 * @as(f64, @floatFromInt(st.batch_ns + st.prefill_ns)) / span, 100 * @as(f64, @floatFromInt(st.batch_ns)) / span, 100 * @as(f64, @floatFromInt(st.prefill_ns)) / span, span / 1e9 });
         for (st.sizes[1 .. parallel + 1], 1..) |n, rows| std.debug.print(" {d}:{d}", .{ rows, n });
         std.debug.print("\n", .{});
     };

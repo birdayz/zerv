@@ -195,6 +195,78 @@ show host overhead matters.
 - FCFS admission; bounded queue (`--max-waiting`); cancellation frees the slot at the next step;
   drain as today.
 
+### 18c.2 design: prefill without stalling the others (specified 2026-09-25, before implementation; implemented, gates passed — [report](../bench/2026-09-25-multiuser.md))
+
+Measured problem ([baseline](../bench/2026-09-25-multiuser.md)): with 7 users decoding, a ~5k-token
+prompt stalls every running user for a whole 512-token chunk, about 0.42 s, 10 times in a row.
+A short prompt arriving just after it waits for the entire long prefill, 5.6 s TTFT.
+
+- **Segments.** In parallel mode (slots > 1) every prefill chunk runs as 16 recorded
+  segments of 4 layers each:
+  - segment 0: embed plus layers 0–3;
+  - the last segment: layers 60–63, the final norm and the output head.
+  The kernels, pushes and order are the chunk's, so the results are bitwise the chunk's.
+  At a boundary (the start of layer il ≥ 4) the only live prefill state is `A.r` and `A.f`,
+  rows 0..n−1. Split-K parts, the f16 copies, q/k/v and attention outputs are consumed
+  inside the layer; KV and recurrent state belong to the prefill's slot.
+- **Decode between segments.** The batch commands (slots > 1) copy rows 0..B−1 of `A.r` and
+  `A.f` to a save region first and back at the end; those are the only prefill rows a batch
+  overwrites. `decodeBatch` also overwrites io words the prefill reads: the count, p0,
+  tokens and RoPE rows 0..B−1. The model marks them dirty, and the next segment rewrites
+  them from the chunk's descriptor.
+- **One chunk in flight.** A chunk runs to its end before another slot's prefill starts, so
+  a prompt's chunk grid is exactly the solo grid (no load-dependent chunking), and outputs
+  equal the solo outputs.
+- **Scheduling (`serve/batcher.zig`):**
+  - `--prefill-stall-ms T` (default 100, chosen from the [sweep](../bench/2026-09-25-multiuser.md)): while a prompt prefills and
+    other users wait for their next token, a decode step runs as soon as T ms have passed
+    since the last one, at the next segment boundary. T = 0 alternates per segment.
+  - `--prefill-stall-ms chunk` is the previous behaviour: steps run only between chunks.
+  - `--prefill-order shortest` (default) takes the pending prompt with the fewest
+    remaining tokens next (ties by arrival) when a chunk ends. `fifo` is the previous
+    order. Starvation is bounded: at most `--parallel − 1` other prompts can go first.
+- **Gates.**
+  - `zerv-batch-check`: joins run segment by segment with decode batches between the
+    segments, and every logits row must be bitwise equal to solo.
+  - Batcher host tests.
+  - Serving outputs byte-identical to solo (`run_concurrent.py --reference`).
+  - `run_multiuser.py` against the baseline and llama-server.
+
+### Ownership and isolation rules (audit 2026-09-25)
+
+Nothing checks these for us, so each is enforced in code and covered by a test:
+
+- **One owner of the device.** With `--parallel > 1` only the batcher's scheduler task calls
+  the model: no other thread reads or writes model or device fields. The health check reads
+  a single atomic that the scheduler sets on an unrecoverable failure (`ModelBackend.fatal`).
+  Before the audit it read `device.lost` and `device.pending` from HTTP threads: a data race.
+- **Borrowed prompt memory.** An operation's tokens belong to the submitting generation's
+  arena and are read only while it waits in `Batcher.submit`.
+  - Canceling a waiter whose operation is running waits for that unit (one segment or one
+    decode step), after which the operation is dropped.
+  - Before the audit a canceled running prefill returned at once, the arena was freed, and
+    the scheduler kept reading the prompt: a use-after-free. Test: the prompt is poisoned
+    right after the cancel returns and must never be read.
+- **Per-user failure.** Every row passes `checkRow` before a batch, and a row that fails
+  gets its own error. Before the audit one bad row failed the whole batch, and so every
+  other user's step. Test: one refused row, two served.
+- **No state shared across users.**
+  - Each slot has its own recurrent state range, KV page table and pages (a pool page has
+    one owner, enforced by `mapPages`), and position.
+  - Every generation resets its slot first.
+  - An aborted chunk marks its slot `needs_reset`, and only `reset` clears it.
+  - The prefix cache and the speculation policy describe one model sequence: with the
+    batcher they are refused (`attachBatcher` → `SharedStateWithBatching`) and passed as
+    null.
+  - Samplers and their seeds are per request.
+- **Shared buffers are time-multiplexed, never aliased live.**
+  - The io words and activation rows are shared.
+  - A decode batch between prefill segments writes only its own `r`/`f` rows (`Act.brf`),
+    and the io words the next segment rewrites (`io_dirty`).
+  - Borrowed logits (prefill: `io.logits`; batch: `verify_logits`) are protected by the
+    batcher's holds until `sampled`.
+- **Globals.** One: the atomic stop flag set by the signal handler.
+
 ### 18e design: `--decode-precision f16` (specified and implemented 2026-09-25; kernel v1, not yet faster — [report](../bench/2026-09-25-f16-decode-mode.md))
 
 - **Arithmetic.** In the batched decode, the projections the f16 prefill mode covers are

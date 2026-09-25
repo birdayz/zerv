@@ -1,0 +1,331 @@
+{
+ "started_at": "2026-09-25T15:42:08.180522+00:00",
+ "argv": [
+  "bench/race_profile.py",
+  "--rounds",
+  "2",
+  "--output",
+  "docs/bench/data/2026-09-25-multiuser/m32-race-256-g64",
+  "--args",
+  "4096",
+  "256",
+  "1000",
+  "2",
+  "f16@native",
+  "f16",
+  "--engine",
+  "on=zig-out/bin/zerv-model-profile|4096 256 1000 2 f16@native@small=on f16",
+  "--engine",
+  "off=zig-out/bin/zerv-model-profile|4096 256 1000 2 f16@native@small=off f16"
+ ],
+ "model": "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+ "model_bytes": 16056478688,
+ "profile_args": [
+  "4096",
+  "256",
+  "1000",
+  "2",
+  "f16@native",
+  "f16"
+ ],
+ "rounds": 2,
+ "engines": {
+  "on": {
+   "path": "zig-out/bin/zerv-model-profile",
+   "sha256": "14c92f8ca31d3974ff7de6ef2428d969ab3420cb990b7f356675d717c4ca0160",
+   "args": [
+    "4096",
+    "256",
+    "1000",
+    "2",
+    "f16@native@small=on",
+    "f16"
+   ]
+  },
+  "off": {
+   "path": "zig-out/bin/zerv-model-profile",
+   "sha256": "14c92f8ca31d3974ff7de6ef2428d969ab3420cb990b7f356675d717c4ca0160",
+   "args": [
+    "4096",
+    "256",
+    "1000",
+    "2",
+    "f16@native@small=off",
+    "f16"
+   ]
+  }
+ },
+ "runs": [
+  {
+   "engine": "on",
+   "index": 0,
+   "round": 0,
+   "cmd": [
+    "zig-out/bin/zerv-model-profile",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "4096",
+    "256",
+    "1000",
+    "2",
+    "f16@native@small=on",
+    "f16"
+   ],
+   "decode_gpu_ms": 21.1855,
+   "decode_qkprep_ms": 0.1037,
+   "decode_scores_ms": 0.3878,
+   "decode_pv_ms": 0.3126,
+   "decode_attention_ms": 0.0858,
+   "prefill_gpu_ms": 1006.2209,
+   "prefill_qkprep_ms": 1.8501,
+   "prefill_attention_ms": 15.4725
+  },
+  {
+   "engine": "off",
+   "index": 0,
+   "round": 0,
+   "cmd": [
+    "zig-out/bin/zerv-model-profile",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "4096",
+    "256",
+    "1000",
+    "2",
+    "f16@native@small=off",
+    "f16"
+   ],
+   "decode_gpu_ms": 20.5383,
+   "decode_qkprep_ms": 0.0353,
+   "decode_scores_ms": 0.2207,
+   "decode_pv_ms": 0.2911,
+   "decode_attention_ms": 0.0947,
+   "prefill_gpu_ms": 864.0863,
+   "prefill_qkprep_ms": 1.7589000000000001,
+   "prefill_attention_ms": 15.2609
+  },
+  {
+   "engine": "off",
+   "index": 1,
+   "round": 0,
+   "cmd": [
+    "zig-out/bin/zerv-model-profile",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "4096",
+    "256",
+    "1000",
+    "2",
+    "f16@native@small=off",
+    "f16"
+   ],
+   "decode_gpu_ms": 20.6043,
+   "decode_qkprep_ms": 0.0311,
+   "decode_scores_ms": 0.213,
+   "decode_pv_ms": 0.2705,
+   "decode_attention_ms": 0.0757,
+   "prefill_gpu_ms": 863.7524,
+   "prefill_qkprep_ms": 1.7627,
+   "prefill_attention_ms": 16.4664
+  },
+  {
+   "engine": "on",
+   "index": 1,
+   "round": 0,
+   "cmd": [
+    "zig-out/bin/zerv-model-profile",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "4096",
+    "256",
+    "1000",
+    "2",
+    "f16@native@small=on",
+    "f16"
+   ],
+   "decode_gpu_ms": 21.3252,
+   "decode_qkprep_ms": 0.1219,
+   "decode_scores_ms": 0.403,
+   "decode_pv_ms": 0.3716,
+   "decode_attention_ms": 0.097,
+   "prefill_gpu_ms": 1007.7961,
+   "prefill_qkprep_ms": 2.1673,
+   "prefill_attention_ms": 16.1785
+  },
+  {
+   "engine": "on",
+   "index": 2,
+   "round": 1,
+   "cmd": [
+    "zig-out/bin/zerv-model-profile",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "4096",
+    "256",
+    "1000",
+    "2",
+    "f16@native@small=on",
+    "f16"
+   ],
+   "decode_gpu_ms": 20.6096,
+   "decode_qkprep_ms": 0.0331,
+   "decode_scores_ms": 0.2276,
+   "decode_pv_ms": 0.3045,
+   "decode_attention_ms": 0.0865,
+   "prefill_gpu_ms": 1008.4923,
+   "prefill_qkprep_ms": 2.4784,
+   "prefill_attention_ms": 15.9071
+  },
+  {
+   "engine": "off",
+   "index": 2,
+   "round": 1,
+   "cmd": [
+    "zig-out/bin/zerv-model-profile",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "4096",
+    "256",
+    "1000",
+    "2",
+    "f16@native@small=off",
+    "f16"
+   ],
+   "decode_gpu_ms": 20.5158,
+   "decode_qkprep_ms": 0.0551,
+   "decode_scores_ms": 0.2257,
+   "decode_pv_ms": 0.3233,
+   "decode_attention_ms": 0.085,
+   "prefill_gpu_ms": 866.8757,
+   "prefill_qkprep_ms": 2.3258,
+   "prefill_attention_ms": 15.997
+  },
+  {
+   "engine": "off",
+   "index": 3,
+   "round": 1,
+   "cmd": [
+    "zig-out/bin/zerv-model-profile",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "4096",
+    "256",
+    "1000",
+    "2",
+    "f16@native@small=off",
+    "f16"
+   ],
+   "decode_gpu_ms": 20.9751,
+   "decode_qkprep_ms": 0.0318,
+   "decode_scores_ms": 0.2131,
+   "decode_pv_ms": 0.2728,
+   "decode_attention_ms": 0.0748,
+   "prefill_gpu_ms": 866.71,
+   "prefill_qkprep_ms": 1.849,
+   "prefill_attention_ms": 15.2883
+  },
+  {
+   "engine": "on",
+   "index": 3,
+   "round": 1,
+   "cmd": [
+    "zig-out/bin/zerv-model-profile",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "4096",
+    "256",
+    "1000",
+    "2",
+    "f16@native@small=on",
+    "f16"
+   ],
+   "decode_gpu_ms": 21.1277,
+   "decode_qkprep_ms": 0.0273,
+   "decode_scores_ms": 0.2272,
+   "decode_pv_ms": 0.2917,
+   "decode_attention_ms": 0.0892,
+   "prefill_gpu_ms": 1015.0572,
+   "prefill_qkprep_ms": 2.2384,
+   "prefill_attention_ms": 15.5355
+  }
+ ],
+ "finished_at": "2026-09-25T15:43:31.196961+00:00",
+ "summary": {
+  "on": {
+   "decode_gpu_ms": {
+    "median": 21.1566,
+    "min": 20.6096,
+    "max": 21.3252
+   },
+   "decode_qkprep_ms": {
+    "median": 0.0684,
+    "min": 0.0273,
+    "max": 0.1219
+   },
+   "decode_scores_ms": {
+    "median": 0.3077,
+    "min": 0.2272,
+    "max": 0.403
+   },
+   "decode_pv_ms": {
+    "median": 0.30855,
+    "min": 0.2917,
+    "max": 0.3716
+   },
+   "decode_attention_ms": {
+    "median": 0.08785,
+    "min": 0.0858,
+    "max": 0.097
+   },
+   "prefill_gpu_ms": {
+    "median": 1008.1442,
+    "min": 1006.2209,
+    "max": 1015.0572
+   },
+   "prefill_qkprep_ms": {
+    "median": 2.2028499999999998,
+    "min": 1.8501,
+    "max": 2.4784
+   },
+   "prefill_attention_ms": {
+    "median": 15.7213,
+    "min": 15.4725,
+    "max": 16.1785
+   }
+  },
+  "off": {
+   "decode_gpu_ms": {
+    "median": 20.5713,
+    "min": 20.5158,
+    "max": 20.9751
+   },
+   "decode_qkprep_ms": {
+    "median": 0.033549999999999996,
+    "min": 0.0311,
+    "max": 0.0551
+   },
+   "decode_scores_ms": {
+    "median": 0.2169,
+    "min": 0.213,
+    "max": 0.2257
+   },
+   "decode_pv_ms": {
+    "median": 0.28195000000000003,
+    "min": 0.2705,
+    "max": 0.3233
+   },
+   "decode_attention_ms": {
+    "median": 0.08035,
+    "min": 0.0748,
+    "max": 0.0947
+   },
+   "prefill_gpu_ms": {
+    "median": 865.39815,
+    "min": 863.7524,
+    "max": 866.8757
+   },
+   "prefill_qkprep_ms": {
+    "median": 1.80585,
+    "min": 1.7589000000000001,
+    "max": 2.3258
+   },
+   "prefill_attention_ms": {
+    "median": 15.64265,
+    "min": 15.2609,
+    "max": 16.4664
+   }
+  }
+ }
+}

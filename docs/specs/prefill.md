@@ -505,6 +505,57 @@ reports what was created. Other kernels and the FP32 mode are unaffected.
 4. Serving: served f16-mode outputs byte-identical; TTFT interleaved against `spirv` and
    llama-server (3223-token and 12k prompts), junction temperature recorded.
 
+## f16 GEMM, 32-row tile for short plans — block 18c.2 (2026-09-25; implemented, gates passed — [evidence](../bench/2026-09-25-multiuser.md))
+
+**Problem (measured).** Short prompts run on the 128-row plan, where every f16 projection
+uses the block-14 `gemm_f16` 128 × 128 tile. A 5120-wide output (ffn_down, lin_out,
+attn_out) then has M / 128 = 40 workgroups for 48 WGPs: one 4-wave workgroup per WGP, no
+latency hiding. ffn_down takes 61 ms of the 182 ms that a 128-row chunk costs.
+
+**Arithmetic.** Unchanged from block 14, bit for bit. `gemm_f16.comp -DSMALLM=1`
+(`gemm_f16m_{q4_0,q4_1,q5_k}`) has a tile of 32 (M) × 128 (rows), with 4 subgroups of
+32 × 32 side by side along the rows. Each output element is the same WMMA chain in the same
+k order. The A tile is dequantized by threads 0–63 (32 rows, two halves each). X staging,
+the row tail (rows ≥ n read row n − 1) and the stores are block 14's.
+
+**Selection** (`gemm.f16KernelFor(v, M, K, plan rows, small_tile)`), resolved when the
+plans are recorded:
+
+| Case | Kernel |
+| --- | --- |
+| `small_tile`, plan rows ≤ 128 (`f16m_max_rows`), f16-eligible, M / 128 × rows / 128 < 64 (`f16m_grid`) | `gemm_f16m` |
+| otherwise | `gemm.f16Kernel` (block 14 / 16b) |
+
+Measured bounds, from interleaved `race_profile.py` runs on the real model:
+- **40 workgroups gain.** ffn_down 61.3 → 51.8 ms, lin_out 17.6 → 15.3 ms, attn_out
+  5.5 → 4.2 ms.
+- **80 or more lose.** With a threshold of 192, ffn_in went 46.5 → 70.7 ms, lin_in
+  22.2 → 28.7 ms and attn_in 5.8 → 8.4 ms.
+- **At 256 rows the tile loses to `gemm_f16x`.** The whole prefill went 865 → 1008 ms.
+
+The 32 × 128 tile stages 4× more X per output element, so it pays only where the device
+would otherwise idle.
+
+**Knob.** `Model.Options.f16_small_tile` (default true); CLI `--f16-small-tile on|off`.
+`off` is the previous kernel set.
+
+**Validation** (`gemm.validateF16m`): `validateF16`'s checks (eligible shape, whole
+128-row tiles, no split-K, extents); grid M / 32 × rows / 128.
+
+**Gates.**
+1. **Component** (`tests/gpu_gemm_f16.zig`): `gemm_f16m` is bitwise equal to `gemm_f16`
+   on the valid rows for Q4_0, Q4_1 and Q5_K, with 1 and 2 row tiles, row tails 1..256
+   and K 512..5120. Words around the output are untouched. The selection rule and the
+   validation are tested at their boundaries.
+2. **Model:** the long oracle in the f16 mode (`verify_model.py --precision f16
+   --gemm-code native`):
+   - mode 128, `--f16-small-tile on` against `off`: logits, captured tensors and serving
+     logits byte-identical;
+   - modes 512 and 256: byte-identical to the captures before this change;
+   - FP32 oracles (default and long): byte-identical to before.
+3. **Serving:** `run_concurrent.py --reference` gives outputs identical to the recorded
+   solo reference.
+
 ## Fused prefill attention — block 16a (2026-09-24; implemented, gates passed — [evidence](../bench/2026-09-24-flash-attention.md))
 
 Replaces the materialized path (score GEMM, row softmax, P·V GEMM through a

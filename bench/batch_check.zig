@@ -11,6 +11,8 @@
 //!      the others are mid-decode) and leaves after T steps; each global step decodes the
 //!      active sequences in one batch (1..K rows, over 5 rows in projection groups) in a
 //!      fresh random row order; every row equals the reference;
+//!      Joins run segment by segment (`prefillSegment`) with decode batches of the running
+//!      sequences between the segments (docs/specs/concurrent.md, "18c.2 design");
 //!   3. the same schedule after every slot's pages are released and remapped to a random
 //!      permutation of a larger pool (non-identity, interleaved page tables);
 //!   4. error cases (duplicate slot, page in use, unmapped slot);
@@ -135,6 +137,7 @@ pub fn main(init: std.process.Init) !void {
 
     // 2 and 3. The join/leave schedule, on the default tables, then on permuted ones.
     var sizes_seen: u32 = 0;
+    var interleaved: u32 = 0;
     for (0..2) |round| {
         if (round == 1) {
             for (0..K) |s| try m.releasePages(@intCast(s));
@@ -152,11 +155,41 @@ pub fn main(init: std.process.Init) !void {
         const before = stats;
         var g: u32 = 0;
         while (g < 2 * (K - 1) + T) : (g += 1) {
-            // Joins: prefill into the sequence's slot while others are mid-decode.
+            // Joins: prefill into the sequence's slot while others are mid-decode, segment by
+            // segment. Round 0 runs the segments back to back (the main schedule then sees
+            // every batch size); round 1 runs a decode batch of the running sequences between
+            // every two segments, as the server schedules them.
             for (0..K) |i| if (g == 2 * i) {
                 try m.select(sigma[i]);
                 try m.reset();
-                try check(out, &stats, "join-prefill", i, -1, try m.prefill(prompts[i][0..prompt_lens[i]]), ref_prefill[i * vocab ..][0..vocab]);
+                var rem: []const u32 = prompts[i][0..prompt_lens[i]];
+                while (true) {
+                    const seg = try m.prefillSegment(rem);
+                    if (seg.consumed > 0) {
+                        rem = rem[seg.consumed..];
+                        if (rem.len == 0) {
+                            try check(out, &stats, "join-prefill-segments", i, -1, seg.logits.?, ref_prefill[i * vocab ..][0..vocab]);
+                            break;
+                        }
+                    }
+                    if (round == 0) continue;
+                    var mrows: [K]model.BatchRow = undefined;
+                    var mseqs: [K]usize = undefined;
+                    var mn: usize = 0;
+                    for (0..i) |j| if (done[j] < T) {
+                        mseqs[mn] = j;
+                        mn += 1;
+                    };
+                    if (mn == 0) continue;
+                    random.shuffle(usize, mseqs[0..mn]);
+                    for (mseqs[0..mn], mrows[0..mn]) |j, *row| row.* = .{ .slot = sigma[j], .token = xs[j][done[j]] };
+                    const ml = try m.decodeBatch(mrows[0..mn]);
+                    interleaved += 1;
+                    for (mseqs[0..mn], 0..) |j, r| {
+                        try check(out, &stats, "batch-between-segments", j, done[j], ml[r * vocab ..][0..vocab], ref[(j * T + done[j]) * vocab ..][0..vocab]);
+                        done[j] += 1;
+                    }
+                }
             };
             var rows: [K]model.BatchRow = undefined;
             var seqs: [K]usize = undefined;
@@ -195,6 +228,26 @@ pub fn main(init: std.process.Init) !void {
     if (m.decodeBatch(&.{.{ .slot = 6, .token = 1 }})) |_| {
         errors_ok = false;
     } else |e| errors_ok = errors_ok and e == error.PagesMissing;
+    // A chunk in flight: its slot is not decodable, no other slot can be selected; an
+    // aborted chunk leaves its slot usable only after a reset.
+    {
+        try m.select(5);
+        try m.reset();
+        const first = try m.prefillSegment(prompts[7][0..prompt_lens[7]]);
+        errors_ok = errors_ok and first.consumed == 0;
+        if (m.select(4)) |_| {
+            errors_ok = false;
+        } else |e| errors_ok = errors_ok and e == error.ChunkInFlight;
+        if (m.decodeBatch(&.{.{ .slot = 5, .token = 1 }})) |_| {
+            errors_ok = false;
+        } else |e| errors_ok = errors_ok and e == error.ChunkInFlight;
+        m.abortChunk();
+        if (m.prefillSegment(prompts[7][0..8])) |_| {
+            errors_ok = false;
+        } else |e| errors_ok = errors_ok and e == error.SlotNeedsReset;
+        try m.reset();
+        try check(out, &stats, "prefill-after-abort", 5, -1, try m.prefill(prompts[5][0..prompt_lens[5]]), ref_prefill[5 * vocab ..][0..vocab]);
+    }
     try out.print("{{\"part\":\"errors\",\"ok\":{}}}\n", .{errors_ok});
 
     // 5. Timings: every slot at a common position, decodeBatch per row count.
@@ -229,8 +282,8 @@ pub fn main(init: std.process.Init) !void {
         try out.flush();
     }
 
-    const passed = stats.failures == 0 and errors_ok and sizes_seen == (1 << K) - 1;
-    try out.print("{{\"summary\":true,\"compared\":{d},\"failures\":{d},\"batch_sizes_seen\":{d},\"errors_ok\":{},\"passed\":{}}}\n", .{ stats.compared, stats.failures, @popCount(sizes_seen), errors_ok, passed });
+    const passed = stats.failures == 0 and errors_ok and sizes_seen == (1 << K) - 1 and interleaved > 0;
+    try out.print("{{\"summary\":true,\"compared\":{d},\"failures\":{d},\"batch_sizes_seen\":{d},\"batches_between_segments\":{d},\"errors_ok\":{},\"passed\":{}}}\n", .{ stats.compared, stats.failures, @popCount(sizes_seen), interleaved, errors_ok, passed });
     try out.flush();
     if (!passed) std.process.exit(1);
 }

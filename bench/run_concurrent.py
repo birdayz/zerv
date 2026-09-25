@@ -45,7 +45,7 @@ def ancestors():
 
 
 def gpu_busy():
-    out = subprocess.run(["pgrep", "-a", "-f", r"(^|/)(zerv(-[a-z0-9-]+)?|llama-server)( |$)"], capture_output=True, text=True).stdout
+    out = subprocess.run(["pgrep", "-a", "-f", r"(^|/)(zerv(-[a-z0-9-]+)?|llama-server)( |$)|vllm serve|VLLM::"], capture_output=True, text=True).stdout
     mine = ancestors()
     return [l for l in out.splitlines() if l.split()[0] not in mine]
 
@@ -129,7 +129,7 @@ def main():
     names = a.engines.split(";") if "@" in a.engines else a.engines.split(",")
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, host=dict(zip(("sysname", "nodename", "release", "version", "machine"), os.uname())),
                     model_sha256=rs.sha(a.model), workload_sha256=rs.sha(a.workload), zerv_sha256=rs.sha(zerv_binary),
-                    llama_server_sha256=rs.sha(rs.LLAMA_SERVER), levels=levels, parallel=parallel, max_tokens=a.max_tokens,
+                    llama_server_sha256=rs.sha(rs.LLAMA_SERVER), vllm_image=rs.VLLM_IMAGE, vllm_model=str(rs.VLLM_MODEL.relative_to(rs.ROOT)), levels=levels, parallel=parallel, max_tokens=a.max_tokens,
                     requests_per_client=a.requests_per_client, context_per_slot=a.context_per_slot, engines={},
                     client="closed loop, python http.client streaming SSE (run_serving.stream_request)")
     raw = (out / "raw.jsonl").open("w")
@@ -142,12 +142,15 @@ def main():
             cmd[cmd.index("-np") + 1] = str(parallel)
         elif "--parallel" in cmd:
             cmd[cmd.index("--context") + 1] = str(a.context_per_slot)
+        elif "--max-num-seqs" in cmd:  # vLLM: shared paged KV pool, per-request context
+            cmd[cmd.index("--max-num-seqs") + 1] = str(parallel)
+            cmd[cmd.index("--max-model-len") + 1] = str(a.context_per_slot)
         env = {k: v for k, v in os.environ.items() if not k.startswith(("GGML_", "LLAMA_", "RADV_"))}
         env.update(spec["env"])
         log = (out / f"{name}.log").open("w")
         proc = subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)
         try:
-            rs.wait_ready(a.port, proc)
+            rs.wait_ready(a.port, proc, spec.get("ready_timeout", 600))
             manifest["engines"][name] = dict(cmd=cmd, env=spec["env"], vram_loaded=rs.vram_used())
             summary[name] = []
             for level in levels:
@@ -171,6 +174,7 @@ def main():
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
+            if spec.get("stop"): subprocess.run(spec["stop"], capture_output=True)
             log.close()
             time.sleep(3)
     raw.close()

@@ -24,6 +24,8 @@ GEMM_F16 = {"gemm_f16_q4_0": (2, 18), "gemm_f16_q4_1": (3, 20), "gemm_f16_q5_k":
 GEMM_F16X = {"gemm_f16x_q4_0": (2, 18)}
 # Batched decode tile (block 18e, -DSMALLN=1): 128 x 16, the same per-element arithmetic.
 GEMM_F16N = {"gemm_f16n_q4_0": (2, 18), "gemm_f16n_q4_1": (3, 20), "gemm_f16n_q5_k": (13, 176)}
+# Short-prompt tile (block 18c.2, -DSMALLM=1): 32 x 128, the same per-element arithmetic.
+GEMM_F16M = {"gemm_f16m_q4_0": (2, 18), "gemm_f16m_q4_1": (3, 20), "gemm_f16m_q5_k": (13, 176)}
 # Fused attention tile (flash.comp RW, GROUPS; runtime.zig flash_rows / flash_groups).
 FLASH_DEFINES = ["-DRW=8", "-DGROUPS=6", "-DOU=4"]
 # f16-mode producers writing an f16 copy of their output (block 16b): name -> KERNEL
@@ -68,6 +70,12 @@ def main():
     for name, (fmt, width) in GEMM_F16.items():
         output = a.output_dir/(name+".spv")
         subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}",
+                        str(gemm_f16), "-o", str(output)], check=True)
+        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
+        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+    for name, (fmt, width) in GEMM_F16M.items():
+        output = a.output_dir/(name+".spv")
+        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}", "-DSMALLM=1",
                         str(gemm_f16), "-o", str(output)], check=True)
         subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
         manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)

@@ -242,4 +242,12 @@ finish independent tests and benchmark gates before advancing.
 82. [`--decode-precision f16`, kernel v1](bench/2026-09-25-f16-decode-mode.md) (18e part 2): WMMA batched decode
     projections, batch-invariant within the mode (399/399), flat in rows (45.4 → 50.0 ms, 1 → 8 rows) but not yet
     faster than FP32; kernel v2 design recorded.
+83. [Multi-user latency, segmented prefill](bench/2026-09-25-multiuser.md) (18c.2): prefill in 4-layer segments
+    with decode between (`--prefill-stall-ms`, `--prefill-order`), a 32-row f16 GEMM tile (`--f16-small-tile`,
+    +5.3% on 128-row plans), `run_multiuser.py`; against vLLM and llama-server: zerv leads at 1–4 users, on TTFT
+    and on long-prompt interference (40 tok/s kept against 5–13); vLLM leads 8-user throughput (158 vs 151) and
+    steady gap p99 (51 vs 147 ms) by packing simultaneous prompts into one prefill.
+84. [vLLM as a competitor](bench/2026-09-25-vllm.md): official ROCm image v0.30.0 with RedHatAI W4A16, FP8 KV;
+    download verification and malware scan (`tools/fetch_hf.py`, ClamAV), hardened container, bring-up findings
+    (a cold compile leaves no KV memory on 24 GB).
 47. [Previous Ollama deployment](research/2026-09-23-previous-deployment.md) — Q4_K_M, KV q4_0, FA, 96–128k context.

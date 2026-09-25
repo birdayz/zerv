@@ -1,0 +1,93 @@
+{
+ "started_at": "2026-09-25T10:39:42.470064+00:00",
+ "argv": [
+  "run_multiuser.py",
+  "--output",
+  "../docs/bench/data/2026-09-25-multiuser/baseline",
+  "--zerv-binary",
+  "../third_party/multiuser/zerv-a7c51dd4",
+  "--engines",
+  "zerv-f16@parallel=8,kv-type=f16;llama-fa-ub512",
+  "--reps",
+  "3"
+ ],
+ "host": {
+  "sysname": "Linux",
+  "nodename": "benchmark-host",
+  "release": "7.2.6-arch2-1",
+  "version": "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000",
+  "machine": "x86_64"
+ },
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "zerv_sha256": "a7c51dd42b2a6b6bd6b6e0e8c35e07332f98a158960b419f49eeec352e674ec9",
+ "llama_server_sha256": "0f401589a34aabc75a2371cb39d92d717212e27d9a0c6e2bf30a8d643bf77d85",
+ "workloads": {
+  "bench/workloads/hyperqwen-real-v1-greedy.json": "7be0cfd863a1d03756c8c1f52371c41e28942dedc84b416f7b63ae6975944922",
+  "bench/workloads/long-6k-v1.json": "2907f5282c3aae44cc0643880b9c735864c125e084c516d2d74c8213e0f6c45e"
+ },
+ "parallel": 8,
+ "context_per_slot": 8192,
+ "reps": 3,
+ "engines": {
+  "zerv-f16@parallel=8,kv-type=f16": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/multiuser/zerv-a7c51dd4",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18098",
+    "--context",
+    "8192",
+    "--prefill-precision",
+    "f16",
+    "--spec-draft",
+    "0",
+    "--parallel",
+    "8",
+    "--kv-type",
+    "f16"
+   ],
+   "env": {},
+   "vram_loaded": 22177890304
+  },
+  "llama-fa-ub512": {
+   "cmd": [
+    "/usr/bin/llama-server",
+    "-m",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "18098",
+    "-c",
+    "65536",
+    "-np",
+    "8",
+    "-ngl",
+    "99",
+    "--spec-type",
+    "none",
+    "--no-context-shift",
+    "--no-webui",
+    "--jinja",
+    "--chat-template-file",
+    "/home/USER/projects/zerv/third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/official-template.jinja",
+    "--reasoning-format",
+    "deepseek",
+    "--cache-ram",
+    "0",
+    "-a",
+    "qwen3.8-27b",
+    "-fa",
+    "on",
+    "-b",
+    "2048",
+    "-ub",
+    "512"
+   ],
+   "env": {},
+   "vram_loaded": 21809823744
+  }
+ },
+ "finished_at": "2026-09-25T10:45:30.962810+00:00"
+}

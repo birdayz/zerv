@@ -1,0 +1,62 @@
+{
+ "started_at": "2026-09-25T16:15:49.932566+00:00",
+ "argv": [
+  "run_concurrent.py",
+  "--output",
+  "../docs/bench/data/2026-09-25-multiuser/ab-decode/run8-a7c51dd4",
+  "--zerv-binary",
+  "../third_party/multiuser/zerv-a7c51dd4",
+  "--engines",
+  "zerv-f16@parallel=8",
+  "--concurrency",
+  "1,8",
+  "--max-tokens",
+  "512",
+  "--requests-per-client",
+  "2",
+  "--reference",
+  "../docs/bench/data/2026-09-25-parallel-serving/reference-greedy/raw.jsonl"
+ ],
+ "host": {
+  "sysname": "Linux",
+  "nodename": "benchmark-host",
+  "release": "7.2.6-arch2-1",
+  "version": "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000",
+  "machine": "x86_64"
+ },
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "workload_sha256": "7be0cfd863a1d03756c8c1f52371c41e28942dedc84b416f7b63ae6975944922",
+ "zerv_sha256": "a7c51dd42b2a6b6bd6b6e0e8c35e07332f98a158960b419f49eeec352e674ec9",
+ "llama_server_sha256": "0f401589a34aabc75a2371cb39d92d717212e27d9a0c6e2bf30a8d643bf77d85",
+ "levels": [
+  1,
+  8
+ ],
+ "parallel": 8,
+ "max_tokens": 512,
+ "requests_per_client": 2,
+ "context_per_slot": 4096,
+ "engines": {
+  "zerv-f16@parallel=8": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/multiuser/zerv-a7c51dd4",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18097",
+    "--context",
+    "4096",
+    "--prefill-precision",
+    "f16",
+    "--spec-draft",
+    "0",
+    "--parallel",
+    "8"
+   ],
+   "env": {},
+   "vram_loaded": 22095056896
+  }
+ },
+ "client": "closed loop, python http.client streaming SSE (run_serving.stream_request)",
+ "finished_at": "2026-09-25T16:17:30.424119+00:00"
+}

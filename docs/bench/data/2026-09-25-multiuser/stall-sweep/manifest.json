@@ -1,0 +1,128 @@
+{
+ "started_at": "2026-09-25T11:27:46.488072+00:00",
+ "argv": [
+  "run_multiuser.py",
+  "--output",
+  "../docs/bench/data/2026-09-25-multiuser/stall-sweep",
+  "--zerv-binary",
+  "../third_party/multiuser/zerv-9c060c90",
+  "--engines",
+  "zerv-f16@parallel=8,kv-type=f16,prefill-stall-ms=50;zerv-f16@parallel=8,kv-type=f16,prefill-stall-ms=100;zerv-f16@parallel=8,kv-type=f16,prefill-stall-ms=200;zerv-f16@parallel=8,kv-type=f16,prefill-stall-ms=chunk,prefill-order=fifo",
+  "--reps",
+  "3"
+ ],
+ "host": {
+  "sysname": "Linux",
+  "nodename": "benchmark-host",
+  "release": "7.2.6-arch2-1",
+  "version": "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000",
+  "machine": "x86_64"
+ },
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "zerv_sha256": "9c060c90a6957816126c7887ecad28e59e15012bc00fa5ed898920e3ba159655",
+ "llama_server_sha256": "0f401589a34aabc75a2371cb39d92d717212e27d9a0c6e2bf30a8d643bf77d85",
+ "workloads": {
+  "bench/workloads/hyperqwen-real-v1-greedy.json": "7be0cfd863a1d03756c8c1f52371c41e28942dedc84b416f7b63ae6975944922",
+  "bench/workloads/long-6k-v1.json": "2907f5282c3aae44cc0643880b9c735864c125e084c516d2d74c8213e0f6c45e"
+ },
+ "parallel": 8,
+ "context_per_slot": 8192,
+ "reps": 3,
+ "engines": {
+  "zerv-f16@parallel=8,kv-type=f16,prefill-stall-ms=50": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/multiuser/zerv-9c060c90",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18098",
+    "--context",
+    "8192",
+    "--prefill-precision",
+    "f16",
+    "--spec-draft",
+    "0",
+    "--parallel",
+    "8",
+    "--kv-type",
+    "f16",
+    "--prefill-stall-ms",
+    "50"
+   ],
+   "env": {},
+   "vram_loaded": 22186749952
+  },
+  "zerv-f16@parallel=8,kv-type=f16,prefill-stall-ms=100": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/multiuser/zerv-9c060c90",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18098",
+    "--context",
+    "8192",
+    "--prefill-precision",
+    "f16",
+    "--spec-draft",
+    "0",
+    "--parallel",
+    "8",
+    "--kv-type",
+    "f16",
+    "--prefill-stall-ms",
+    "100"
+   ],
+   "env": {},
+   "vram_loaded": 22185525248
+  },
+  "zerv-f16@parallel=8,kv-type=f16,prefill-stall-ms=200": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/multiuser/zerv-9c060c90",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18098",
+    "--context",
+    "8192",
+    "--prefill-precision",
+    "f16",
+    "--spec-draft",
+    "0",
+    "--parallel",
+    "8",
+    "--kv-type",
+    "f16",
+    "--prefill-stall-ms",
+    "200"
+   ],
+   "env": {},
+   "vram_loaded": 22185525248
+  },
+  "zerv-f16@parallel=8,kv-type=f16,prefill-stall-ms=chunk,prefill-order=fifo": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/multiuser/zerv-9c060c90",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18098",
+    "--context",
+    "8192",
+    "--prefill-precision",
+    "f16",
+    "--spec-draft",
+    "0",
+    "--parallel",
+    "8",
+    "--kv-type",
+    "f16",
+    "--prefill-stall-ms",
+    "chunk",
+    "--prefill-order",
+    "fifo"
+   ],
+   "env": {},
+   "vram_loaded": 22185525248
+  }
+ },
+ "finished_at": "2026-09-25T11:38:41.841874+00:00"
+}

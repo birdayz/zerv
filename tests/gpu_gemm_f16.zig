@@ -353,6 +353,101 @@ test "f16 GEMM n16: every row bitwise equal to gemm_f16 (Q4_0, Q4_1, Q5_K; 1..40
     std.debug.print("gemm_f16n: {d} (format, rows) cases bitwise equal to gemm_f16\n", .{checked});
 }
 
+// ---- gemm_f16m (block 18c.2, --f16-small-tile): 32 x 128 tile ---------------------------
+// Spec gate (docs/specs/concurrent.md, "18c.2 design"): every valid row equals gemm_f16's
+// result bit for bit (Q4_0, Q4_1, Q5_K; one and two 128-row tiles, row tails, K 512..5120);
+// words around the output untouched.
+fn checkSmallM(comptime format: quant.Format, v: gemm.Variant, device: *gpu.Device, K: u32, plan: u32, n: u32, seed: u64) !void {
+    const width = comptime quant.blockBytes(format);
+    const elements = comptime quant.blockElements(format);
+    const row_bytes: u32 = K / @as(u32, elements) * @as(u32, width);
+    const x_base: u32 = 16;
+    const y_ref: u32 = x_base + plan * K + 16;
+    const y_m: u32 = y_ref + plan * M + 64;
+    const total: u32 = y_m + plan * M + 64;
+    var a = try gpu.Buffer.init(device, @as(u64, M) * row_bytes + 64, .host);
+    defer a.deinit() catch @panic("a");
+    var act = try gpu.Buffer.init(device, @as(u64, total) * 4, .host);
+    defer act.deinit() catch @panic("act");
+    var io = try gpu.Buffer.init(device, 1024, .host);
+    defer io.deinit() catch @panic("io");
+    var big = try gpu.Kernel.init(device, try gemm.moduleF16(v), &.{ &a, &act, &io, &act }, @sizeOf(gemm.Push));
+    defer big.deinit() catch @panic("big");
+    var small = try gpu.Kernel.init(device, try gemm.moduleF16m(v), &.{ &a, &act, &io, &act }, @sizeOf(gemm.Push));
+    defer small.deinit() catch @panic("small");
+    var cmd = try gpu.Commands.init(device);
+    defer cmd.deinit() catch @panic("cmd");
+    var prng = std.Random.DefaultPrng.init(seed);
+    const random = prng.random();
+    const wa = try a.mapped();
+    @memset(wa, 0);
+    randomBlocks(format, wa[0 .. M * row_bytes], random);
+    const words = std.mem.bytesAsSlice(f32, try act.mapped());
+    @memset(words, 12345.0);
+    for (0..plan) |r| for (0..K) |k| {
+        words[x_base + r * K + k] = if (r < n) random.floatNorm(f32) else std.math.inf(f32);
+    };
+    std.mem.bytesAsSlice(u32, try io.mapped())[2] = n;
+    const p_ref: gemm.Push = .{ .a_base = 0, .a_rs = row_bytes, .x_base = x_base, .x_rs = K, .y_base = y_ref, .y_rs = M, .m = M, .k = K };
+    var p_m = p_ref;
+    p_m.y_base = y_m;
+    const g_ref = try gemm.validateF16(v, p_ref, .{ .rows = plan }, a.size, act.size);
+    const g_m = try gemm.validateF16m(v, p_m, .{ .rows = plan }, a.size, act.size);
+    try t.expectEqual([3]u32{ M / gemm.f16m_tile_m, plan / 128, 1 }, g_m);
+    try cmd.begin();
+    try cmd.barrier(.host, .compute);
+    try cmd.dispatch(&big, std.mem.asBytes(&p_ref), g_ref);
+    try cmd.dispatch(&small, std.mem.asBytes(&p_m), g_m);
+    try cmd.barrier(.compute, .host);
+    try cmd.end();
+    try cmd.run(timeout_ns);
+    const got = std.mem.bytesAsSlice(u32, std.mem.sliceAsBytes(words[y_m..][0 .. n * M]));
+    const want = std.mem.bytesAsSlice(u32, std.mem.sliceAsBytes(words[y_ref..][0 .. n * M]));
+    for (got, want, 0..) |g, w_, i| if (g != w_) {
+        std.debug.print("gemm_f16m {s} K={d} n={d}: row {d} m {d}: 0x{x} != gemm_f16 0x{x}\n", .{ @tagName(format), K, n, i / M, i % M, g, w_ });
+        return error.NotBitwiseEqual;
+    };
+    for (words[total - 64 .. total]) |value| try t.expectEqual(@as(f32, 12345.0), value);
+    for (words[y_m - 64 .. y_m]) |value| try t.expectEqual(@as(f32, 12345.0), value);
+}
+
+test "f16 GEMM m32: every row bitwise equal to gemm_f16 (Q4_0, Q4_1, Q5_K; row tails, 1-2 tiles)" {
+    var device = (try openDevice()) orelse return error.SkipZigTest;
+    defer device.deinit() catch @panic("device");
+    try checkSmallM(.q4_0, .q4_0, &device, 5120, 128, 100, 0x18c0);
+    try checkSmallM(.q4_0, .q4_0, &device, 512, 128, 128, 0x18c1);
+    try checkSmallM(.q4_0, .q4_0, &device, 1024, 256, 200, 0x18c2);
+    try checkSmallM(.q4_1, .q4_1, &device, 512, 128, 1, 0x18c3);
+    try checkSmallM(.q4_1, .q4_1, &device, 5120, 256, 256, 0x18c4);
+    try checkSmallM(.q5_k, .q5_k, &device, 1024, 128, 77, 0x18c5);
+    try checkSmallM(.q5_k, .q5_k, &device, 5120, 256, 129, 0x18c6);
+    std.debug.print("gemm_f16m: 7 (format, K, rows) cases bitwise equal to gemm_f16\n", .{});
+}
+
+test "f16 GEMM m32: selection rule" {
+    // Short plans whose 128-tile grid leaves the device idle take the 32-row tile...
+    try t.expectEqual(gemm.F16Kernel.m32, gemm.f16KernelFor(.q4_0, 5120, 17408, 128, true).?);
+    try t.expectEqual(gemm.F16Kernel.m32, gemm.f16KernelFor(.q4_1, 8064, 5120, 128, true).?);
+    try t.expectEqual(gemm.F16Kernel.m32, gemm.f16KernelFor(.q5_k, 5120, 5120, 128, true).?);
+    // ...unless the grid is already large, the plan is long, or the knob is off.
+    try t.expectEqual(gemm.F16Kernel.x16, gemm.f16KernelFor(.q4_0, 5120, 17408, 256, true).?);
+    try t.expectEqual(gemm.F16Kernel.wave64, gemm.f16KernelFor(.q5_k, 5120, 5120, 256, true).?);
+    try t.expectEqual(gemm.F16Kernel.wave64, gemm.f16KernelFor(.q4_1, 8192, 5120, 128, true).?);
+    try t.expectEqual(gemm.F16Kernel.wave64, gemm.f16KernelFor(.q4_0, 17408, 5120, 128, true).?);
+    try t.expectEqual(gemm.F16Kernel.x16, gemm.f16KernelFor(.q4_0, 17408, 5120, 256, true).?);
+    try t.expectEqual(gemm.F16Kernel.x16, gemm.f16KernelFor(.q4_0, 5120, 17408, 512, true).?);
+    try t.expectEqual(gemm.F16Kernel.wave64, gemm.f16KernelFor(.q4_0, 5120, 17408, 128, false).?);
+    try t.expectEqual(gemm.F16Kernel.x16, gemm.f16KernelFor(.q4_0, 5120, 17408, 256, false).?);
+    try t.expect(gemm.f16KernelFor(.q6_k, 5120, 5120, 128, true) == null);
+    try t.expect(gemm.f16KernelFor(.q4_0, 5120, 5120, 96, true) == null);
+    // Validation is gemm_f16's (whole 128-row tiles, eligible shapes), grid M / 32.
+    const ok: gemm.Push = .{ .a_base = 0, .a_rs = 18 * 16, .x_base = 0, .x_rs = 512, .y_base = 1 << 20, .y_rs = M, .m = M, .k = 512 };
+    try t.expectEqual([3]u32{ M / 32, 2, 1 }, try gemm.validateF16m(.q4_0, ok, .{ .rows = 256 }, 1 << 30, 1 << 30));
+    try t.expectError(error.InvalidShape, gemm.validateF16m(.q4_0, ok, .{ .rows = 96 }, 1 << 30, 1 << 30));
+    try t.expectError(error.InvalidShape, gemm.validateF16m(.q6_k, ok, .{ .rows = 128 }, 1 << 30, 1 << 30));
+    try t.expectError(error.InvalidRange, gemm.validateF16m(.q4_0, ok, .{ .rows = 128 }, 1 << 30, (1 << 20) * 4));
+}
+
 // ---- gemm_f16x (block 16b): wave32, 128 x 256 tile, reads an f16 copy of X ----------------
 // Spec gates (docs/specs/prefill.md, "f16 GEMM, wave32 kernel with f16 X"):
 // 1. bitwise-equal to gemm_f16 (f32 X holding the same values) on random Q4_0 weights,

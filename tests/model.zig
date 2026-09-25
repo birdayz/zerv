@@ -298,7 +298,15 @@ test "slots: state arena slot strides, KV pool pages and per-slot page tables" {
     const a4 = try layout.actWith(8192, 16, 1000, false, 5, false, true, 4);
     try t.expectEqual(a1.ptab, a4.ptab);
     try t.expectEqual(@as(u32, 64), a4.ptab_words);
-    try t.expectEqual(a4.words, @as(u64, a4.ptab) + 256);
+    // Then the batch's own r/f rows (2 x decode rows x hidden), only with several slots.
+    try t.expectEqual(a4.brf.?, a4.ptab + 256);
+    try t.expectEqual(a4.words, @as(u64, a4.brf.?) + 2 * 5 * 5120);
+    try t.expect(a1.brf == null);
+    const ab = a4.batch();
+    try t.expectEqual(a4.brf.?, ab.r);
+    try t.expectEqual(a4.brf.? + 5 * 5120, ab.f);
+    try t.expectEqual(a4.h, ab.h);
+    try t.expectEqual(a1.r, a1.batch().r);
     // Batched decode without verify: the attention scratch rows, no verify slots.
     const b = try layout.actWith(8192, 16, 1000, false, 8, false, false, 4);
     try t.expect(b.spec == null);

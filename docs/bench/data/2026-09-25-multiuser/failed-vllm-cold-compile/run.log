@@ -1,0 +1,21 @@
+zerv-f16@parallel=8,kv-type=f16 steady {"level": 1, "round": 0, "errors": [], "aggregate_tok_s": 48.7, "ttft_p50_ms": 166.3, "ttft_p95_ms": 166.3, "itl_p50_ms": 20.0, "itl_p99_ms": 20.1, "itl_max_ms": 20.2, "itl_stalled_pct": 0.0, "itl_stalled_mean_ms": 0.0, "itl_excluded_requests": 0, "user_tok_s_min": 50.0, "user_tok_s_median": 50.0}
+zerv-f16@parallel=8,kv-type=f16 steady {"level": 2, "round": 0, "errors": [], "aggregate_tok_s": 88.3, "ttft_p50_ms": 312.2, "ttft_p95_ms": 371.2, "itl_p50_ms": 21.1, "itl_p99_ms": 21.4, "itl_max_ms": 128.1, "itl_stalled_pct": 0.7, "itl_stalled_mean_ms": 86.7, "itl_excluded_requests": 0, "user_tok_s_min": 45.9, "user_tok_s_median": 46.3}
+zerv-f16@parallel=8,kv-type=f16 steady {"level": 4, "round": 0, "errors": [], "aggregate_tok_s": 139.6, "ttft_p50_ms": 425.0, "ttft_p95_ms": 837.5, "itl_p50_ms": 25.3, "itl_p99_ms": 124.3, "itl_max_ms": 148.3, "itl_stalled_pct": 2.1, "itl_stalled_mean_ms": 114.3, "itl_excluded_requests": 1, "user_tok_s_min": 35.7, "user_tok_s_median": 37.4}
+zerv-f16@parallel=8,kv-type=f16 steady {"level": 8, "round": 0, "errors": [], "aggregate_tok_s": 152.0, "ttft_p50_ms": 385.1, "ttft_p95_ms": 1543.9, "itl_p50_ms": 46.0, "itl_p99_ms": 146.4, "itl_max_ms": 188.5, "itl_stalled_pct": 4.6, "itl_stalled_mean_ms": 133.7, "itl_excluded_requests": 2, "user_tok_s_min": 19.4, "user_tok_s_median": 19.8}
+zerv-f16@parallel=8,kv-type=f16 interference {"rep": 0, "errors": [], "long_prompt_tokens": 4936, "short_prompt_tokens": 280, "long_ttft_ms": 5799.7, "short_ttft_ms": 1371.0, "bg_itl_before_p50_ms": 40.9, "bg_itl_during_p50_ms": 155.5, "bg_itl_during_p99_ms": 167.9, "bg_itl_during_max_ms": 168.0, "bg_excluded_requests": 0, "bg_tokens_during": 228, "bg_tok_s_during": 39.3}
+zerv-f16@parallel=8,kv-type=f16 interference {"rep": 1, "errors": [], "long_prompt_tokens": 4936, "short_prompt_tokens": 280, "long_ttft_ms": 5779.3, "short_ttft_ms": 1369.3, "bg_itl_before_p50_ms": 40.8, "bg_itl_during_p50_ms": 158.2, "bg_itl_during_p99_ms": 168.4, "bg_itl_during_max_ms": 168.5, "bg_excluded_requests": 0, "bg_tokens_during": 229, "bg_tok_s_during": 39.6}
+zerv-f16@parallel=8,kv-type=f16 interference {"rep": 2, "errors": [], "long_prompt_tokens": 4936, "short_prompt_tokens": 280, "long_ttft_ms": 5777.0, "short_ttft_ms": 1367.6, "bg_itl_before_p50_ms": 40.8, "bg_itl_during_p50_ms": 158.3, "bg_itl_during_p99_ms": 167.9, "bg_itl_during_max_ms": 168.2, "bg_excluded_requests": 0, "bg_tokens_during": 230, "bg_tok_s_during": 39.8}
+zerv-f16@parallel=8,kv-type=f16 queue {"rep": 0, "errors": [], "queued_ttft_ms": [22604, 22264], "queued_ttft_after_first_free_ms": [625, 285], "running_itl_p50_ms": 46.0, "running_itl_p99_ms": 140.5, "running_itl_max_ms": 188.1, "running_itl_stalled_pct": 2.0, "running_itl_stalled_mean_ms": 132.1}
+zerv-f16@parallel=8,kv-type=f16 queue {"rep": 1, "errors": [], "queued_ttft_ms": [22330, 22655], "queued_ttft_after_first_free_ms": [301, 627], "running_itl_p50_ms": 46.1, "running_itl_p99_ms": 141.8, "running_itl_max_ms": 188.2, "running_itl_stalled_pct": 2.0, "running_itl_stalled_mean_ms": 132.6}
+zerv-f16@parallel=8,kv-type=f16 queue {"rep": 2, "errors": [], "queued_ttft_ms": [22301, 22580], "queued_ttft_after_first_free_ms": [343, 623], "running_itl_p50_ms": 46.0, "running_itl_p99_ms": 143.9, "running_itl_max_ms": 187.6, "running_itl_stalled_pct": 2.0, "running_itl_stalled_mean_ms": 132.2}
+Traceback (most recent call last):
+  File "/home/USER/projects/zerv/bench/run_multiuser.py", line 287, in <module>
+    main()
+    ~~~~^^
+  File "/home/USER/projects/zerv/bench/run_multiuser.py", line 252, in main
+    rs.wait_ready(a.port, proc, spec.get("ready_timeout", 600))
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/USER/projects/zerv/bench/run_serving.py", line 224, in wait_ready
+    if process.poll() is not None: raise RuntimeError("server exited during startup")
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: server exited during startup

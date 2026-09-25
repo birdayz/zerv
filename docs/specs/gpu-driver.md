@@ -14,6 +14,8 @@ Vulkan1.1/Linux x86_64 only initially; unsupported targets/capabilities fail exp
   which used one GEMM kernel per format, ~45 kernels in total. Raised to 128 again in
   block 16b: a kernel binds one weight bank, and the f16 mode's two WMMA kernels plus
   the three f16-copy producers bring it to 71 kernels on 4 banks; FP32 needs 55.
+  Command objects raised to 256 in block 18c.2: with several slots every prefill plan is
+  also recorded as 16 layer segments (80 commands for 5 plans).
   Raised in block 17b to 192 kernels and 64 command objects: speculative verification
   compiles one multi-row module per row count (5 kernels per rows pipeline), and the MTP
   draft path records a draft command per (first-pass rows, drafts), 20 at 5 rows. A

@@ -73,6 +73,15 @@ pub const Native = struct {
         return ids[0];
     }
 
+    /// Serve through `b` (--parallel > 1). The prefix cache and the speculation policy
+    /// describe the single model sequence; with several sequences they would mix users'
+    /// state, so they must be off (`error.SharedStateWithBatching`).
+    pub fn attachBatcher(self: *Native, b: *Batcher, mb: *ModelBackend) error{SharedStateWithBatching}!void {
+        if (self.cache != null or self.spec_policy != null) return error.SharedStateWithBatching;
+        self.batch = b;
+        self.batch_backend = mb;
+    }
+
     pub fn engine(self: *Native, ids: []const []const u8, defaults: api.Defaults) http.Engine {
         return .{ .context = self, .prepareFn = prepare, .generateFn = generate, .usableFn = usable, .ids = ids, .defaults = defaults };
     }
@@ -82,9 +91,10 @@ pub const Native = struct {
     fn usable(ctx: *anyopaque) bool {
         const self: *Native = @ptrCast(@alignCast(ctx));
         const device = self.model.device;
-        // With batching another sequence's command may be pending right now: the scheduler
-        // task reports a command it could not complete instead.
-        if (self.batch_backend) |mb| return !device.lost and !mb.fatal.load(.acquire);
+        // With batching the scheduler task owns the device (another sequence's command may be
+        // pending right now); it publishes a failure it cannot recover from in `fatal`, the
+        // only thing read here.
+        if (self.batch_backend) |mb| return !mb.fatal.load(.acquire);
         return !device.lost and device.pending == 0;
     }
 
@@ -212,9 +222,14 @@ pub const Native = struct {
             .spec_policy = if (self.spec_policy) |*p| p else null,
         };
         const result = if (self.batch) |b| slot: {
+            // `attachBatcher` guarantees no shared prefix cache or speculation policy here:
+            // they track one model sequence and must never see another user's tokens.
+            var sr = r;
+            sr.cache = null;
+            sr.spec_policy = null;
             const slot = try b.join();
             defer b.leave(slot);
-            break :slot try SlotGeneration.run(self.io, arena, .{ .b = b, .slot = slot, .m = self.model }, self.tokenizer, special, r, sink);
+            break :slot try SlotGeneration.run(self.io, arena, .{ .b = b, .slot = slot, .m = self.model }, self.tokenizer, special, sr, sink);
         } else try Generation.run(self.io, arena, .{ .m = self.model }, self.tokenizer, special, r, sink);
         if (self.cache != null) std.log.info("prefix cache: {s}, reused {d} of {d} prompt tokens", .{ @tagName(result.cache_outcome), result.cached_tokens, result.prompt_tokens });
         if (result.spec.verifies > 0) std.log.info("speculative: {d} of {d} verified drafts accepted ({d} drafted, {d} verifies, {d} tokens)", .{ result.spec.accepted, result.spec.verified, result.spec.drafted, result.spec.verifies, result.completion_tokens });
@@ -233,6 +248,9 @@ pub const ModelBackend = struct {
     rows: [batcher.max_slots]model.BatchRow = undefined,
     fatal: std.atomic.Value(bool) = .init(false),
 
+    pub fn checkRow(self: *ModelBackend, row: batcher.Row) !void {
+        try self.m.checkRow(.{ .slot = row.slot, .token = row.token });
+    }
     fn check(self: *ModelBackend, e: anyerror) anyerror {
         if (self.m.device.lost or self.m.device.pending != 0) self.fatal.store(true, .release);
         return e;
@@ -241,11 +259,20 @@ pub const ModelBackend = struct {
         self.m.select(slot) catch |e| return self.check(e);
         self.m.reset() catch |e| return self.check(e);
     }
+    /// One segment of a chunk when the model records them (several slots; docs/specs/
+    /// concurrent.md "18c.2 design"), else a whole chunk.
     pub fn prefillChunk(self: *ModelBackend, slot: u32, tokens: []const u32) !batcher.Chunk {
         self.m.select(slot) catch |e| return self.check(e);
+        if (self.m.live_seg > 0) {
+            const seg = self.m.prefillSegment(tokens) catch |e| return self.check(e);
+            return .{ .consumed = seg.consumed, .logits = if (seg.consumed == tokens.len) seg.logits else null };
+        }
         const c = self.m.nextChunk(@intCast(tokens.len));
         const logits = self.m.runChunk(&self.m.prefill_commands[c.plan], c.plan, tokens[0..c.rows]) catch |e| return self.check(e);
         return .{ .consumed = c.rows, .logits = if (c.rows == tokens.len) logits else null };
+    }
+    pub fn abortChunk(self: *ModelBackend) void {
+        self.m.abortChunk();
     }
     pub fn decodeBatch(self: *ModelBackend, rows: []const batcher.Row) ![]const f32 {
         for (rows, self.rows[0..rows.len]) |r, *m| m.* = .{ .slot = r.slot, .token = r.token };

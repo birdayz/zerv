@@ -91,9 +91,22 @@ pub const Options = struct {
     /// mode covers; batch-invariant within the mode). `.f16` needs `batch_rows` > 0 and a
     /// device with cooperative matrices and subgroups of 64. `step`/`verify` stay FP32.
     decode_precision: DecodePrecision = .f32,
+    /// f16 prefill mode: short plans (<= 256 rows) whose 128-row-tile grid would leave the
+    /// device idle use the 32 x 128 tile (`gemm.f16KernelFor`); bitwise the same results.
+    /// false: the previous kernels.
+    f16_small_tile: bool = true,
 };
 pub const DecodePrecision = enum { f32, f16 };
-pub const Error = gpu.Error || matvec.Error || config.Error || layout.Error || gemm.Error || error{ InvalidToken, ContextFull, TooManyPipelines, InvalidTensorBytes, CaptureFull, PrefillDisabled, ProbeFailed, InvalidPlan, UnsupportedDevice, InvalidContext, InvalidSnapshot, InsufficientVram, VerifyDisabled, VerifyPending, NoVerify, MtpDisabled, VramBudgetUnknown, InvalidDraftVocab, MtpNeedsOneSlot, InvalidBatch, InvalidSlot, PagesMissing, PageInUse };
+pub const Error = gpu.Error || matvec.Error || config.Error || layout.Error || gemm.Error || error{ InvalidToken, ContextFull, TooManyPipelines, InvalidTensorBytes, CaptureFull, PrefillDisabled, ProbeFailed, InvalidPlan, UnsupportedDevice, InvalidContext, InvalidSnapshot, InsufficientVram, VerifyDisabled, VerifyPending, NoVerify, MtpDisabled, VramBudgetUnknown, InvalidDraftVocab, MtpNeedsOneSlot, InvalidBatch, InvalidSlot, PagesMissing, PageInUse, ChunkInFlight, SlotNeedsReset };
+
+/// Segmented prefill (docs/specs/concurrent.md, "18c.2 design"): with several slots each
+/// chunk also exists as `prefill_segments` commands of `prefill_segment_layers` layers.
+pub const prefill_segment_layers = 4;
+pub const prefill_segments = config.layers / prefill_segment_layers;
+/// One `Model.prefillSegment`: `consumed` > 0 when a chunk completed (its tokens), with the
+/// last token's logits (borrowed until the next prefill or decode call).
+pub const Segment = struct { consumed: u32, logits: ?[]const f32 };
+const ChunkState = struct { plan: usize, rows: u32, first: u32, slot: u32, next: u32 };
 
 /// One row of a batched decode (`Model.decodeBatch`): a sequence slot and its next token.
 pub const BatchRow = struct { slot: u32, token: u32 };
@@ -440,6 +453,7 @@ const Layer = struct {
     b_z: RProj = .{},
     b_alpha: RProj = .{},
     b_beta: RProj = .{},
+    b_down: RProj = .{},
     // Batched decode, `decode_precision = .f16`: the WMMA projections (null: FP32 path).
     d_q: ?GProj = null,
     d_out: ?GProj = null,
@@ -622,6 +636,14 @@ pub const Model = struct {
     /// Index B (1..`options.batch_rows`): the batched decode of B rows.
     batch_commands: [layout.io.batch_max + 1]gpu.Commands = undefined,
     live_batch: u8 = 0,
+    /// Segmented prefill (several slots): [plan][segment] commands, the chunk in flight, and
+    /// whether a decode batch overwrote the io words it reads since its last segment.
+    seg_commands: [max_plans][prefill_segments]gpu.Commands = undefined,
+    live_seg: u16 = 0,
+    chunk: ?ChunkState = null,
+    io_dirty: bool = false,
+    /// A slot whose chunk was aborted mid-way (partly advanced state): only `reset` is allowed.
+    needs_reset: [layout.max_slots]bool = @splat(false),
     /// Page-table writes: one slot's table staged on the host, then copied.
     ptab_staging: gpu.Buffer = undefined,
     ptab_commands: gpu.Commands = undefined,
@@ -889,13 +911,14 @@ pub const Model = struct {
                 else if (std.mem.eql(u8, field, "attn_gate.weight")) L.d_z = try self.dprojection(s, t, place, A.h, A.z) //
                 else if (std.mem.eql(u8, field, "ffn_gate.weight")) L.d_gate = try self.dprojection(s, t, place, A.h, A.fg) //
                 else if (std.mem.eql(u8, field, "ffn_up.weight")) L.d_up = try self.dprojection(s, t, place, A.h, A.fu) //
-                else if (std.mem.eql(u8, field, "ffn_down.weight")) L.d_down = try self.dprojection(s, t, place, A.sw, A.f) //
+                else if (std.mem.eql(u8, field, "ffn_down.weight")) L.d_down = try self.dprojection(s, t, place, A.sw, A.batch().f) //
                 else if (std.mem.eql(u8, field, "ssm_out.weight")) L.d_ssm_out = try self.dprojection(s, t, place, A.fo, A.a);
             }
             if (options.batch_rows > 0) {
                 // Batched decode: linear layers' lin_in into the plain regions (rows are
                 // committed at once); the other projections share the verify ones.
-                if (std.mem.eql(u8, field, "attn_qkv.weight")) L.b_qkv = try self.rprojection(s, t, place, A.h, A.mixed) //
+                if (std.mem.eql(u8, field, "ffn_down.weight")) L.b_down = try self.rprojection(s, t, place, A.sw, A.batch().f) //
+                else if (std.mem.eql(u8, field, "attn_qkv.weight")) L.b_qkv = try self.rprojection(s, t, place, A.h, A.mixed) //
                 else if (std.mem.eql(u8, field, "attn_gate.weight")) L.b_z = try self.rprojection(s, t, place, A.h, A.z) //
                 else if (std.mem.eql(u8, field, "ssm_alpha.weight")) L.b_alpha = try self.rprojection(s, t, place, A.h, A.alpha) //
                 else if (std.mem.eql(u8, field, "ssm_beta.weight")) L.b_beta = try self.rprojection(s, t, place, A.h, A.beta_raw);
@@ -984,6 +1007,15 @@ pub const Model = struct {
             try self.recordPrefill(&self.prefill_commands[i], i, .{});
             try self.prefill_commands[i].end();
         }
+        if (self.state_layout.slots > 1 and self.rows > 0) for (0..self.plan_count) |i| for (0..prefill_segments) |g| {
+            const c = &self.seg_commands[i][g];
+            c.* = try gpu.Commands.init(device);
+            self.live_seg += 1;
+            try c.begin();
+            const first: u32 = @intCast(g * prefill_segment_layers);
+            try self.recordPrefillRange(c, i, .{}, first, first + prefill_segment_layers);
+            try c.end();
+        };
         for (1..options.verify_rows + 1) |n| {
             self.verify_commands[n] = try gpu.Commands.init(device);
             self.live_verify += 1;
@@ -1094,6 +1126,15 @@ pub const Model = struct {
                 left -= 1;
             };
             self.live_draft = 0;
+        }
+        {
+            var left = self.live_seg;
+            outer: for (&self.seg_commands) |*plan| for (plan) |*c| {
+                if (left == 0) break :outer;
+                c.deinit() catch @panic("prefill segment still pending");
+                left -= 1;
+            };
+            self.live_seg = 0;
         }
         for (self.slot_resets[0..self.live_slot_resets]) |*c| c.deinit() catch @panic("reset command still pending");
         self.live_slot_resets = 0;
@@ -1245,6 +1286,7 @@ pub const Model = struct {
         if (slot >= self.state_layout.slots) return error.InvalidSlot;
         if (self.pending_verify != 0) return error.VerifyPending;
         if (slot == self.slot) return;
+        if (self.chunk != null) return error.ChunkInFlight;
         self.slot_positions[self.slot] = self.position;
         self.slot = slot;
         self.position = self.slot_positions[slot];
@@ -1269,6 +1311,75 @@ pub const Model = struct {
         return @as(u64, self.slot) * self.state_layout.slot_words * 4;
     }
 
+    /// Segmented prefill of the current slot (docs/specs/concurrent.md, "18c.2 design"; needs
+    /// several slots): runs the next segment of the chunk in flight, or starts the next chunk
+    /// of `tokens` (the prompt tokens not yet consumed; its chunk grid is `prefill`'s) with its
+    /// first segment. Decode batches may run between segments; other slots' prefill, `select`
+    /// and single-sequence calls may not (`ChunkInFlight`).
+    pub fn prefillSegment(self: *Model, tokens: []const u32) Error!Segment {
+        if (self.live_seg == 0) return error.PrefillDisabled;
+        if (self.chunk == null) {
+            if (self.pending_verify != 0) return error.VerifyPending;
+            if (self.needs_reset[self.slot]) return error.SlotNeedsReset;
+            if (tokens.len == 0) return error.InvalidToken;
+            const c = self.nextChunk(@intCast(tokens.len));
+            const chunk = tokens[0..c.rows];
+            for (chunk) |token| if (token >= config.vocab) return error.InvalidToken;
+            if (chunk.len > self.state_layout.context - self.position) return error.ContextFull;
+            try self.ensureMapped(self.slot, @as(u64, self.position) + chunk.len);
+            const words = std.mem.bytesAsSlice(u32, try self.io.mapped());
+            words[layout.io.count] = c.rows;
+            words[layout.io.p0] = self.position;
+            @memcpy(words[layout.io.tokens..][0..chunk.len], chunk);
+            self.writeRope(words, layout.io.rope(self.rows), self.position, chunk.len);
+            self.chunk = .{ .plan = c.plan, .rows = c.rows, .first = self.position, .slot = self.slot, .next = 0 };
+            self.io_dirty = false;
+        } else if (self.io_dirty) {
+            // A decode batch wrote the count, its rows' tokens and RoPE rows 0..B-1 (the
+            // tokens are read by segment 0 only, which ran before any batch).
+            const c = self.chunk.?;
+            const words = std.mem.bytesAsSlice(u32, try self.io.mapped());
+            words[layout.io.count] = c.rows;
+            words[layout.io.p0] = c.first;
+            self.writeRope(words, layout.io.rope(self.rows), c.first, @min(c.rows, self.options.batch_rows));
+            self.io_dirty = false;
+        }
+        const c = &self.chunk.?;
+        std.debug.assert(c.slot == self.slot);
+        self.seg_commands[c.plan][c.next].run(self.options.timeout_ns) catch |e| {
+            self.abortChunk();
+            return e;
+        };
+        c.next += 1;
+        if (c.next < prefill_segments) return .{ .consumed = 0, .logits = null };
+        const rows = c.rows;
+        self.chunk = null;
+        self.position += rows;
+        const after = try self.io.mapped();
+        const floats: []align(1) const f32 = std.mem.bytesAsSlice(f32, after[layout.io.logits * 4 ..][0 .. config.vocab * 4]);
+        return .{ .consumed = rows, .logits = @alignCast(floats) };
+    }
+
+    /// Drop the chunk in flight (its generation went away). Its slot's state is partly
+    /// advanced: the slot accepts only `reset` until then.
+    pub fn abortChunk(self: *Model) void {
+        const c = self.chunk orelse return;
+        self.needs_reset[c.slot] = true;
+        self.chunk = null;
+    }
+
+    /// Whether `row` can be part of the next `decodeBatch` (every check but distinct slots),
+    /// so a caller can drop one bad row instead of failing the whole batch.
+    pub fn checkRow(self: *const Model, row: BatchRow) Error!void {
+        if (row.slot >= self.state_layout.slots) return error.InvalidSlot;
+        if (row.token >= config.vocab) return error.InvalidToken;
+        if (self.needs_reset[row.slot]) return error.SlotNeedsReset;
+        if (self.chunk) |c| if (c.slot == row.slot) return error.ChunkInFlight;
+        const pos = self.slotPosition(row.slot);
+        if (pos >= self.state_layout.context) return error.ContextFull;
+        try self.ensureMapped(row.slot, @as(u64, pos) + 1);
+    }
+
     /// Batched decode (docs/specs/concurrent.md, "18b.2 design"): one token for each row's
     /// slot (distinct slots) at that slot's position, with the single-sequence arithmetic per
     /// row. Returns rows.len logits rows (row r at [r * vocab ..], borrowed until the next
@@ -1278,14 +1389,10 @@ pub const Model = struct {
         if (self.pending_verify != 0) return error.VerifyPending;
         var seen: u64 = 0;
         for (rows) |row| {
-            if (row.slot >= self.state_layout.slots) return error.InvalidSlot;
+            try self.checkRow(row);
             const bit = @as(u64, 1) << @intCast(row.slot);
             if (seen & bit != 0) return error.InvalidBatch;
             seen |= bit;
-            if (row.token >= config.vocab) return error.InvalidToken;
-            const pos = self.slotPosition(row.slot);
-            if (pos >= self.state_layout.context) return error.ContextFull;
-            try self.ensureMapped(row.slot, @as(u64, pos) + 1);
         }
         const words = std.mem.bytesAsSlice(u32, try self.io.mapped());
         const n: u32 = @intCast(rows.len);
@@ -1298,6 +1405,8 @@ pub const Model = struct {
             self.writeRope(words, @intCast(rope + 64 * r), pos, 1);
             words[table + 4 * r ..][0..4].* = .{ pos, row.slot * self.act_layout.ptab_words, row.slot * self.state_layout.slot_words, 0 };
         }
+        // A chunk in flight reads these io words again in its next segment.
+        if (self.chunk != null) self.io_dirty = true;
         try self.batch_commands[n].run(self.options.timeout_ns);
         for (rows) |row| {
             if (row.slot == self.slot) self.position += 1 else self.slot_positions[row.slot] += 1;
@@ -1459,7 +1568,7 @@ pub const Model = struct {
         const M: u32 = @intCast(s.rows);
         const K: u32 = @intCast(s.k);
         const tile = gemm.tileFor(M, plan.rows);
-        const f16k: ?gemm.F16Kernel = if (self.options.prefill_precision == .f16) gemm.f16Kernel(v, M, K, plan.rows) else null;
+        const f16k: ?gemm.F16Kernel = if (self.options.prefill_precision == .f16) gemm.f16KernelFor(v, M, K, plan.rows, self.options.f16_small_tile) else null;
         const kind: u32 = if (f16k) |k| 1 + @as(u32, @intFromEnum(k)) else 0;
         const key: u32 = @as(u32, place.bank) | (@as(u32, @intFromEnum(v)) << 8) | (@as(u32, @intFromEnum(tile)) << 16) | (kind << 24);
         var index: ?u8 = null;
@@ -1472,6 +1581,7 @@ pub const Model = struct {
             const buffers = [_]*gpu.Buffer{ &self.banks[place.bank], &self.act, &self.io, &self.act };
             self.gemm_pipes[i] = if (f16k) |k| switch (k) {
                 .wave64 => try gpu.Kernel.init(self.device, try gemm.moduleF16(v), &buffers, @sizeOf(gemm.Push)),
+                .m32 => try gpu.Kernel.init(self.device, try gemm.moduleF16m(v), &buffers, @sizeOf(gemm.Push)),
                 .x16 => try gpu.Kernel.initWith(self.device, try gemm.moduleF16x(v), &buffers, @sizeOf(gemm.Push), .{ .subgroup_size = gemm.f16x_subgroup, .full_subgroups = true, .binary = self.f16xBinary(v) }),
             } else try gpu.Kernel.init(self.device, try gemm.module(v, tile), &buffers, @sizeOf(gemm.Push));
             self.gemm_keys[i] = key;
@@ -1485,6 +1595,10 @@ pub const Model = struct {
         if (f16k) |k| switch (k) {
             .wave64 => {
                 const groups = try gemm.validateF16(v, push, .{ .rows = plan.rows }, self.banks[place.bank].size, self.act.size);
+                return .{ .pipe = index.?, .push = push, .groups = groups, .reduce = null };
+            },
+            .m32 => {
+                const groups = try gemm.validateF16m(v, push, .{ .rows = plan.rows }, self.banks[place.bank].size, self.act.size);
                 return .{ .pipe = index.?, .push = push, .groups = groups, .reduce = null };
             },
             .x16 => {
@@ -1512,6 +1626,10 @@ pub const Model = struct {
     /// Clear recurrent and convolution state; the next step is position 0.
     pub fn reset(self: *Model) Error!void {
         self.pending_verify = 0; // an uncommitted verify is abandoned with the sequence
+        if (self.chunk) |c| if (c.slot == self.slot) {
+            self.chunk = null;
+        };
+        self.needs_reset[self.slot] = false;
         try (if (self.slot == 0) &self.reset_commands else &self.slot_resets[self.slot - 1]).run(self.options.timeout_ns);
         self.position = 0;
         self.mtp_pending = self.hpPending();
@@ -1774,6 +1892,8 @@ pub const Model = struct {
         if (chunk.len == 0 or chunk.len > self.plans[plan].rows) return error.InvalidToken;
         for (chunk) |token| if (token >= config.vocab) return error.InvalidToken;
         if (chunk.len > self.state_layout.context - self.position) return error.ContextFull;
+        if (self.needs_reset[self.slot]) return error.SlotNeedsReset;
+        if (self.chunk != null) return error.ChunkInFlight;
         try self.ensureMapped(self.slot, @as(u64, self.position) + chunk.len);
         try self.flushMtp();
         const bytes = try self.io.mapped();
@@ -1810,6 +1930,8 @@ pub const Model = struct {
         if (self.pending_verify != 0) return error.VerifyPending;
         if (token >= config.vocab) return error.InvalidToken;
         if (self.position >= self.state_layout.context) return error.ContextFull;
+        if (self.needs_reset[self.slot]) return error.SlotNeedsReset;
+        if (self.chunk != null) return error.ChunkInFlight;
         try self.ensureMapped(self.slot, @as(u64, self.position) + 1);
         const bytes = try self.io.mapped();
         const words = std.mem.bytesAsSlice(u32, bytes);
@@ -1937,8 +2059,17 @@ pub const Model = struct {
     /// Record one prefill chunk for plan `plan` (row count read from io at run time,
     /// at most `plans[plan].rows`) into `commands`.
     pub fn recordPrefill(self: *Model, commands: *gpu.Commands, plan: usize, hooks: Hooks) Error!void {
+        return self.recordPrefillRange(commands, plan, hooks, 0, config.layers);
+    }
+
+    /// Layers [first, end) of a prefill chunk: `first == 0` adds the embedding, `end ==
+    /// layers` the final norm, the output head and the MTP catch-up. A range starting at
+    /// layer il > 0 reads the chunk's rows of `A.r`/`A.f` (and the io words) as the previous
+    /// range left them (docs/specs/concurrent.md, "18c.2 design").
+    fn recordPrefillRange(self: *Model, commands: *gpu.Commands, plan: usize, hooks: Hooks, first: u32, end: u32) Error!void {
         if (self.rows == 0) return error.PrefillDisabled;
         if (plan >= self.plan_count) return error.InvalidPlan;
+        if (first >= end or end > config.layers) return error.InvalidPlan;
         const B = self.plans[plan].rows;
         const r: Rec = .{ .model = self, .c = commands, .capture = hooks.capture, .probe = hooks.probe, .plan = plan, .rows = B };
         const A = self.act_layout;
@@ -1949,10 +2080,12 @@ pub const Model = struct {
         try commands.barrier(.transfer, .compute);
         try commands.barrier(.host, .compute);
         try r.bar();
-        try r.kernel(.embed_b, EmbedBPush{ .tensor = self.embed_offset, .row_bytes = config.hidden / 32 * 18, .out = A.x, .columns = H, .tokens = layout.io.tokens, .out_rs = H }, .{ H / 256, B, 1 });
-        try r.mark(.embed, -1);
-        try r.snapRows("model.input_embed", -1, A.x, H, H, false);
-        for (0..config.layers) |index| {
+        if (first == 0) {
+            try r.kernel(.embed_b, EmbedBPush{ .tensor = self.embed_offset, .row_bytes = config.hidden / 32 * 18, .out = A.x, .columns = H, .tokens = layout.io.tokens, .out_rs = H }, .{ H / 256, B, 1 });
+            try r.mark(.embed, -1);
+            try r.snapRows("model.input_embed", -1, A.x, H, H, false);
+        }
+        for (first..end) |index| {
             const il: u32 = @intCast(index);
             const L = &self.layers[il];
             const li: i32 = @intCast(il);
@@ -2049,6 +2182,7 @@ pub const Model = struct {
             try r.snapRows("ffn_out", li, A.f, H, H, false);
         }
         try r.bar();
+        if (end < config.layers) return;
         if (A.mtp) |M| {
             // MTP catch-up input: the final norm of every row into hrows rows 1.. (the head
             // needs only the last).
@@ -2325,7 +2459,9 @@ pub const Model = struct {
     /// state. Logits go to rows 0..n-1 of `verify_logits`.
     fn recordBatch(self: *Model, commands: *gpu.Commands, n: u32) Error!void {
         const r: Rec = .{ .model = self, .c = commands, .capture = null, .probe = null, .rows = n };
-        const A = self.act_layout;
+        // With several slots `r` and `f` are the batch's own rows: a prefill chunk may be
+        // between two segments (docs/specs/concurrent.md, "18c.2 design").
+        const A = self.act_layout.batch();
         const S = self.state_layout;
         const eps = self.hyper.eps;
         const H: u32 = config.hidden;
@@ -2405,7 +2541,7 @@ pub const Model = struct {
                 try r.kernel(.swiglu, SwigluPush{ .g = A.fg, .u = A.fu, .y = A.sw, .n = config.ffn * n }, .{ config.ffn * n / 128, 1, 1 });
             }
             try r.bar();
-            try r.dproj(L.d_down, L.r_down);
+            try r.dproj(L.d_down, L.b_down);
             try r.dreduce(&.{L.d_down});
         }
         try r.bar();

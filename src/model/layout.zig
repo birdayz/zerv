@@ -89,6 +89,11 @@ pub const Act = struct {
     /// at `ptab + s * ptab_words` (docs/specs/concurrent.md).
     ptab: u32,
     ptab_words: u32,
+    /// With more than one slot: the batched decode's own residual rows (`r` then `f`,
+    /// `decode_rows` rows of `hidden` words each), so a decode step between the segments of
+    /// a prefill chunk never writes the chunk's live `r`/`f` rows (docs/specs/concurrent.md,
+    /// "18c.2 design"). Null with one slot.
+    brf: ?u32,
     /// Speculative verification (block 17b, docs/specs/speculative.md): rows of the decode
     /// attention scratch (`amax/apart/asum`, 1 without speculation) and the per-linear-layer
     /// input slots (`spec`, null without speculation; see `specSlot`).
@@ -101,6 +106,17 @@ pub const Act = struct {
 
     /// Linear layer `li`'s verify slot: lin_in outputs and conv outputs for `decode_rows`
     /// rows, kept until the commit pass (row strides as the decode kernels use them).
+    /// The layout the batched decode records against: this one, with `r` and `f` in `brf`
+    /// when it exists.
+    pub fn batch(self: Act) Act {
+        var b = self;
+        if (self.brf) |base| {
+            b.r = base;
+            b.f = base + self.decode_rows * config.hidden;
+        }
+        return b;
+    }
+
     pub fn specSlot(self: Act, li: u32) SpecSlot {
         const r: u32 = self.decode_rows;
         const base = self.spec.? + li * r * spec_slot_row_words;
@@ -364,6 +380,11 @@ pub fn actWith(context: u32, rows: u32, part_words: u64, x16: bool, decode_rows:
     result.ptab = @intCast(at);
     result.ptab_words = ptabWords(context);
     at += std.mem.alignForward(u64, @as(u64, ptabWords(context)) * slots, 64);
+    result.brf = null;
+    if (slots > 1) {
+        result.brf = @intCast(at);
+        at += std.mem.alignForward(u64, 2 * @as(u64, decode_rows) * config.hidden, 64);
+    }
     result.x16 = null;
     if (x16) {
         result.x16 = @intCast(at);

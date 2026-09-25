@@ -8,15 +8,23 @@
 //!
 //! Scheduling: a batch runs when steps are pending, no row of the previous batch is still
 //! held, and every decoding slot has submitted or `gather` has passed since the last hold
-//! was released (a slow client never holds the GPU). When a prefill chunk and a batch are
-//! both ready they alternate.
+//! was released (a slow client never holds the GPU). Prefill runs in units the backend
+//! defines (a chunk, or one segment of a chunk; docs/specs/concurrent.md "18c.2 design").
+//! When both are ready, `stall` decides: a batch preempts once `stall.ns` have passed since
+//! the last batch ended (at a unit boundary), or, with `.chunk`, only between chunks
+//! (alternating). A chunk in flight is finished before another prompt starts; between
+//! chunks the next prompt is the one with the fewest remaining tokens (`order`).
 const std = @import("std");
 
 pub const max_slots = 64;
 pub const Row = struct { slot: u32, token: u32 };
-/// A prefill chunk: `consumed` (>= 1) tokens processed; the last token's logits when it
-/// consumed all of them.
+/// A prefill unit: `consumed` tokens processed (0: a segment of a chunk still in flight);
+/// the last token's logits when it consumed all of them.
 pub const Chunk = struct { consumed: usize, logits: ?[]const f32 };
+/// When a waiting decode step preempts a prefill: `ns` after the last batch ended, at the
+/// next prefill unit boundary; `chunk`: only between chunks, alternating with them.
+pub const Stall = union(enum) { chunk, ns: u64 };
+pub const Order = enum { shortest, fifo };
 
 pub const Stats = struct {
     batches: u64 = 0,
@@ -32,12 +40,25 @@ pub const Stats = struct {
     last_ns: i96 = 0,
     /// Batches by row count (index = rows, up to `max_slots`).
     sizes: [max_slots + 1]u64 = @splat(0),
+    /// Prefill units (segments) run, batches run inside a chunk, aborted chunks.
+    prefill_units: u64 = 0,
+    batches_in_chunk: u64 = 0,
+    aborted_chunks: u64 = 0,
 };
 
 /// `Backend` is called by the scheduler task only, never concurrently:
 ///   reset(slot: u32) !void
-///   prefillChunk(slot: u32, tokens: []const u32) !Chunk
+///   prefillChunk(slot: u32, tokens: []const u32) !Chunk   (one unit; while it returns
+///       consumed 0 the next calls continue that chunk, with the remaining tokens)
+///   abortChunk() void   (drop the chunk in flight; its slot is reset before reuse)
+///   checkRow(row: Row) !void   (can this row run now? a failing row gets its own error,
+///       the other rows of the batch run)
 ///   decodeBatch(rows: []const Row) ![]const f32   (rows.len logits rows of `vocab` floats)
+///
+/// Ownership: an operation's `tokens` belong to the generation that submitted it and are
+/// read only while it waits in `submit`; a canceled waiter whose operation is running waits
+/// until the running unit ends (the operation is then dropped), so nothing reads its tokens
+/// after `submit` returns.
 pub fn Batcher(comptime Backend: type) type {
     return struct {
         const Self = @This();
@@ -45,6 +66,8 @@ pub fn Batcher(comptime Backend: type) type {
             slots: u32,
             vocab: usize,
             gather: std.Io.Duration = .fromMilliseconds(2),
+            stall: Stall = .chunk,
+            order: Order = .fifo,
         };
         const Op = enum { none, reset, prefill, step };
         const Hold = enum { none, row, prefill };
@@ -56,6 +79,8 @@ pub fn Batcher(comptime Backend: type) type {
             decoding: bool = false,
             op: Op = .none,
             running: bool = false,
+            /// Its waiter was canceled while the operation ran: drop it after the running unit.
+            canceled: bool = false,
             order: u64 = 0,
             tokens: []const u32 = &.{},
             done: usize = 0,
@@ -81,6 +106,9 @@ pub fn Batcher(comptime Backend: type) type {
         released_ns: i96 = 0,
         arrivals: u64 = 0,
         last_batch: bool = false,
+        last_batch_end: i96 = 0,
+        /// Slot whose chunk is in flight (between prefill units).
+        in_chunk: ?u32 = null,
         stats: Stats = .{},
 
         pub fn init(io: std.Io, backend: Backend, options: Options) error{InvalidSlots}!Self {
@@ -152,6 +180,7 @@ pub fn Batcher(comptime Backend: type) type {
             }
             self.release(s); // a new operation implies the previous logits were consumed
             s.op = op;
+            s.canceled = false;
             s.tokens = tokens;
             s.done = 0;
             s.token = token;
@@ -167,7 +196,10 @@ pub fn Batcher(comptime Backend: type) type {
             self.mutex.unlock(self.io);
             while (s.status.load(.acquire) == ticket) {
                 self.io.futexWait(u32, &s.status.raw, ticket) catch |e| {
-                    self.withdraw(s);
+                    if (self.withdraw(s)) return e;
+                    // Running: the scheduler may be reading `tokens`; it drops the
+                    // operation when the unit ends (one prefill segment or one batch).
+                    while (s.status.load(.acquire) == ticket) self.io.futexWaitUncancelable(u32, &s.status.raw, ticket);
                     return e;
                 };
             }
@@ -175,11 +207,17 @@ pub fn Batcher(comptime Backend: type) type {
             return s.result;
         }
 
-        /// A canceled waiter: an operation not yet taken is dropped.
-        fn withdraw(self: *Self, s: *Slot) void {
+        /// A canceled waiter: an operation not yet taken is dropped (true); a running one is
+        /// marked, and the scheduler completes it as canceled when the unit ends (false).
+        fn withdraw(self: *Self, s: *Slot) bool {
             self.mutex.lockUncancelable(self.io);
             defer self.mutex.unlock(self.io);
-            if (!s.running) s.op = .none;
+            if (!s.running) {
+                s.op = .none;
+                return true;
+            }
+            s.canceled = true;
+            return false;
         }
 
         fn release(self: *Self, s: *Slot) void {
@@ -201,6 +239,15 @@ pub fn Batcher(comptime Backend: type) type {
             s.op = .none;
             s.hold = .none;
             s.tokens = &.{};
+        }
+
+        /// Prefill order between chunks: resets first (they are cheap), then the fewest
+        /// remaining tokens (`.shortest`) or arrival (`.fifo`); ties by arrival.
+        fn before(self: *const Self, a: *const Slot, b: *const Slot) bool {
+            const ka: usize = if (a.op == .reset or self.options.order == .fifo) 0 else a.tokens.len - a.done;
+            const kb: usize = if (b.op == .reset or self.options.order == .fifo) 0 else b.tokens.len - b.done;
+            if (ka != kb) return ka < kb;
+            return a.order < b.order;
         }
 
         fn now(self: *Self) i96 {
@@ -238,14 +285,25 @@ pub fn Batcher(comptime Backend: type) type {
                     return;
                 }
                 const seen = self.wake.load(.acquire);
-                var pre: ?u32 = null;
+                if (self.in_chunk) |ic| {
+                    const s = &self.slot[ic];
+                    if (!s.used or s.closing or s.op != .prefill) {
+                        // Its generation went away between two units: drop the chunk.
+                        self.in_chunk = null;
+                        self.stats.aborted_chunks += 1;
+                        self.mutex.unlock(self.io);
+                        self.backend.abortChunk();
+                        continue;
+                    }
+                }
+                var pre: ?u32 = self.in_chunk;
                 var n_steps: u32 = 0;
                 var n_decoding: u32 = 0;
                 for (self.slot[0..self.options.slots], 0..) |*s, i| {
                     if (!s.used or s.closing) continue;
                     if (s.decoding) n_decoding += 1;
                     switch (s.op) {
-                        .reset, .prefill => if (pre == null or s.order < self.slot[pre.?].order) {
+                        .reset, .prefill => if (self.in_chunk == null and (pre == null or self.before(s, &self.slot[pre.?]))) {
                             pre = @intCast(i);
                         },
                         .step => n_steps += 1,
@@ -266,7 +324,11 @@ pub fn Batcher(comptime Backend: type) type {
                     self.io.futexWaitTimeout(u32, &self.wake.raw, seen, timeout) catch {};
                     continue;
                 }
-                if (batch_ready and (!prefill_ready or !self.last_batch)) {
+                const preempt = switch (self.options.stall) {
+                    .chunk => self.in_chunk == null,
+                    .ns => |ns| std.Io.Clock.awake.now(self.io).nanoseconds - self.last_batch_end >= ns,
+                };
+                if (batch_ready and (!prefill_ready or (!self.last_batch and preempt))) {
                     var n: usize = 0;
                     for (self.slot[0..self.options.slots], 0..) |*s, i| if (s.used and !s.closing and s.op == .step) {
                         rows[n] = .{ .slot = @intCast(i), .token = s.token };
@@ -278,20 +340,36 @@ pub fn Batcher(comptime Backend: type) type {
                     if (n < n_decoding) self.stats.partial_batches += 1;
                     self.last_batch = true;
                     self.stats.sizes[n] += 1;
+                    if (self.in_chunk != null) self.stats.batches_in_chunk += 1;
                     self.mutex.unlock(self.io);
+                    // A row that cannot run fails alone; the others still run.
+                    var good: [max_slots]Row = undefined;
+                    var index: [max_slots]?usize = @splat(null);
+                    var bad: [max_slots]anyerror = undefined;
+                    var k: usize = 0;
+                    for (rows[0..n], 0..) |row, r| {
+                        if (self.backend.checkRow(row)) |_| {
+                            good[k] = row;
+                            index[r] = k;
+                            k += 1;
+                        } else |e| bad[r] = e;
+                    }
                     const t0 = self.now();
-                    const out = self.backend.decodeBatch(rows[0..n]);
+                    const out: anyerror![]const f32 = if (k > 0) self.backend.decodeBatch(good[0..k]) else &[_]f32{};
                     const t1 = self.now();
                     self.mutex.lockUncancelable(self.io);
                     self.account(&self.stats.batch_ns, t0, t1);
+                    self.last_batch_end = t1;
                     for (rows[0..n], 0..) |row, r| {
                         const s = &self.slot[row.slot];
                         s.op = .none;
-                        if (out) |logits| {
-                            s.result = logits[r * self.options.vocab ..][0..self.options.vocab];
-                            s.hold = .row;
-                            self.held_rows += 1;
-                        } else |e| s.err = e;
+                        if (index[r]) |g| {
+                            if (out) |logits| {
+                                s.result = logits[g * self.options.vocab ..][0..self.options.vocab];
+                                s.hold = .row;
+                                self.held_rows += 1;
+                            } else |e| s.err = e;
+                        } else s.err = bad[r];
                         self.complete(s);
                     }
                 } else {
@@ -313,8 +391,10 @@ pub fn Batcher(comptime Backend: type) type {
                         const t1 = self.now();
                         self.mutex.lockUncancelable(self.io);
                         self.account(&self.stats.prefill_ns, t0, t1);
-                        self.stats.prefill_chunks += 1;
+                        self.stats.prefill_units += 1;
                         if (out) |chunk| {
+                            if (chunk.consumed > 0) self.stats.prefill_chunks += 1;
+                            self.in_chunk = if (chunk.consumed == 0) pre.? else null;
                             s.done += chunk.consumed;
                             if (s.done == s.tokens.len) {
                                 s.op = .none;
@@ -325,16 +405,23 @@ pub fn Batcher(comptime Backend: type) type {
                                     s.decoding = true;
                                 }
                                 self.complete(s);
-                            } else if (chunk.consumed == 0 or s.done > s.tokens.len) {
+                            } else if (s.done > s.tokens.len) {
                                 s.op = .none;
                                 s.err = error.InvalidChunk;
                                 self.complete(s);
+                            } else if (s.canceled or s.closing) {
+                                // Its generation is gone: drop the prompt (a chunk in flight is
+                                // aborted by the next loop).
+                                s.op = .none;
+                                s.err = error.Canceled;
+                                self.complete(s);
                             } else {
-                                // More chunks: the operation stays queued (still the oldest).
+                                // More units: the operation stays queued.
                                 s.running = false;
-                                if (s.closing) self.complete(s);
                             }
                         } else |e| {
+                            // A failed unit leaves no chunk in flight (the backend drops it).
+                            self.in_chunk = null;
                             s.op = .none;
                             s.err = e;
                             self.complete(s);

@@ -33,6 +33,8 @@ def main():
                    help="prefill projection arithmetic passed to the capture tool (f16: block 14; not gated by the FP32 bounds)")
     p.add_argument("--gemm-code", choices=("spirv", "native"), default="spirv",
                    help="f16 gemm_f16x machine code (docs/specs/prefill.md, 'Native gemm_f16x machine code')")
+    p.add_argument("--f16-small-tile", choices=("on", "off"), default="on",
+                   help="f16 32-row tile for short plans (Options.f16_small_tile, block 18c.2; bitwise the 128-row tile)")
     p.add_argument("--tool", type=Path,
                    help="archived zerv-model-capture binary (e.g. a previous work dir's copy) run instead of rebuilding; "
                         "for baseline reruns (the manifest's source hashes then describe the tree, not the tool)")
@@ -70,7 +72,7 @@ def main():
             ctx = str(a.context) + (f":{a.kv_capacity_mib}" if a.kv_capacity_mib else "") + (f"@{a.kv_type}" if a.kv_type != "f32" else "") + (f"@{a.matvec_accumulation}" if a.matvec_accumulation != "fma" else "") + (f"@page={a.kv_page_tokens}" if a.kv_page_tokens != "128" else "")
             cmd = [str(tool), str(a.model), str(d/"tokens.json"), str(d/"names.txt"), str(d), ctx]
             # Capture MiB: all intermediates are ~34.5 MB per row (host-visible buffer).
-            if mode > 0: cmd += [mode_arg, "3000" if mode >= 256 else str(max(1800, 36*mode))] + ([a.precision + (f"@{a.gemm_code}" if a.gemm_code != "spirv" else "")] if a.precision != "fp32" else [])
+            if mode > 0: cmd += [mode_arg, "3000" if mode >= 256 else str(max(1800, 36*mode))] + ([a.precision + (f"@{a.gemm_code}" if a.gemm_code != "spirv" else "") + ("@small=off" if a.f16_small_tile == "off" else "")] if a.precision != "fp32" else [])
             manifest["commands"].append(cmd)
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
             (d/"stderr.txt").write_text(r.stderr)

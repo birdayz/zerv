@@ -24,6 +24,15 @@
 #define BN 16
 #define WM 32
 #define WN 16
+// SMALLM (block 18c.2, short prompts): a 32 (M) x 128 (rows) tile, 4 subgroups of 32 x 32
+// along the rows, so a 5120-wide projection has 160 workgroups per 128 rows instead of 40.
+// Each output element is the same WMMA chain in the same k order: bitwise the 128 x 128
+// tile's result.
+#elif SMALLM
+#define BM 32
+#define BN 128
+#define WM 32
+#define WN 32
 #else
 #define BM 128
 #define BN 128
@@ -112,6 +121,8 @@ void main() {
     if (t0>=n) return; // uniform per workgroup
 #if SMALLN
     uint wave=gl_SubgroupID, wm=wave, wn=0u;
+#elif SMALLM
+    uint wave=gl_SubgroupID, wm=0u, wn=wave;
 #else
     uint wave=gl_SubgroupID, wm=wave%2u, wn=wave/2u;
 #endif
@@ -124,7 +135,11 @@ void main() {
 #else
     for (uint k0=0u;k0<p.k;k0+=BK) {
 #endif
+#if SMALLM
+        if (tid<BM*2u) load_a(tid/2u, tid%2u, k0); // 32 rows, two halves each
+#else
         load_a(tid/2u, tid%2u, k0);
+#endif
         // X: BN rows x 32 k, 8 values per thread and pass, rounded to f16.
 #if SMALLN
         if (tid<BN*4u) {

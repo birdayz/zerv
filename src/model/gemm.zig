@@ -135,6 +135,8 @@ pub const F16Kernel = enum {
     /// gemm_f16x.comp (block 16b): wave32 (required size, full subgroups), 128 x 256
     /// tile, BK 64; reads the producer's f16 copy of X (x_base / x_rs in halves).
     x16,
+    /// gemm_f16.comp -DSMALLM (block 18c.2): 32 x 128 tile, bitwise `.wave64`.
+    m32,
 };
 pub const f16x_tile_m = 128;
 pub const f16x_tile_n = 256;
@@ -230,6 +232,48 @@ pub fn validateF16(v: Variant, p: Push, lim: Limits, a_bytes: u64, act_bytes: u6
     if (y_end * 4 > act_bytes) return error.InvalidRange;
     if (v == .q5_k and p.a_bs % 16 != 0) return error.InvalidShape;
     return .{ p.m / f16_tile_m, lim.rows / f16_tile_n, grid[2] };
+}
+
+/// Short-prompt tile of the f16 mode (block 18c.2): gemm_f16.comp -DSMALLM, 32 (M) x 128
+/// (rows). Per output element the same arithmetic as `moduleF16` (bitwise); 4x the
+/// workgroups of the 128 x 128 tile, for plans whose grid would leave the device idle.
+pub const f16m_tile_m = 32;
+/// Plans up to this many rows use the 32-row tile when the 128-tile grid (M / 128 x rows /
+/// tile rows) has fewer than `f16m_grid` workgroups (`Options.f16_small_tile`). Measured on
+/// the RDNA3 target (docs/bench/2026-09-25-multiuser.md): 40 workgroups gain, 80+ lose; at
+/// 256 rows the wave32 `.x16` kernel beats it.
+pub const f16m_max_rows = 128;
+pub const f16m_grid = 64;
+
+pub fn moduleF16m(v: Variant) Error![]align(4) const u8 {
+    const M = struct {
+        const q4_0 align(4) = @embedFile("shaders/gemm_f16m_q4_0.spv").*;
+        const q4_1 align(4) = @embedFile("shaders/gemm_f16m_q4_1.spv").*;
+        const q5_k align(4) = @embedFile("shaders/gemm_f16m_q5_k.spv").*;
+    };
+    return switch (v) {
+        .q4_0 => &M.q4_0,
+        .q4_1 => &M.q4_1,
+        .q5_k => &M.q5_k,
+        else => error.InvalidShape,
+    };
+}
+
+/// Checks a 32 x 128 f16 dispatch: the f16 mode's projections (`f16Eligible`), no split-K.
+/// Returns the grid.
+pub fn validateF16m(v: Variant, p: Push, lim: Limits, a_bytes: u64, act_bytes: u64) Error![3]u32 {
+    const grid = try validateF16(v, p, lim, a_bytes, act_bytes);
+    return .{ p.m / f16m_tile_m, grid[1], grid[2] };
+}
+
+/// The f16-mode kernel with the short-prompt rule applied: `small_tile` and a plan of at
+/// most `f16m_max_rows` rows whose kernel's grid is below `f16m_grid` take `.m32`.
+pub fn f16KernelFor(v: Variant, M: u32, K: u32, plan_rows: u32, small_tile: bool) ?F16Kernel {
+    const k = f16Kernel(v, M, K, plan_rows) orelse return null;
+    if (!small_tile or plan_rows > f16m_max_rows) return k;
+    const tile_n: u32 = if (k == .x16) f16x_tile_n else f16_tile_n;
+    if ((M / f16_tile_m) * (plan_rows / tile_n) >= f16m_grid) return k;
+    return .m32;
 }
 
 /// Batched decode in the f16 mode (`--decode-precision f16`, docs/specs/concurrent.md "18e

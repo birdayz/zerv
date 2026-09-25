@@ -35,6 +35,36 @@ def vram_used():
     return None
 
 
+# vLLM competitor (docs/bench/2026-09-25-vllm.md): the project's official ROCm image, pinned by
+# digest (v0.30.0, built for gfx1100), and RedHatAI's W4A16 checkpoint (vLLM's own quantization
+# org; not the GGUF's weights: speed comparisons only, quality separately). Downloads were
+# hash-verified and malware-scanned before first use.
+VLLM_IMAGE = "vllm/vllm-openai-rocm@sha256:2e7da1ad1c66836802072588adea75f9f4991da5f9545b4318e91d422c22ce6a"
+VLLM_MODEL = ROOT/"models/RedHatAI/Qwen3.8-27B-INT4/c063053e004e9783631651df95cf55d0bbf88b32"
+VLLM_CACHE = ROOT/"third_party/vllm/cache"
+
+
+def vllm_engine(port, context, extra=()):
+    """`docker run` of vLLM with the GPU device nodes and nothing else: unprivileged user, no
+    capabilities, no new privileges, weights and template read-only, compile caches in
+    third_party/vllm/cache, the API on 127.0.0.1 only, no telemetry and no Hub access. Same
+    chat template file as llama-server (byte-identical to the checkpoint's). `--max-num-seqs`
+    and `--max-model-len` are the concurrency and per-request context (run_multiuser sets
+    them); prefix caching is off (cold prefill, like the other engines' runs)."""
+    name = f"zerv-bench-vllm-{port}"
+    VLLM_CACHE.mkdir(parents=True, exist_ok=True)
+    cmd = ["docker", "run", "--rm", "--name", name, "--user", f"{os.getuid()}:{os.getgid()}", "--device", "/dev/kfd", "--device", "/dev/dri/renderD128",
+           "--security-opt", "no-new-privileges", "--cap-drop", "ALL", "--shm-size", "16g", "-p", f"127.0.0.1:{port}:{port}",
+           "-v", f"{VLLM_MODEL}:/model:ro", "-v", f"{TEMPLATE}:/template.jinja:ro", "-v", f"{VLLM_CACHE}:/cache",
+           "-e", "HOME=/cache", "-e", "USER=bench", "-e", "LOGNAME=bench", "-e", "HF_HOME=/cache/hf", "-e", "HF_HUB_OFFLINE=1", "-e", "TRANSFORMERS_OFFLINE=1",
+           "-e", "VLLM_NO_USAGE_STATS=1", "-e", "DO_NOT_TRACK=1", VLLM_IMAGE,
+           "/model", "--served-model-name", "qwen3.8-27b", "--host", "0.0.0.0", "--port", str(port),
+           "--max-model-len", str(context), "--max-num-seqs", "1", "--gpu-memory-utilization", "0.95",
+           "--chat-template", "/template.jinja", "--limit-mm-per-prompt", '{"image":0,"video":0}', "--reasoning-parser", "qwen3",
+           "--no-enable-prefix-caching", *extra]
+    return dict(cmd=cmd, env={}, stop=["docker", "rm", "-f", name], ready_timeout=1800)
+
+
 def engines(model, port, context, zerv_binary):
     common = [LLAMA_SERVER, "-m", str(model), "--host", "127.0.0.1", "--port", str(port), "-c", str(context), "-np", "1", "-ngl", "99",
               "--spec-type", "none", "--no-context-shift", "--no-webui", "--jinja", "--chat-template-file", str(TEMPLATE),
@@ -54,6 +84,12 @@ def engines(model, port, context, zerv_binary):
            for n in (1, 2, 3, 4)},
         # Best observed llama.cpp Vulkan configuration family (tuned below by the sweep).
         "llama-fa-ub512": dict(cmd=common+["-fa", "on", "-b", "2048", "-ub", "512"], env={}),
+        # Smaller prompt batch per server step: less stall for running requests (multi-user).
+        "llama-fa-b512": dict(cmd=common+["-fa", "on", "-b", "512", "-ub", "512"], env={}),
+        "vllm": vllm_engine(port, context),
+        "vllm-mtp3": vllm_engine(port, context, ["--speculative-config", '{"method":"mtp","num_speculative_tokens":3}']),
+        # Prefill chunks of 512 tokens (default 2048): shorter stalls for running requests.
+        "vllm-b512": vllm_engine(port, context, ["--max-num-batched-tokens", "512"]),
         "llama-fa-ub256": dict(cmd=common+["-fa", "on", "-b", "2048", "-ub", "256"], env={}),
         "llama-nofa-ub512": dict(cmd=common+["-fa", "off", "-b", "2048", "-ub", "512"], env={}),
         # Precision ladder (block 14 research; the pipelines used are logged via GGML_VK_PIPELINE_STATS):
@@ -141,7 +177,7 @@ def stream_request(port, body, stall_s=None, limit_s=None):
             if j.get("timings"): timings = j["timings"]
             for ch in j.get("choices", []):
                 d = ch.get("delta", {})
-                r, c = d.get("reasoning_content") or "", d.get("content") or ""
+                r, c = d.get("reasoning_content") or d.get("reasoning") or "", d.get("content") or ""  # vLLM >= 0.11 streams `reasoning`
                 if r or c:
                     now = time.perf_counter()
                     first = first or now
@@ -252,7 +288,7 @@ def main():
                 time.sleep(0.05)
         poller = threading.Thread(target=poll); poller.start()
         try:
-            wait_ready(a.port, proc)
+            wait_ready(a.port, proc, spec.get("ready_timeout", 600))
             load_s = time.perf_counter()-t0
             loaded_vram = vram_used()
             # Warmup: one short request per case.
@@ -293,6 +329,7 @@ def main():
             proc.send_signal(signal.SIGINT)
             try: proc.wait(timeout=60)
             except subprocess.TimeoutExpired: proc.kill(); proc.wait()
+            if spec.get("stop"): subprocess.run(spec["stop"], capture_output=True)
             log.close()
             time.sleep(3)
     raw.close()

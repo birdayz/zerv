@@ -1,36 +1,88 @@
 # zerv
 
-A general-purpose model-serving engine in Zig, built from scratch for maximum
-performance and explicit control over resource use. No C++ dependencies.
+LLM inference server in Zig, written from scratch: GGUF loader, tokenizer, chat template,
+Vulkan layer, GPU kernels (GLSL, plus hand-written RDNA3 machine code for the prefill GEMM),
+KV and recurrent-state management, sampler, scheduler and HTTP. No C++ dependencies. It serves
+OpenAI-compatible `POST /v1/chat/completions`, streaming or not.
 
-First performance target: **Qwen3.8-27B on an AMD RX 7900 XTX, 24 GB VRAM**.
+Target: Qwen3.8-27B Q4_0 on one RX 7900 XTX (24 GB). The goal is the fastest correct
+server for that pair. Nothing else is supported yet.
 
-**Status:** independently validated native Q4_0/Q8_0/Q4_1/Q5_K/Q6_K CPU decoding, bounded GGUF
-loading of the SHA-verified Qwen3.8 artifact, official text-only chat rendering and
-Unicode-9 NFC and complete Qwen BPE tokenization/raw decoding, with repeatable
-component benchmarks and an actual llama-server tokenizer comparison. Native Vulkan
-memory/transfers/compute dispatch now pass independent hardware checks and repeated
-matched driver benchmarks. Native GPU packed-weight projections now pass independent
-checks across all complete dense model shapes, with repeatable benchmarks that
-retain performance losses. The [matvec DFS](docs/bench/2026-09-22-matvec-optimization.md)
-improves the full Q6 projection by ~4.6× over our scalar baseline, with unchanged
-numerical gates and repeated reference comparisons. An external Vulkan oracle
-served a real request. **zerv now runs Qwen3.8-27B natively** (`zig build server`,
-then `zig-out/bin/zerv --model PATH`) and serves `POST /v1/chat/completions`;
-outputs match llama.cpp under greedy decoding. With batched FP32 prefill
-([report](docs/bench/2026-09-22-prefill.md)), split-K decode attention
-([report](docs/bench/2026-09-22-decode-attention.md)) and small-row prefill plans
-([report](docs/bench/2026-09-22-small-prefill.md)) and a scalar-X FP32 GEMM
-([report](docs/bench/2026-09-22-gemm-throughput.md)), zerv decodes faster than tuned
-llama-server at every measured context length and has lower TTFT up to ~100 prompt
-tokens (102 vs 162 ms at 23 tokens). It is not yet the faster server overall: prompts of
-~0.8–3.2K tokens take 1.7–2.3× longer than llama-server's default (Q8_1 activation)
-prompt path, though less than its fully FP32 path.
+## Build and run
 
-[Development and test commands](docs/development.md).
-[Matched tokenizer timings and verified optimizations](docs/bench/2026-09-22-tokenizer-matched.md)
-include an audited libllama comparison, allocation control and retained regressions.
+```sh
+zig build server -Doptimize=ReleaseFast -Dcpu=native     # Zig 0.16.0, see docs/development.md
+zig-out/bin/zerv --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --prefill-precision f16
+zig-out/bin/zerv --model ... --prefill-precision f16 --parallel 8 --kv-type f16   # 8 users at once
+```
 
-- [Controlled one-block-at-a-time work queue](TODO.md)
+`zerv` without arguments prints every option. Speed knobs that change kernels or scheduling
+keep the previous behaviour selectable.
+
+## Correctness
+
+- Checked against an FP64 reference and llama.cpp captures: intermediate tensors, logits and
+  greedy tokens ([verification](docs/specs/verification.md)).
+- Speculative decoding (MTP) is lossless: the output is identical to plain decoding, greedy
+  or sampled.
+- With `--parallel N`, every response is byte-identical to serving it alone, whatever the
+  load. llama-server `-np 8` gave 3–5 different greedy outputs per prompt depending on load.
+
+## Numbers
+
+Hardware: RX 7900 XTX with Mesa 26.2.3 (RADV). The competitor is llama-server build 10964
+(Vulkan, `-fa on -b 2048 -ub 512`) on the same GGUF, same machine and same session. Every
+number links to a report with commands, hashes and raw data.
+
+### One user
+
+| | zerv | llama-server |
+| --- | --- | --- |
+| TTFT, 23 / 836 / 3,223 prompt tokens | 75 ms / 0.71 s / 2.49 s | 166 ms / 1.21 s / 3.40 s |
+| TTFT, 12,034 prompt tokens | 10.1 s | 12.3 s |
+| decode, no speculation | 48 tok/s | 41 tok/s |
+| decode with MTP, best config of each (code / json / think / prose) | 110 / 114 / 99 / 74 tok/s | 106 / 109 / 91 / 63 tok/s |
+
+TTFT: [report](docs/bench/2026-09-24-gemm-f16x-isa.md) (zerv with `--prefill-precision f16`).
+Decode: [report](docs/bench/2026-09-24-speculative.md).
+
+### Several users, 8 slots
+
+The competitors are vLLM 0.30.0 (official ROCm image, RedHatAI W4A16 checkpoint, FP8 KV cache)
+and llama-server (same GGUF as zerv). All run cold (no prompt cache), interleaved in 2 rounds.
+Competitor cells show each one's best configuration per metric (vLLM prefill chunk 2048 or 512,
+llama `-b 2048` or `-b 512`), and vLLM's faster round at 1 user. Medians; full tables: [report](docs/bench/2026-09-25-multiuser.md).
+
+| Closed loop, short prompts | zerv | vLLM | llama-server |
+| --- | --- | --- | --- |
+| aggregate tok/s, 1 / 2 / 4 / 8 users | **48 / 87 / 139** / 151 | 36 / 64 / 108 / **158** | 38 / 64 / 93 / 131 |
+| TTFT p50, 8 users | **0.44 s** | 0.80 s | 3.3 s |
+| token gap p50 / p99 / max, 8 users | 46 / 147 / **191** ms | 46 / **51** / 430 ms | 47 / 55 / 798 ms |
+
+| A 4,936-token prompt arrives while 6 users stream | zerv | vLLM | llama-server |
+| --- | --- | --- | --- |
+| streaming users' tok/s during its prefill (all 6) | **40** | 13 | 11 |
+| their worst token gap | **169 ms** | 597 ms | 692 ms |
+| TTFT of a 280-token prompt sent 100 ms later | **1.4 s** | 5.4 s | 6.6 s |
+| TTFT of the long prompt | 5.8 s | **5.3 s** | 6.7 s |
+
+- The interference rows use each competitor's best setting for streaming users (vLLM chunk
+  512, llama `-b 512`). With chunk 2048, vLLM's long TTFT is 4.9 s, at 5.7 tok/s and
+  1.9 s gaps for the others.
+- With `--parallel N`, zerv's responses are byte-identical to serving them alone. The
+  other two are not batch-invariant.
+
+### Where zerv is behind
+
+- **8-user throughput and steady gap p99.** When 8 prompts arrive at once, zerv prefills
+  them one at a time; vLLM packs them into one pass. Next: packed multi-sequence prefill.
+- **Batched decode past 4 rows.** 8 rows cost 2.3× one row.
+- **No prefix cache with `--parallel N` > 1.**
+- vLLM's and SGLang's speculative decoding (MTP) have not been benchmarked yet.
+
+## More
+
+- [Work queue](TODO.md), one block at a time
+- [Docs index](docs/README.md): research, specs, benchmark reports
+- [Development and test commands](docs/development.md)
 - [Agent instructions](AGENTS.md)
-- [Research, design, verification, and implementation plan](docs/README.md)

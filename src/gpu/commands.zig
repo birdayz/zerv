@@ -28,7 +28,7 @@ pub const Scope = enum {
 };
 
 /// Command objects a device may hold at once (bounded child count; docs/specs/gpu-driver.md).
-pub const max_commands = 64;
+pub const max_commands = 256;
 /// Distinct kernels one command may dispatch (retained until reset/deinit).
 pub const max_command_kernels = 64;
 

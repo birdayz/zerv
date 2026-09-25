@@ -137,6 +137,36 @@ listed in it); block 18 is active.
       0.53 s at 8 clients against 1.38 s. The GPU is 99% busy. llama-server is not
       batch-invariant (3–5 greedy outputs per prompt). The session is not yet a state machine
       (the spec's host item); host time is measured as not limiting.
+    - [x] 18c.2 prefill without stalling the others ([report](docs/bench/2026-09-25-multiuser.md),
+      spec concurrent.md "18c.2 design"):
+      - Prefill chunks run as 16 four-layer segments, bitwise the chunk; decode batches run
+        between the segments.
+      - `--prefill-stall-ms N|chunk` (default 100) and `--prefill-order shortest|fifo`.
+      - Ownership audit fixes, with tests.
+      - `--f16-small-tile`: a 32 × 128 f16 GEMM tile for 128-row plans, bitwise gemm_f16,
+        +5.3% on 128-row prefill.
+      - Gates passed: gpu-test 39/39, batch-check 400/400 (f32 and f16 KV), f16 and FP32
+        oracles byte-identical, serving identity 30/30, no decode regression (ABBA).
+      - Final interleaved comparison (zerv, vLLM chunks 2048 and 512, llama `-b 2048` and `-b 512`):
+        zerv leads at 1–4 users (+33–50%), on 8-user TTFT (0.44 s against 0.80 s) and on
+        long-prompt interference. vLLM leads 8-user throughput (158.2 against 150.9) and
+        steady gap p99 (51 against 147 ms): it packs simultaneous prompts into one prefill.
+    - [ ] Competitor: vLLM ([report](docs/bench/2026-09-25-vllm.md)), user decision
+      2026-09-25 ("the serious competitor").
+      - Official ROCm image v0.30.0 (gfx1100 build, pinned digest) with RedHatAI's W4A16
+        checkpoint. Different weights, FP8 KV: speed is compared, quality separately.
+      - Downloads hash-verified, the safetensors structure checked, ClamAV scans clean. The
+        container runs unprivileged with the GPU device nodes only.
+      - Runs; KV pool 67–72k tokens; a cold graph compile fails for lack of KV memory, so
+        every configuration is warmed once first.
+      - Multi-user: in the 18c.2 final run. Pending: single user (serving-v2, MTP 3).
+    - [ ] Competitor: SGLang (user goal 2026-09-25: "absolute kings in all metrics" against
+      vLLM and SGLang). Check ROCm/gfx1100 and Qwen3.8 support, verify and scan the image,
+      then the same runs.
+    - [ ] Next lever (from the 18c.2 data): packed multi-sequence prefill. Several pending
+      prompts go in one plan, each with its solo chunk grid; the GEMMs are already bitwise
+      equal per element at any plan size, and the per-sequence kernels run per segment. Target:
+      8-user throughput and steady gap p99 above vLLM, queue TTFT.
     - Queue decision 2026-09-25 (user goal: multi-user throughput and batching): 18e (batched
       projection kernels) goes before 18d. The 8-row step is the bottleneck: 46 ms, 2.3× one
       row, and the GPU is 99% busy. Within 18d, per-slot prefix caching comes first (bruh's
