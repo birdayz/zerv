@@ -35,6 +35,15 @@ def llama_server():
     return LLAMA_SERVER_OVERRIDE or _built_llama_server()
 
 
+def require_host_gpu():
+    """The gate of every serving benchmark: the GPU tests on the host's driver, which the
+    benchmark measures on (docs/specs/hermetic-build.md, "Host-driver GPU tests"; cached while
+    driver and code are unchanged)."""
+    sys.path.insert(0, str(ROOT/"tools"))
+    import zerv_build
+    zerv_build.test_host_gpu()
+
+
 @functools.cache
 def _built_llama_server():
     sys.path.insert(0, str(ROOT/"tools"))
@@ -289,6 +298,7 @@ def main():
     p.add_argument("--stall-timeout", type=float, default=STALL_S, help="fail a request after this many seconds without data")
     p.add_argument("--request-timeout", type=float, default=LIMIT_S, help="fail a request after this many seconds in total")
     a = p.parse_args()
+    require_host_gpu()
     global LLAMA_SERVER_OVERRIDE, RDNA3_BUILD
     if a.llama_server: LLAMA_SERVER_OVERRIDE = str(a.llama_server.resolve(strict=True))
     if a.rdna3_build: RDNA3_BUILD = a.rdna3_build.resolve(strict=True)

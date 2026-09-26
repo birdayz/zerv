@@ -57,6 +57,9 @@ TARGETS = {
 # in both modes for GPU measurements.
 TESTS = ("//...",)
 GPU_TESTS = ("//...", "//tests:gpu", "//tests:gpu_release_fast")
+# The GPU tests on the host's driver (production's), run by production benchmarks in their own
+# Bazel invocation: --test_env applies to every test of an invocation (docs/specs/hermetic-build.md).
+HOST_GPU_TESTS = ("//tests:gpu_host", "//tests:gpu_host_release_fast")
 
 
 # Every Bazel invocation goes through tools/bazel (--nohome_rc --nosystem_rc). bazelisk sets
@@ -152,6 +155,18 @@ def test(*labels):
     subprocess.run(test_command(*labels), cwd=ROOT, check=True)
 
 
+def host_gpu_test_command():
+    """The host-driver GPU tests, keyed on the installed driver's identity (a cached result is
+    reused only while the driver is unchanged)."""
+    import host_info
+    return [BAZEL, "test", f"--test_env=ZERV_HOST_VULKAN_ID={host_info.host_vulkan_id()}", *HOST_GPU_TESTS]
+
+
+def test_host_gpu():
+    """Runs the host-driver GPU tests: the gate of every production (host-driver) benchmark."""
+    subprocess.run(host_gpu_test_command(), cwd=ROOT, check=True)
+
+
 def sha(file):
     h = hashlib.sha256()
     with Path(file).open("rb") as f:
@@ -210,8 +225,11 @@ if __name__ == "__main__":
         sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     import argparse
     parser = argparse.ArgumentParser(description="Build zerv executables with Bazel; print their paths.")
-    parser.add_argument("names", nargs="+", choices=sorted(TARGETS))
+    parser.add_argument("names", nargs="*", choices=sorted(TARGETS))
     parser.add_argument("--config", default="release", help="Bazel config (.bazelrc); default release")
+    parser.add_argument("--test-host-gpu", action="store_true", help="run the GPU tests on the host's driver (HOST_GPU_TESTS)")
     args = parser.parse_args()
-    for name, path in build(*args.names, config=args.config).items():
+    if args.test_host_gpu: test_host_gpu()
+    elif not args.names: parser.error("name executables to build, or --test-host-gpu")
+    for name, path in (build(*args.names, config=args.config) if args.names else {}).items():
         print(path)

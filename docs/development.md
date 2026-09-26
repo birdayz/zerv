@@ -73,6 +73,8 @@ bazel test //...        # required checks: zig fmt, CPU unit tests Debug + Relea
                         # tools built from source)
 bazel test --config=quick //...   # Debug unit tests and Python tests only
 bazel test //tests:gpu //tests:gpu_release_fast //tests:gpu_spills   # real device, test-only runtime
+tools/py tools/zerv_build.py --test-host-gpu   # the GPU tests on the host's driver (production's; cached
+                                               # per driver identity; production benchmarks run it)
 tools/hermetic_check.sh --gpu //... //tests:gpu   # the same in a slim container, empty caches
 bazel build --config=release //...   # ReleaseFast, native CPU: server, benchmarks, tools
 tools/zerv_build.py zerv-spec-check  # build (release) and print an executable's path

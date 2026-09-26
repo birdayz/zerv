@@ -1019,7 +1019,8 @@ test "native gemm_f16x: bitwise equal to the SPIR-V kernel; fallback on another 
         for (gemm.nativeF16xBuilds(.q4_0)) |n| {
             if (!std.mem.eql(u8, n.driver, runtime)) continue;
             if (std.mem.eql(u8, &key, n.global_key)) break;
-            std.debug.print("native gemm_f16x: ZERV_TEST_GPU_RUNTIME={s}, but the driver's pipeline key is another build's\n", .{runtime});
+            std.debug.print("native gemm_f16x: ZERV_TEST_GPU_RUNTIME={s}, but the driver's pipeline key is another build's " ++
+                "(driver updated?): recapture that build's binary with tools/build_native_gemm.py (docs/development.md, \"Native machine code\")\n", .{runtime});
             return error.WrongDriver;
         } else return error.UnknownTestRuntime;
     }

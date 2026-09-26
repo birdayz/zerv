@@ -124,6 +124,7 @@ def main():
         manifest["shader_sha256"] = goldens["shader_sha256"]
         manifest.update(zerv_build.provenance())
         run(zerv_build.test_command(*zerv_build.GPU_TESTS))
+        run(zerv_build.host_gpu_test_command())  # the same GPU tests on the host driver measured here
         run(zerv_build.build_command("zerv-gpu-driver-bench"))
         artifact = ROOT / "third_party/gpu-driver-bench" / dest.name
         artifact.mkdir(parents=True, exist_ok=False)

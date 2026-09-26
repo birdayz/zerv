@@ -60,6 +60,7 @@ def main():
         manifest.update(zerv_build.provenance())
         # Format check, CPU and GPU Zig tests in both modes, Python tests.
         run(zerv_build.test_command(*zerv_build.GPU_TESTS))
+        run(zerv_build.host_gpu_test_command())  # the same GPU tests on the host driver measured here
         manifest["status"] = "passed"
         print("verified independent fixture, eight SPIR-V modules, research sources and native/Python suites")
     except Exception as error:

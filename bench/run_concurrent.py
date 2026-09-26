@@ -112,6 +112,7 @@ def main():
     p.add_argument("--zerv-binary", type=pathlib.Path, help="zerv binary (default: //src:zerv built with Bazel, --config=release)")
     p.add_argument("--reference", type=pathlib.Path, help="raw.jsonl of solo runs: per-case output_sha256 gate")
     a = p.parse_args()
+    rs.require_host_gpu()
     if a.zerv_binary is None:
         sys.path.insert(0, str(ROOT/"tools"))
         import zerv_build

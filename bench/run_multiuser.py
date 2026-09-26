@@ -219,6 +219,7 @@ def main():
     p.add_argument("--port", type=int, default=18098)
     p.add_argument("--zerv-binary", type=pathlib.Path, help="zerv binary (default: //src:zerv built with Bazel, --config=release)")
     a = p.parse_args()
+    rs.require_host_gpu()
     if a.zerv_binary is None:
         sys.path.insert(0, str(ROOT/"tools"))
         import zerv_build

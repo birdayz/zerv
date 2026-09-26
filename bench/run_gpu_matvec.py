@@ -71,6 +71,7 @@ def main():
             if path.read_bytes() != (ROOT/"src/matvec/shaders"/path.name).read_bytes(): raise ValueError("shader replay mismatch")
         manifest.update(zerv_build.provenance())
         run(zerv_build.test_command(*zerv_build.GPU_TESTS))
+        run(zerv_build.host_gpu_test_command())  # the same GPU tests on the host driver measured here
         run(zerv_build.build_command("zerv-gpu-matvec-bench"))
         native = artifact/"native"; shutil.copy2(zerv_build.path("zerv-gpu-matvec-bench"), native)
         baseline_native = None

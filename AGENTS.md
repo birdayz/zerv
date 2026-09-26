@@ -143,7 +143,11 @@ spill gate:
 
 ```sh
 bazel test //tests:gpu //tests:gpu_release_fast //tests:gpu_spills
+tools/py tools/zerv_build.py --test-host-gpu   # the same tests on the host's driver (production's)
 ```
+
+Run Python tools and harnesses with `tools/py SCRIPT` (the pinned interpreter; scripts refuse
+the host's Python). Production benchmarks gate themselves on the host-driver GPU tests.
 
 Reference-golden regeneration is separate and explicit; ordinary builds/tests must
 work without external reference libraries or `third_party/`. Never report a test,

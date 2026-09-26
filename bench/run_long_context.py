@@ -53,6 +53,7 @@ def main():
     p.add_argument("--port", type=int, default=18090)
     p.add_argument("--zerv-binary", type=Path, required=True, help="previously built zerv binary (its hash is recorded)")
     a = p.parse_args()
+    rs.require_host_gpu()
     out = a.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     if rs.sha(a.model) != rs.MODEL_SHA: raise SystemExit("model mismatch")
     zerv_binary = a.zerv_binary.resolve()

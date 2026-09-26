@@ -262,6 +262,29 @@ py_test(
     tags = GPU_TAGS,
 )
 
+# The same GPU tests on the host's installed Vulkan stack, the driver production runs on
+# (docs/specs/hermetic-build.md, "Host-driver GPU tests"). Not hermetic by design: the driver's
+# identity is an input through --test_env=ZERV_HOST_VULKAN_ID, which tools/zerv_build.py sets
+# (`tools/py tools/zerv_build.py --test-host-gpu`); production benchmarks run them first.
+[
+    py_test(
+        name = name,
+        srcs = ["//tools:gpu_host_test.py"],
+        main = "//tools:gpu_host_test.py",
+        args = ["$(rootpath %s)" % binary],
+        data = [
+            binary,
+            "//tools:host_info.py",
+        ],
+        size = "large",
+        tags = GPU_TAGS + ["host_driver"],
+    )
+    for name, binary in [
+        ("gpu_host", ":gpu"),
+        ("gpu_host_release_fast", ":gpu_release_fast_exe"),
+    ]
+]
+
 # GPU workload helpers, also modules of the GPU benchmarks (//bench).
 zig_library(
     name = "gpu_workload",

@@ -147,6 +147,12 @@ def processes(pattern):
     return found
 
 
+def host_vulkan_id():
+    """sha256 of host_vulkan(): changes whenever the host's loader, an ICD manifest or a driver
+    library changes (the cache key of the host-driver GPU tests)."""
+    return hashlib.sha256(json.dumps(host_vulkan(), sort_keys=True).encode()).hexdigest()
+
+
 def vulkaninfo(env=None, summary=True):
     """vulkaninfo (built from source, @vulkan_tools) under `env`: the Vulkan stack of that
     environment (the host's by default)."""
@@ -159,4 +165,4 @@ def vulkaninfo(env=None, summary=True):
 if __name__ == "__main__":
     if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
         sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
-    print(json.dumps(dict(cpu=cpu(), host_vulkan=host_vulkan()), indent=2))
+    print(json.dumps(dict(cpu=cpu(), host_vulkan=host_vulkan(), host_vulkan_id=host_vulkan_id()), indent=2))

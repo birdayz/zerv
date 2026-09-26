@@ -138,6 +138,21 @@ host|test` with the lab built in the graph (`//bench/isa_lab:pipeline_binary_lab
 and the 23-configuration sweep result are identical. Drift tests `//src/model:native_code_test`
 and `native_code_test_radv_test` (negative control: an edited `.s` fails).
 
+**Host-driver GPU tests (specified 2026-09-26).** The hermetic GPU tests no longer exercise the
+driver production runs on, so a host Mesa update would go unnoticed. `//tests:gpu_host` and
+`//tests:gpu_host_release_fast` run the same test binaries (`:gpu`, the ReleaseFast one) on
+the host's installed Vulkan stack (`ZERV_TEST_GPU_RUNTIME=host`: the device's pipeline key
+must be the one of `src/model/native/`, else the test fails and names the recapture command).
+They are deliberately not hermetic, so they are not part of `//...` and their inputs include
+the host driver's identity: `tools/zerv_build.py` passes `--test_env=ZERV_HOST_VULKAN_ID=<sha256
+of tools/host_info.py host_vulkan()>` (loader, ICD manifests, driver libraries), which makes
+the result cacheable exactly as long as the driver is unchanged; the test recomputes the
+identity and fails when it is missing or differs (a stale id cannot yield a pass). Production
+benchmarks run them first (`zerv_build.test_host_gpu()`): the GPU component benchmarks
+(`run_gpu_driver`, `run_gpu_matvec`, `replay_matvec`) and the serving benchmarks
+(`run_serving`, `run_multiuser`, `run_concurrent`, `run_long_context`). Diagnostics and
+profilers are not gated.
+
 **Which driver ran is tested, not assumed.** With `ZERV_TEST_GPU_RUNTIME=test_radv` the
 native-kernel GPU test requires the device's pipeline key to be the `test_radv` binary's (it
 hashes the driver's build ID). Negative control: the ReleaseFast GPU test binary run against
