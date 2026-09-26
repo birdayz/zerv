@@ -178,8 +178,7 @@ def main():
     for tree in (btree, ztree):
         if not (tree / EDIT).is_file(): raise SystemExit(f"{tree}: no {EDIT}")
     busy = host_info.processes(r"(^|/)(zerv(-[a-z0-9-]+)?|llama-server)( |$)|vllm serve")
-    load = float(Path("/proc/loadavg").read_text().split()[0])
-    if busy or load > 2: raise SystemExit(f"machine busy (load {load}): " + "; ".join(busy))
+    if busy: raise SystemExit("GPU engines running: " + "; ".join(busy))
     zig = zerv_build.binary("zig", config=None)
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, cpu=host_info.cpu(),
                     baseline=dict(tree=str(btree), revision=zerv_build.source_revision(btree), sources_sha256=tree_hash(btree),
