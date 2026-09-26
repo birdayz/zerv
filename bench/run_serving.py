@@ -132,6 +132,8 @@ def engines(model, port, context, zerv_binary):
         "llama-fa-ub512": dict(cmd=common+["-fa", "on", "-b", "2048", "-ub", "512"], env={}),
         # Smaller prompt batch per server step: less stall for running requests (multi-user).
         "llama-fa-b512": dict(cmd=common+["-fa", "on", "-b", "512", "-ub", "512"], env={}),
+        # One KV buffer shared by all slots (-kvu): each sequence may use the whole -c.
+        "llama-fa-kvu": dict(cmd=common+["-fa", "on", "-b", "2048", "-ub", "512", "-kvu"], env={}),
         "vllm": vllm_engine(port, context),
         "rdna3": rdna3_engine(model, port, context, ["--spec-type", "none", "-b", "2048", "-ub", "512"]),
         "rdna3-b512": rdna3_engine(model, port, context, ["--spec-type", "none", "-b", "512", "-ub", "512"]),

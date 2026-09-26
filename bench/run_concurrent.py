@@ -47,9 +47,23 @@ def ancestors():
 
 
 def gpu_busy():
+    """Inference servers holding the GPU: a server-like command line (zerv, llama-server,
+    vLLM) with /dev/kfd or a DRM render node open. The desktop and OBS hold the GPU but do
+    not match; build tools whose command line mentions "zerv" do not hold it."""
     found = host_info.processes(r"(^|/)(zerv(-[a-z0-9-]+)?|llama-server)( |$)|vllm serve|VLLM::")
     mine = ancestors()
-    return [l for l in found if l.split()[0] not in mine]
+    busy = []
+    for line in found:
+        pid = line.split()[0]
+        if pid in mine:
+            continue
+        try:
+            fds = [os.readlink(f"/proc/{pid}/fd/{f}") for f in os.listdir(f"/proc/{pid}/fd")]
+        except OSError:
+            fds = None  # not ours to inspect: count it (conservative)
+        if fds is None or any(f == "/dev/kfd" or f.startswith("/dev/dri/renderD") for f in fds):
+            busy.append(line)
+    return busy
 
 
 def percentile(xs, q):

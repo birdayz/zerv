@@ -409,6 +409,47 @@ ssm_beta):
   batches between segments, and f32/f16 KV, f16 decode and 256-token pages. 504/504 in each
   configuration. A separate kernel-level gpu-test was not written.
 
+### 18d.2 design: shared KV pool (specified and implemented 2026-09-26; gates below)
+
+**Problem (measured).** Each slot owned `--context` tokens of KV from the start. With f16 KV
+the card holds about 98k tokens, so `--parallel 8` gave 12,288 tokens per request, whether or
+not the other slots used theirs.
+
+**Design.**
+- **One pool.** With several slots, `Options.kv_share` (CLI `--kv-pool shared`) starts every
+  slot without pages. The pool is `kv_pages` pages (`--kv-pool-pages`), or all memory left
+  (`fitPages`). `--context` is the per-request maximum; `max` means the whole pool.
+- **Pages on demand.** `Model.ensurePages(slot, tokens)` maps free pages until positions
+  below `tokens` are covered. It is all-or-nothing: `PoolExhausted` maps nothing.
+  `releasePages` returns a slot's pages. The kernels read through the page tables as before
+  (18b.1), so which physical page holds a token changes nothing.
+- **Admission.**
+  - A generation reserves `prompt + output limit` (the session's own `limit`, capped at the
+    context: `Batcher.reserve`).
+  - The scheduler asks the backend to `admit` that reservation before the prompt's first
+    chunk. A prompt that does not fit waits and is retried after a release.
+  - Decode never needs pages beyond the reservation, so there is no preemption.
+  - **No starvation:** the oldest prompt that failed admission blocks newer prompts from
+    being admitted until it is.
+  - A reset releases the slot's pages. So does a freed slot, released on the scheduler thread
+    before any admission.
+- **Limitation.** A request without `max_tokens` reserves up to the full per-request context.
+  Growing on demand needs preemption, and preemption must stay exact: generated tokens
+  replayed through batched decode, not prefill. That is left to the tiered-store work.
+- `--kv-pool static` is the previous behaviour and stays the default until the benchmark.
+
+**Gates.**
+1. Host tests: the batcher shared-pool test (admission waits happen; a large prompt is not
+   starved behind small ones; every page comes back).
+2. `zerv-batch-check … shared`:
+   - a pool for about 3 of 8 sequences, with joins waiting for leaves, recycled and
+     non-contiguous page tables;
+   - every prefill and decode row bitwise equal to the sequence alone;
+   - error cases (beyond the pool, beyond the context) and all pages returned.
+   - Passed 168/168 with f32 KV, f16 KV, 256-token pages and `.split` decode.
+3. Serving identity: `run_concurrent.py --reference` (the 18d.1 reference) with
+   `--kv-pool shared`: passed at 1/2/4/8 clients, 161.7 tok/s at 8.
+
 ## Session and HTTP (host performance)
 
 - `session.Generation` becomes a per-request state machine: `feed(logits rows) → tokens, output

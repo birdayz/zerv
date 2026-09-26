@@ -90,6 +90,7 @@ def _stream(port, body, rec, started):
     conn.close()
     rec["times"] = times
     rec["output_sha256"] = hashlib.sha256("".join(text).encode()).hexdigest()
+    rec["text_head"] = "".join(text)[:400]  # to check answers (e.g. the long-context needle)
 
 
 # Request fields for every engine; main() sets cache_prompt=False unless --prompt-cache on
@@ -171,7 +172,8 @@ def interference(port, short, long_w, users, raw, engine, rep):
     ts.start()
     for t in threads + [tl, ts]: t.join()
     for r in bg + [long_rec, short_rec]: raw.write(json.dumps(r) + "\n")
-    errors = [r["error"] for r in bg + [long_rec, short_rec] if "error" in r]
+    recs = bg + [long_rec, short_rec]
+    errors = [r["error"] for r in recs if "error" in r] + [f"{r['role']}: no tokens streamed" for r in recs if "error" not in r and not r.get("times")]
     if errors: return dict(rep=rep, errors=errors)
     lo, hi = long_rec["send"], long_rec["times"][0]
     ex = [r for r in bg if exact(r)]
@@ -213,13 +215,17 @@ def main():
     p.add_argument("--parallel", type=int, default=8)
     p.add_argument("--context-per-slot", type=int, default=8192)
     p.add_argument("--reps", type=int, default=3)
+    p.add_argument("--long-workload", type=pathlib.Path, default=LONG, help="the interference scenario's long prompt (case 0 of the workload)")
+    p.add_argument("--scenarios", default="steady,interference,queue")
     p.add_argument("--rounds", type=int, default=1, help="start every engine this many times, order alternating per round")
     p.add_argument("--prompt-cache", choices=("on", "off"), default="off", help="off: cache_prompt=false in every request (cold prefill)")
     p.add_argument("--levels", default="1,2,4,8")
     p.add_argument("--port", type=int, default=18098)
+    p.add_argument("--llama-server", type=pathlib.Path, help="another llama-server build to run (default: built in the graph; its hash is recorded)")
     p.add_argument("--zerv-binary", type=pathlib.Path, help="zerv binary (default: //src:zerv built with Bazel, --config=release)")
     a = p.parse_args()
     rs.require_host_gpu()
+    if a.llama_server: rs.LLAMA_SERVER_OVERRIDE = str(a.llama_server.resolve(strict=True))
     if a.zerv_binary is None:
         sys.path.insert(0, str(ROOT/"tools"))
         import zerv_build
@@ -229,12 +235,13 @@ def main():
     if a.prompt_cache == "off": EXTRA["cache_prompt"] = False
     busy = rc.gpu_busy()
     if busy: raise SystemExit("GPU busy: " + "; ".join(busy))
-    short, long_w = json.loads(SHORT.read_text()), json.loads(LONG.read_text())
+    short, long_w = json.loads(SHORT.read_text()), json.loads(a.long_workload.read_text())
+    scenarios = set(a.scenarios.split(","))
     zb = a.zerv_binary.resolve()
     table = rs.engines(a.model, a.port, a.context_per_slot * a.parallel, zb)
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, host=dict(zip(("sysname", "nodename", "release", "version", "machine"), os.uname())),
-                    model_sha256=rs.sha(a.model), zerv_sha256=rs.sha(zb), llama_server_sha256=rs.sha(rs.llama_server()), vllm_image=rs.VLLM_IMAGE, vllm_model=str(rs.VLLM_MODEL.relative_to(rs.ROOT)),
-                    workloads={str(SHORT.relative_to(ROOT)): rs.sha(SHORT), str(LONG.relative_to(ROOT)): rs.sha(LONG)},
+                    model_sha256=rs.sha(a.model), zerv_sha256=rs.sha(zb), llama_server_sha256=rs.sha(rs.llama_server()), llama_server=str(rs.llama_server()), vllm_image=rs.VLLM_IMAGE, vllm_model=str(rs.VLLM_MODEL.relative_to(rs.ROOT)),
+                    workloads={str(SHORT.relative_to(ROOT)): rs.sha(SHORT), str(a.long_workload.resolve().relative_to(ROOT)): rs.sha(a.long_workload)}, scenarios=sorted(scenarios),
                     parallel=a.parallel, context_per_slot=a.context_per_slot, reps=a.reps, rounds=a.rounds, prompt_cache=a.prompt_cache, engines={})
     raw = (out / "raw.jsonl").open("w")
     names = a.engines.split(";")
@@ -259,15 +266,15 @@ def main():
             warm = {}
             stream(a.port, body(short["cases"][0], short, 16), warm)
             res = summary[name]
-            for level in [int(x) for x in a.levels.split(",")]:
+            for level in ([int(x) for x in a.levels.split(",")] if "steady" in scenarios else []):
                 s = steady(a.port, short, level, raw, name, rnd)
                 res["steady"].append(s)
                 print(name, "steady", json.dumps({k: round(v, 1) if isinstance(v, float) else v for k, v in s.items()}), flush=True)
-            for rep in range(rnd * a.reps, (rnd + 1) * a.reps):
+            for rep in (range(rnd * a.reps, (rnd + 1) * a.reps) if "interference" in scenarios else []):
                 s = interference(a.port, short, long_w, a.parallel - 2, raw, name, rep)
                 res["interference"].append(s)
                 print(name, "interference", json.dumps({k: round(v, 1) if isinstance(v, float) else v for k, v in s.items()}), flush=True)
-            for rep in range(rnd * a.reps, (rnd + 1) * a.reps):
+            for rep in (range(rnd * a.reps, (rnd + 1) * a.reps) if "queue" in scenarios else []):
                 s = queue(a.port, short, a.parallel, 2, raw, name, rep)
                 res["queue"].append(s)
                 print(name, "queue", json.dumps({k: (round(v, 1) if isinstance(v, float) else [round(x) for x in v] if isinstance(v, list) and v and isinstance(v[0], float) else v) for k, v in s.items()}), flush=True)

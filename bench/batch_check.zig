@@ -18,6 +18,9 @@
 //!   4. error cases (duplicate slot, page in use, unmapped slot);
 //!   5. timings: decodeBatch per row count at a common position, and step().
 //! Usage: zerv-batch-check MODEL [f32|f16 [PAGE_TOKENS [CONTEXT [f32|f16[@v1|@v2][@all] [pack]]]]] > report.jsonl
+//! `shared`: the shared-KV-pool gate (docs/specs/concurrent.md, "18d.2 design"): a pool
+//! for about 3 of the 8 sequences, pages mapped on demand and recycled as sequences leave;
+//! every logits row bitwise equal to the sequence run alone.
 //! `pack`: the packed-prefill gate instead (docs/specs/concurrent.md, "18d.1 design"; f16
 //! prefill mode): every sequence prefilled alone is the reference; then the sequences join
 //! in packed chunks of 2..8 (re-packed chunk by chunk, several chunk grids) with decode
@@ -69,7 +72,8 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(a);
     if (args.len < 2 or args.len > 7) return error.Usage;
     const pack_mode = args.len == 7 and std.mem.eql(u8, args[6], "pack");
-    if (args.len == 7 and !pack_mode) return error.Usage;
+    const shared_mode = args.len == 7 and std.mem.eql(u8, args[6], "shared");
+    if (args.len == 7 and !pack_mode and !shared_mode) return error.Usage;
     const kv_type: model.KvType = if (args.len >= 3) std.meta.stringToEnum(model.KvType, args[2]) orelse return error.Usage else .f32;
     const page: u32 = if (args.len >= 4) (if (std.mem.eql(u8, args[3], "context")) 0 else try std.fmt.parseInt(u32, args[3], 10)) else model.layout.default_kv_page;
     const context: u32 = if (args.len >= 5) try std.fmt.parseInt(u32, args[4], 10) else 2048;
@@ -110,6 +114,7 @@ pub fn main(init: std.process.Init) !void {
         token.* = random.intRangeLessThan(u32, 0, 150000);
     };
 
+    if (shared_mode) return sharedCheck(a, &device, &container, out, kv_type, page, context, precision, dkernel, dformats, &prompts, &xs);
     if (pack_mode) return packCheck(a, io, &device, &container, out, kv_type, page, context, precision, dkernel, dformats, &prompts, &xs);
 
     // Phase A: references from the one-slot model.
@@ -476,6 +481,97 @@ fn packCheck(a: std.mem.Allocator, io: std.Io, device: *gpu.Device, container: *
     } else |e| errors_ok = errors_ok and e == error.InvalidBatch;
     const passed = stats.failures == 0 and errors_ok and packs_seen & 0b1_1111_1100 != 0 and interleaved > 0;
     try out.print("{{\"summary\":true,\"mode\":\"pack\",\"compared\":{d},\"failures\":{d},\"pack_sizes_seen\":\"{b}\",\"batches_between_segments\":{d},\"errors_ok\":{},\"passed\":{}}}\n", .{ stats.compared, stats.failures, packs_seen, interleaved, errors_ok, passed });
+    try out.flush();
+    if (!passed) std.process.exit(1);
+}
+
+/// The shared-KV-pool gate (`shared` mode; docs/specs/concurrent.md, "18d.2 design").
+fn sharedCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artifact.gguf.Container, out: *std.Io.Writer, kv_type: model.KvType, page: u32, context: u32, precision: model.DecodePrecision, dkernel: model.DecodeF16Kernel, dformats: model.DecodeF16Formats, prompts: *const [K][max_prompt]u32, xs: *const [K][T]u32) !void {
+    const pt = if (page == 0) context else page;
+    // Room for about three of the longest sequences at once: joins must wait for leaves.
+    const pool: u32 = 3 * ((max_prompt + T + pt - 1) / pt);
+    var m: model.Model = undefined;
+    try m.init(device, container, .{ .context = context, .prefill_rows = 512, .kv_type = kv_type, .kv_page_tokens = page, .slots = K, .batch_rows = K, .kv_pages = pool, .kv_share = true, .decode_precision = precision, .decode_f16_kernel = dkernel, .decode_f16_formats = dformats });
+    defer m.deinit();
+    if (m.freePages() != pool) return error.PoolNotEmpty;
+    // References: each sequence alone in slot 0 (its pages mapped, then released).
+    const ref_prefill = try a.alloc(f32, K * vocab);
+    const ref = try a.alloc(f32, K * T * vocab);
+    for (0..K) |i| {
+        try m.select(0);
+        try m.reset();
+        try m.releasePages(0);
+        try m.ensurePages(0, prompt_lens[i] + T);
+        @memcpy(ref_prefill[i * vocab ..][0..vocab], try m.prefill(prompts[i][0..prompt_lens[i]]));
+        for (0..T) |t| @memcpy(ref[(i * T + t) * vocab ..][0..vocab], try m.decodeBatch(&.{.{ .slot = 0, .token = xs[i][t] }}));
+    }
+    try m.releasePages(0);
+    var stats: Stats = .{};
+    var waits: u64 = 0;
+    var max_live: u32 = 0;
+    // Sequences join in this order into rotating slots; a join waits (decode steps of the
+    // running ones) until the pool has its pages; a sequence leaves after T steps.
+    const order = [K]u32{ 6, 0, 7, 2, 5, 1, 4, 3 };
+    var slot_of: [K]?u32 = @splat(null);
+    var steps: [K]u32 = @splat(0);
+    var slot_busy: [K]bool = @splat(false);
+    var next_join: usize = 0;
+    var done: u32 = 0;
+    var next_slot: u32 = 0;
+    while (done < K) {
+        if (next_join < K) {
+            const i = order[next_join];
+            const need = prompt_lens[i] + T;
+            const need_pages = (need + pt - 1) / pt;
+            if (m.freePages() >= need_pages) {
+                var slot = next_slot;
+                while (slot_busy[slot]) slot = (slot + 1) % K;
+                next_slot = (slot + 3) % K;
+                slot_busy[slot] = true;
+                slot_of[i] = slot;
+                try m.select(slot);
+                try m.reset();
+                try m.ensurePages(slot, need);
+                try check(out, &stats, "shared-prefill", i, -1, try m.prefill(prompts[i][0..prompt_lens[i]]), ref_prefill[i * vocab ..][0..vocab]);
+                next_join += 1;
+                continue;
+            }
+            waits += 1;
+        }
+        // One batch of every live sequence.
+        var rows: [K]model.BatchRow = undefined;
+        var who: [K]u32 = undefined;
+        var b: usize = 0;
+        for (0..K) |i| if (slot_of[i] != null and steps[i] < T) {
+            rows[b] = .{ .slot = slot_of[i].?, .token = xs[i][steps[i]] };
+            who[b] = @intCast(i);
+            b += 1;
+        };
+        if (b == 0) return error.Deadlock;
+        max_live = @max(max_live, @as(u32, @intCast(b)));
+        const logits = try m.decodeBatch(rows[0..b]);
+        for (who[0..b], 0..) |i, r| {
+            try check(out, &stats, "shared-decode", i, steps[i], logits[r * vocab ..][0..vocab], ref[(i * T + steps[i]) * vocab ..][0..vocab]);
+            steps[i] += 1;
+            if (steps[i] == T) {
+                // Leave: its pages go back to the pool (reused by the next joins).
+                try m.releasePages(slot_of[i].?);
+                slot_busy[slot_of[i].?] = false;
+                slot_of[i] = null;
+                done += 1;
+            }
+        }
+    }
+    // Error cases: a request beyond the pool, and beyond the context.
+    var errors_ok = true;
+    if (m.ensurePages(1, context)) |_| {
+        errors_ok = context <= pool * pt;
+        try m.releasePages(1);
+    } else |e| errors_ok = e == error.PoolExhausted;
+    if (m.ensurePages(1, context + 1)) |_| errors_ok = false else |e| errors_ok = errors_ok and e == error.ContextFull;
+    const all_free = m.freePages() == pool;
+    const passed = stats.failures == 0 and errors_ok and all_free and waits > 0 and max_live >= 2;
+    try out.print("{{\"summary\":true,\"mode\":\"shared\",\"pool_pages\":{d},\"compared\":{d},\"failures\":{d},\"join_waits\":{d},\"max_live\":{d},\"errors_ok\":{},\"all_pages_returned\":{},\"passed\":{}}}\n", .{ pool, stats.compared, stats.failures, waits, max_live, errors_ok, all_free, passed });
     try out.flush();
     if (!passed) std.process.exit(1);
 }

@@ -1,0 +1,68 @@
+{
+ "started_at": "2026-09-26T15:01:43.165794+00:00",
+ "argv": [
+  "run_concurrent.py",
+  "--output",
+  "../docs/bench/data/2026-09-26-shared-pool/gate-greedy",
+  "--zerv-binary",
+  "../third_party/multiuser/zerv-3738213f",
+  "--engines",
+  "zerv-f16@parallel=8,kv-pool=shared",
+  "--concurrency",
+  "1,2,4,8",
+  "--max-tokens",
+  "512",
+  "--requests-per-client",
+  "2",
+  "--reference",
+  "../docs/bench/data/2026-09-26-packed-prefill/reference-greedy/raw.jsonl"
+ ],
+ "host": {
+  "sysname": "Linux",
+  "nodename": "benchmark-host",
+  "release": "7.2.6-arch2-1",
+  "version": "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000",
+  "machine": "x86_64"
+ },
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "workload_sha256": "7be0cfd863a1d03756c8c1f52371c41e28942dedc84b416f7b63ae6975944922",
+ "zerv_sha256": "3738213ff4aa50183e449b42eb91cce6d1389f5ed9bbf3184e92bccde5753f1a",
+ "llama_server_sha256": "0f401589a34aabc75a2371cb39d92d717212e27d9a0c6e2bf30a8d643bf77d85",
+ "vllm_image": "vllm/vllm-openai-rocm@sha256:2e7da1ad1c66836802072588adea75f9f4991da5f9545b4318e91d422c22ce6a",
+ "vllm_model": "models/RedHatAI/Qwen3.8-27B-INT4/c063053e004e9783631651df95cf55d0bbf88b32",
+ "levels": [
+  1,
+  2,
+  4,
+  8
+ ],
+ "parallel": 8,
+ "max_tokens": 512,
+ "requests_per_client": 2,
+ "context_per_slot": 4096,
+ "engines": {
+  "zerv-f16@parallel=8,kv-pool=shared": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/multiuser/zerv-3738213f",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18097",
+    "--context",
+    "4096",
+    "--prefill-precision",
+    "f16",
+    "--spec-draft",
+    "0",
+    "--parallel",
+    "8",
+    "--kv-pool",
+    "shared"
+   ],
+   "env": {},
+   "vram_loaded": 24419844096
+  }
+ },
+ "client": "closed loop, python http.client streaming SSE (run_serving.stream_request)",
+ "finished_at": "2026-09-26T15:04:16.786867+00:00"
+}
