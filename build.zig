@@ -132,6 +132,22 @@ pub fn build(b: *std.Build) void {
     b.step("gemm-bench-build", "Build the prefill GEMM component benchmark")
         .dependOn(&b.addInstallArtifact(gemm_benchmark, .{}).step);
 
+    const decode_f16_benchmark = b.addExecutable(.{
+        .name = "zerv-decode-f16-bench",
+        .use_llvm = true,
+        .use_lld = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/decode_f16.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .imports = &.{ .{ .name = "zerv", .module = core }, .{ .name = "matvec_workload", .module = matvec_workload } },
+        }),
+    });
+    decode_f16_benchmark.root_module.linkSystemLibrary("vulkan", .{ .use_pkg_config = .no });
+    b.step("decode-f16-bench-build", "Build the f16 batched-decode projection benchmark (block 18e)")
+        .dependOn(&b.addInstallArtifact(decode_f16_benchmark, .{}).step);
+
     const matvec_rows_benchmark = b.addExecutable(.{
         .name = "zerv-matvec-rows-bench",
         .use_llvm = true,
@@ -221,7 +237,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .link_libc = true,
-            .imports = &.{.{ .name = "zerv", .module = core }},
+            .imports = &.{ .{ .name = "zerv", .module = core }, .{ .name = "matvec_workload", .module = matvec_workload } },
         }),
     });
     batch_check.root_module.linkSystemLibrary("vulkan", .{ .use_pkg_config = .no });

@@ -187,9 +187,16 @@ listed in it); block 18 is active.
           `Options.decode_precision`; no CLI yet. Slow: 45.4 ms at 1 row, 50.0 at 8 (FP32:
           20.1 / 46.3), about 35% of DRAM bandwidth; the prefill tile's LDS/barrier scheme
           buys nothing at 16 rows.
-        - [ ] Kernel v2: per-subgroup weight streaming without workgroup barriers, B from an
-          f16 X copy in global memory; the same gates. Then FP64 quality, the CLI knob, and
-          serving at 1/2/4/8/16 clients.
+        - [x] Kernel v2 ([report](docs/bench/2026-09-26-decode-v2.md)): `gemm_f16d`,
+          bitwise v1, 1.3–1.5× faster per projection; Q4_1/Q5_K stay FP32
+          (`decode_f16_formats`). 8-row step 38.6 ms (FP32 46.3), 1 row 31 ms (FP32 20).
+          WMMA decode is bounded near 600–700 GB/s by the tile's issue cost (estimate from
+          ISA; ablations in the report): it cannot match FP32 at 1 row, so the mode stays
+          internal (batch invariance forbids choosing arithmetic by batch size).
+      - [ ] Next (the large lever): the exact FP32 multi-row projection at ~5.2 TFMA/s. With
+        long per-row weight runs (the v2 study: 576-byte runs reach the ~800 GB/s harness
+        ceiling) and the FMA work spread across lanes, an 8-row step near the 1-row memory
+        time would roughly double 8-user throughput, bit-exact and in the default mode.
 
 - [ ] **17 · decode speed: tok/s faster than llama-server** (single stream first) — parked
   2026-09-24 for block 18. [Design and decision log](docs/design/speed.md).

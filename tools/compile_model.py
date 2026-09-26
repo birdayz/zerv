@@ -22,6 +22,8 @@ GEMM_WIDE = {name+"_w": GEMM[name] for name in ("gemm_q4_0", "gemm_q4_1", "gemm_
 GEMM_F16 = {"gemm_f16_q4_0": (2, 18), "gemm_f16_q4_1": (3, 20), "gemm_f16_q5_k": (13, 176)}
 # wave32 f16 GEMM on f16 X (block 16b): name -> (FORMAT, BLOCK_BYTES)
 GEMM_F16X = {"gemm_f16x_q4_0": (2, 18)}
+# Batched decode v2 (block 18e, gemm_f16d.comp): wave32 streaming tiles, gemm_f16n arithmetic.
+GEMM_F16D = {"gemm_f16d_q4_0": (2, 18)}
 # Batched decode tile (block 18e, -DSMALLN=1): 128 x 16, the same per-element arithmetic.
 GEMM_F16N = {"gemm_f16n_q4_0": (2, 18), "gemm_f16n_q4_1": (3, 20), "gemm_f16n_q5_k": (13, 176)}
 # Short-prompt tile (block 18c.2, -DSMALLM=1): 32 x 128, the same per-element arithmetic.
@@ -51,9 +53,10 @@ def main():
     gemm = ROOT/"src/model/gemm.comp"
     gemm_f16 = ROOT/"src/model/gemm_f16.comp"
     gemm_f16x = ROOT/"src/model/gemm_f16x.comp"
+    gemm_f16d = ROOT/"src/model/gemm_f16d.comp"
     flash = ROOT/"src/model/flash.comp"
     manifest = dict(source_sha256=sha(source), gemm_source_sha256=sha(gemm), gemm_f16_source_sha256=sha(gemm_f16),
-                    gemm_f16x_source_sha256=sha(gemm_f16x), flash_source_sha256=sha(flash), tools=PINS, modules={})
+                    gemm_f16x_source_sha256=sha(gemm_f16x), gemm_f16d_source_sha256=sha(gemm_f16d), flash_source_sha256=sha(flash), tools=PINS, modules={})
     # Fused causal prefill attention (block 16a).
     for name, kv16 in (("attn_flash", []), ("attn_flash_kv16", ["-DKV16"])):
         output = a.output_dir/(name+".spv")
@@ -83,6 +86,12 @@ def main():
         output = a.output_dir/(name+".spv")
         subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}", "-DSMALLN=1",
                         str(gemm_f16), "-o", str(output)], check=True)
+        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
+        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+    for name, (fmt, width) in GEMM_F16D.items():
+        output = a.output_dir/(name+".spv")
+        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}",
+                        str(gemm_f16d), "-o", str(output)], check=True)
         subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
         manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
     for name, (fmt, width) in GEMM_F16X.items():

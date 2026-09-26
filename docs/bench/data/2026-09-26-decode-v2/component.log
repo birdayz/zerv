@@ -1,0 +1,46 @@
++ zig-out/bin/zerv-decode-f16-bench models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --roles ffn_gate,ffn_down,attn_qkv,attn_q --samples 21 --warmup-ms 300 1 2 4 8 16
++ for v in "xf16s:256:1" "u8x16:256:1" "wide:256:1" "s16x:512:1" "s32x:1024:1" "diag5u8:256:1" "stream:256:0" "srows32u:1024:0" "sown32u:1024:0"
++ IFS=:
++ read n al x
++ zig-out/bin/zerv-decode-f16-bench models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --roles ffn_gate,ffn_down,attn_qkv,attn_q --samples 21 --warmup-ms 300 --chunk-align 256 --spv docs/bench/data/2026-09-26-decode-v2/spv/xf16s.spv --spv-x16 1 1 8
++ sed 's/^{/{"spv":"xf16s","chunk_align":256,/'
++ for v in "xf16s:256:1" "u8x16:256:1" "wide:256:1" "s16x:512:1" "s32x:1024:1" "diag5u8:256:1" "stream:256:0" "srows32u:1024:0" "sown32u:1024:0"
++ IFS=:
++ read n al x
++ zig-out/bin/zerv-decode-f16-bench models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --roles ffn_gate,ffn_down,attn_qkv,attn_q --samples 21 --warmup-ms 300 --chunk-align 256 --spv docs/bench/data/2026-09-26-decode-v2/spv/u8x16.spv --spv-x16 1 1 8
++ sed 's/^{/{"spv":"u8x16","chunk_align":256,/'
++ for v in "xf16s:256:1" "u8x16:256:1" "wide:256:1" "s16x:512:1" "s32x:1024:1" "diag5u8:256:1" "stream:256:0" "srows32u:1024:0" "sown32u:1024:0"
++ IFS=:
++ read n al x
++ zig-out/bin/zerv-decode-f16-bench models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --roles ffn_gate,ffn_down,attn_qkv,attn_q --samples 21 --warmup-ms 300 --chunk-align 256 --spv docs/bench/data/2026-09-26-decode-v2/spv/wide.spv --spv-x16 1 1 8
++ sed 's/^{/{"spv":"wide","chunk_align":256,/'
++ for v in "xf16s:256:1" "u8x16:256:1" "wide:256:1" "s16x:512:1" "s32x:1024:1" "diag5u8:256:1" "stream:256:0" "srows32u:1024:0" "sown32u:1024:0"
++ IFS=:
++ read n al x
++ zig-out/bin/zerv-decode-f16-bench models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --roles ffn_gate,ffn_down,attn_qkv,attn_q --samples 21 --warmup-ms 300 --chunk-align 512 --spv docs/bench/data/2026-09-26-decode-v2/spv/s16x.spv --spv-x16 1 1 8
++ sed 's/^{/{"spv":"s16x","chunk_align":512,/'
++ for v in "xf16s:256:1" "u8x16:256:1" "wide:256:1" "s16x:512:1" "s32x:1024:1" "diag5u8:256:1" "stream:256:0" "srows32u:1024:0" "sown32u:1024:0"
++ IFS=:
++ read n al x
++ zig-out/bin/zerv-decode-f16-bench models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --roles ffn_gate,ffn_down,attn_qkv,attn_q --samples 21 --warmup-ms 300 --chunk-align 1024 --spv docs/bench/data/2026-09-26-decode-v2/spv/s32x.spv --spv-x16 1 1 8
++ sed 's/^{/{"spv":"s32x","chunk_align":1024,/'
++ for v in "xf16s:256:1" "u8x16:256:1" "wide:256:1" "s16x:512:1" "s32x:1024:1" "diag5u8:256:1" "stream:256:0" "srows32u:1024:0" "sown32u:1024:0"
++ IFS=:
++ read n al x
++ zig-out/bin/zerv-decode-f16-bench models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --roles ffn_gate,ffn_down,attn_qkv,attn_q --samples 21 --warmup-ms 300 --chunk-align 256 --spv docs/bench/data/2026-09-26-decode-v2/spv/diag5u8.spv --spv-x16 1 1 8
++ sed 's/^{/{"spv":"diag5u8","chunk_align":256,/'
++ for v in "xf16s:256:1" "u8x16:256:1" "wide:256:1" "s16x:512:1" "s32x:1024:1" "diag5u8:256:1" "stream:256:0" "srows32u:1024:0" "sown32u:1024:0"
++ IFS=:
++ read n al x
++ sed 's/^{/{"spv":"stream","chunk_align":256,/'
++ zig-out/bin/zerv-decode-f16-bench models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --roles ffn_gate,ffn_down,attn_qkv,attn_q --samples 21 --warmup-ms 300 --chunk-align 256 --spv docs/bench/data/2026-09-26-decode-v2/spv/stream.spv --spv-x16 0 1 8
++ for v in "xf16s:256:1" "u8x16:256:1" "wide:256:1" "s16x:512:1" "s32x:1024:1" "diag5u8:256:1" "stream:256:0" "srows32u:1024:0" "sown32u:1024:0"
++ IFS=:
++ read n al x
++ zig-out/bin/zerv-decode-f16-bench models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --roles ffn_gate,ffn_down,attn_qkv,attn_q --samples 21 --warmup-ms 300 --chunk-align 1024 --spv docs/bench/data/2026-09-26-decode-v2/spv/srows32u.spv --spv-x16 0 1 8
++ sed 's/^{/{"spv":"srows32u","chunk_align":1024,/'
++ for v in "xf16s:256:1" "u8x16:256:1" "wide:256:1" "s16x:512:1" "s32x:1024:1" "diag5u8:256:1" "stream:256:0" "srows32u:1024:0" "sown32u:1024:0"
++ IFS=:
++ read n al x
++ zig-out/bin/zerv-decode-f16-bench models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --roles ffn_gate,ffn_down,attn_qkv,attn_q --samples 21 --warmup-ms 300 --chunk-align 1024 --spv docs/bench/data/2026-09-26-decode-v2/spv/sown32u.spv --spv-x16 0 1 8
++ sed 's/^{/{"spv":"sown32u","chunk_align":1024,/'

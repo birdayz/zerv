@@ -95,8 +95,18 @@ pub const Options = struct {
     /// device idle use the 32 x 128 tile (`gemm.f16KernelFor`); bitwise the same results.
     /// false: the previous kernels.
     f16_small_tile: bool = true,
+    /// `decode_precision = .f16` kernel: `.v2` (gemm_f16d, wave32 streaming tiles, Q4_0
+    /// projections; needs subgroup size control with 32) or `.v1` (gemm_f16n everywhere).
+    /// Bitwise the same results (gpu-test).
+    decode_f16_kernel: DecodeF16Kernel = .v2,
+    /// `decode_precision = .f16`: which weight formats use the f16 arithmetic. `.q4_0`
+    /// (default): Q4_0 only; Q4_1 and Q5_K stay FP32 (measured faster there). `.all`: every
+    /// f16-eligible format (Q4_0, Q4_1, Q5_K), the definition before 2026-09-26.
+    decode_f16_formats: DecodeF16Formats = .q4_0,
 };
 pub const DecodePrecision = enum { f32, f16 };
+pub const DecodeF16Kernel = enum { v1, v2 };
+pub const DecodeF16Formats = enum { q4_0, all };
 pub const Error = gpu.Error || matvec.Error || config.Error || layout.Error || gemm.Error || error{ InvalidToken, ContextFull, TooManyPipelines, InvalidTensorBytes, CaptureFull, PrefillDisabled, ProbeFailed, InvalidPlan, UnsupportedDevice, InvalidContext, InvalidSnapshot, InsufficientVram, VerifyDisabled, VerifyPending, NoVerify, MtpDisabled, VramBudgetUnknown, InvalidDraftVocab, MtpNeedsOneSlot, InvalidBatch, InvalidSlot, PagesMissing, PageInUse, ChunkInFlight, SlotNeedsReset };
 
 /// Segmented prefill (docs/specs/concurrent.md, "18c.2 design"): with several slots each
@@ -682,6 +692,7 @@ pub const Model = struct {
         if (options.decode_precision == .f16) {
             if (options.batch_rows == 0 or std.mem.alignForward(u32, options.batch_rows, gemm.f16n_tile_n) > @max(self.rows, 1)) return error.InvalidBatch;
             if (!device.cooperative_matrix or device.subgroup.size != 64) return error.UnsupportedDevice;
+            if (options.decode_f16_kernel == .v2 and (!device.full_subgroups or device.subgroup_sizes.min > gemm.f16d_subgroup or device.subgroup_sizes.max < gemm.f16d_subgroup)) return error.UnsupportedDevice;
         }
         if (options.draft_vocab > config.vocab) return error.InvalidDraftVocab;
         const kv_capacity = if (options.kv_capacity != 0) std.mem.alignBackward(u64, @min(options.kv_capacity, capacity), 32) else capacity;
@@ -1385,6 +1396,16 @@ pub const Model = struct {
     /// row. Returns rows.len logits rows (row r at [r * vocab ..], borrowed until the next
     /// call) and advances each slot's position by one.
     pub fn decodeBatch(self: *Model, rows: []const BatchRow) Error![]const f32 {
+        return self.decodeBatchWith(rows, null);
+    }
+
+    /// `decodeBatch` running `commands` (recorded by `recordBatchProfile` for rows.len rows)
+    /// instead of the production batch commands: the profilers' instrumented step.
+    pub fn decodeBatchProfiled(self: *Model, rows: []const BatchRow, commands: *gpu.Commands) Error![]const f32 {
+        return self.decodeBatchWith(rows, commands);
+    }
+
+    fn decodeBatchWith(self: *Model, rows: []const BatchRow, commands: ?*gpu.Commands) Error![]const f32 {
         if (rows.len == 0 or rows.len > self.options.batch_rows) return error.InvalidBatch;
         if (self.pending_verify != 0) return error.VerifyPending;
         var seen: u64 = 0;
@@ -1407,7 +1428,7 @@ pub const Model = struct {
         }
         // A chunk in flight reads these io words again in its next segment.
         if (self.chunk != null) self.io_dirty = true;
-        try self.batch_commands[n].run(self.options.timeout_ns);
+        try (commands orelse &self.batch_commands[n]).run(self.options.timeout_ns);
         for (rows) |row| {
             if (row.slot == self.slot) self.position += 1 else self.slot_positions[row.slot] += 1;
         }
@@ -1532,7 +1553,10 @@ pub const Model = struct {
         const M: u32 = @intCast(s.rows);
         const K: u32 = @intCast(s.k);
         if (!gemm.f16DecodeEligible(v, M)) return null;
-        const key: u32 = @as(u32, place.bank) | (@as(u32, @intFromEnum(v)) << 8) | (@as(u32, 3) << 24);
+        if (self.options.decode_f16_formats == .q4_0 and v != .q4_0) return null;
+        const chunk = gemm.f16nChunk(M, K, split_target);
+        const v2 = self.options.decode_f16_kernel == .v2 and gemm.f16dEligible(v, M, K, chunk);
+        const key: u32 = @as(u32, place.bank) | (@as(u32, @intFromEnum(v)) << 8) | (@as(u32, if (v2) 4 else 3) << 24);
         var index: ?u8 = null;
         for (self.gemm_keys[0..self.gemm_count], 0..) |k, i| if (k == key) {
             index = @intCast(i);
@@ -1541,14 +1565,17 @@ pub const Model = struct {
             if (self.gemm_count == max_gemm_pipelines) return error.TooManyPipelines;
             const i = self.gemm_count;
             const buffers = [_]*gpu.Buffer{ &self.banks[place.bank], &self.act, &self.io, &self.act };
-            self.gemm_pipes[i] = try gpu.Kernel.init(self.device, try gemm.moduleF16n(v), &buffers, @sizeOf(gemm.Push));
+            self.gemm_pipes[i] = if (v2)
+                try gpu.Kernel.initWith(self.device, try gemm.moduleF16d(v), &buffers, @sizeOf(gemm.Push), .{ .subgroup_size = gemm.f16d_subgroup, .full_subgroups = true })
+            else
+                try gpu.Kernel.init(self.device, try gemm.moduleF16n(v), &buffers, @sizeOf(gemm.Push));
             self.gemm_keys[i] = key;
             self.gemm_count += 1;
             index = i;
         }
         var push: gemm.Push = .{ .a_base = @intCast(place.offset), .a_rs = @intCast(t.data.len / M), .x_base = input_word, .x_rs = K, .y_base = output_word, .y_rs = M, .m = M, .k = K };
         const span = std.mem.alignForward(u32, self.options.batch_rows, gemm.f16n_tile_n);
-        push.k_chunk = gemm.f16nChunk(M, K, split_target);
+        push.k_chunk = chunk;
         var reduce: ?gemm.ReducePush = null;
         var parts: u32 = 1;
         if (push.k_chunk != 0) {
@@ -1558,7 +1585,8 @@ pub const Model = struct {
             push.y_bs = span * M;
             reduce = .{ .part = part, .splits = parts, .part_bs = span * M, .y = output_word, .y_rs = M, .m = M };
         }
-        const groups = try gemm.validateF16n(v, push, .{ .rows = span, .batches = parts }, self.banks[place.bank].size, self.act.size);
+        const lim: gemm.Limits = .{ .rows = span, .batches = parts };
+        const groups = if (v2) try gemm.validateF16d(v, push, lim, self.banks[place.bank].size, self.act.size) else try gemm.validateF16n(v, push, lim, self.banks[place.bank].size, self.act.size);
         return .{ .pipe = index.?, .push = push, .groups = groups, .reduce = reduce };
     }
 
@@ -2458,7 +2486,18 @@ pub const Model = struct {
     /// from its batch-table entry; conv and delta run one row per workgroup and store the
     /// state. Logits go to rows 0..n-1 of `verify_logits`.
     fn recordBatch(self: *Model, commands: *gpu.Commands, n: u32) Error!void {
-        const r: Rec = .{ .model = self, .c = commands, .capture = null, .probe = null, .rows = n };
+        return self.recordBatchWith(commands, n, null);
+    }
+
+    /// `recordBatch` with GPU timestamps between phases (instrumented commands for the
+    /// profilers; the production batch commands carry none). `commands` must be fresh.
+    pub fn recordBatchProfile(self: *Model, commands: *gpu.Commands, n: u32, probe: Probe) Error!void {
+        if (n == 0 or n > self.options.batch_rows) return error.InvalidBatch;
+        return self.recordBatchWith(commands, n, probe);
+    }
+
+    fn recordBatchWith(self: *Model, commands: *gpu.Commands, n: u32, probe: ?Probe) Error!void {
+        const r: Rec = .{ .model = self, .c = commands, .capture = null, .probe = probe, .rows = n };
         // With several slots `r` and `f` are the batch's own rows: a prefill chunk may be
         // between two segments (docs/specs/concurrent.md, "18c.2 design").
         const A = self.act_layout.batch();
@@ -2472,15 +2511,18 @@ pub const Model = struct {
         try commands.barrier(.host, .compute);
         try r.bar();
         try r.kernel(.embed_b, EmbedBPush{ .tensor = self.embed_offset, .row_bytes = config.hidden / 32 * 18, .out = A.x, .columns = H, .tokens = layout.io.tokens, .out_rs = H }, .{ H / 256, n, 1 });
+        try r.mark(.embed, -1);
         for (0..config.layers) |index| {
             const il: u32 = @intCast(index);
             const L = &self.layers[il];
+            const lm: i32 = @intCast(il);
             try r.bar();
             if (il == 0) {
                 try r.kernel(.norm, NormPush{ .x = A.x, .a = 0, .sum = 0, .y = A.h, .w = L.attn_norm, .stride = H, .flags = 0, .eps = eps }, .{ n, 1, 1 });
             } else {
                 try r.kernel(.norm, NormPush{ .x = A.r, .a = A.f, .sum = A.x, .y = A.h, .w = L.attn_norm, .stride = H, .flags = norm_add, .eps = eps }, .{ n, 1, 1 });
             }
+            try r.mark(.norm, lm);
             try r.bar();
             if (config.isAttention(il)) {
                 const ai = config.attentionIndex(il);
@@ -2488,6 +2530,7 @@ pub const Model = struct {
                 try r.bproj(L.r_k);
                 try r.bproj(L.r_v);
                 try r.dreduce(&.{L.d_q});
+                try r.mark(.attn_in, lm);
                 try r.bar();
                 try r.attn(.qkprep, ai, QkPush{ .slots = table, .slot_rs = rs, .qf = A.qf, .kc = A.kc, .vc = A.vc, .qn = A.qn, .qr = A.qr, .kn = A.kn, .kr = A.kr, .qw = L.q_norm, .kw = L.k_norm, .kcache = S.kcache(ai), .vcache = S.vcache(ai), .ctx = S.context, .eps = eps, .rope = layout.io.rope(rows), .pos = layout.io.position, .ptab = A.ptab, .pstride = S.pstride(ai) }, .{ config.heads + config.kv_heads, n, 1 });
                 try r.bar();
@@ -2500,9 +2543,11 @@ pub const Model = struct {
                 try r.kernel(.attn_cblock, attention.BlockPush{ .slots = table, .slot_rs = rs, .apart = A.apart, .asum = A.asum, .bpart = A.bpart, .bsum = A.bsum, .chunks = A.chunks, .blocks = A.blocks, .pos = layout.io.position }, attention.groups(.block, A.chunks, n));
                 try r.bar();
                 try r.kernel(.attn_combine, attention.CombinePush{ .slots = table, .slot_rs = rs, .bpart = A.bpart, .bsum = A.bsum, .qf = A.qf, .pregate = A.pregate, .gates = A.gates, .gated = A.gated, .blocks = A.blocks, .pos = layout.io.position }, attention.groups(.combine, A.chunks, n));
+                try r.mark(.attention, lm);
                 try r.bar();
                 try r.dproj(L.d_out, L.r_out);
                 try r.dreduce(&.{L.d_out});
+                try r.mark(.attn_out, lm);
             } else {
                 const li = config.linearIndex(il);
                 try r.dproj(L.d_qkv, L.b_qkv);
@@ -2510,16 +2555,21 @@ pub const Model = struct {
                 try r.bproj(L.b_alpha);
                 try r.bproj(L.b_beta);
                 try r.dreduce(&.{ L.d_qkv, L.d_z });
+                try r.mark(.lin_in, lm);
                 try r.bar();
                 try r.kernel(.conv, ConvDPush{ .slots = table, .slot_rs = rs, .mixed = A.mixed, .raw = A.conv_raw, .silu = A.conv_silu, .out = A.conv_out, .w = L.conv_w, .conv = S.convLayer(li), .rows = 1, .commit = 1 }, .{ config.conv_channels / 128, n, 1 });
+                try r.mark(.conv, lm);
                 try r.bar();
                 try r.kernel(self.deltaKernel(), DeltaDPush{ .slots = table, .slot_rs = rs, .qk = A.conv_out, .v = A.conv_out + 2 * config.key_dim, .z = A.z, .beta_raw = A.beta_raw, .alpha = A.alpha, .beta_out = A.beta, .softplus_out = A.softplus, .g_out = A.gate, .o = A.o, .y = A.fo, .ssm = S.ssmLayer(li), .a_w = L.ssm_a, .dt_w = L.dt, .norm_w = L.ssm_norm, .eps = eps, .rows = 1, .commit = 1, .state_out = S.ssmLayer(li) }, .{ config.v_heads, n, 1 });
+                try r.mark(.delta, lm);
                 try r.bar();
                 try r.dproj(L.d_ssm_out, L.r_ssm_out);
                 try r.dreduce(&.{L.d_ssm_out});
+                try r.mark(.lin_out, lm);
             }
             try r.bar();
             try r.kernel(.norm, NormPush{ .x = A.x, .a = A.a, .sum = A.r, .y = A.h, .w = L.post_norm, .stride = H, .flags = norm_add, .eps = eps }, .{ n, 1, 1 });
+            try r.mark(.norm, lm);
             try r.bar();
             if (L.d_gate != null and L.d_up != null) {
                 try r.dproj(L.d_gate, L.r_gate);
@@ -2540,14 +2590,18 @@ pub const Model = struct {
                 try r.bar();
                 try r.kernel(.swiglu, SwigluPush{ .g = A.fg, .u = A.fu, .y = A.sw, .n = config.ffn * n }, .{ config.ffn * n / 128, 1, 1 });
             }
+            try r.mark(.ffn_in, lm);
             try r.bar();
             try r.dproj(L.d_down, L.b_down);
             try r.dreduce(&.{L.d_down});
+            try r.mark(.ffn_down, lm);
         }
         try r.bar();
         try r.kernel(.norm, NormPush{ .x = A.r, .a = A.f, .sum = A.x, .y = A.hn, .w = self.output_norm, .stride = H, .flags = norm_add, .eps = eps }, .{ n, 1, 1 });
+        try r.mark(.norm, -1);
         try r.bar();
         try r.bproj(self.output_rows);
+        try r.mark(.output, -1);
         try commands.barrier(.compute, .host);
     }
 

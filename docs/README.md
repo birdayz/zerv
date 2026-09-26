@@ -247,6 +247,9 @@ finish independent tests and benchmark gates before advancing.
     +5.3% on 128-row plans), `run_multiuser.py`; against vLLM and llama-server: zerv leads at 1–4 users, on TTFT
     and on long-prompt interference (40 tok/s kept against 5–13); vLLM leads 8-user throughput (158 vs 151) and
     steady gap p99 (51 vs 147 ms) by packing simultaneous prompts into one prefill.
+85. [f16 decode kernel v2](bench/2026-09-26-decode-v2.md) (18e part 3): `gemm_f16d` bitwise v1, 1.3–1.5×
+    faster; 8-row step 38.6 ms vs FP32 46.3; ablations show WMMA decode bounded near 600–700 GB/s on this card
+    (the 16×16 tile's issue cost), so it cannot beat FP32 at 1 row; `zerv-decode-f16-bench`, batched-step profile.
 84. [vLLM as a competitor](bench/2026-09-25-vllm.md): official ROCm image v0.30.0 with RedHatAI W4A16, FP8 KV;
     download verification and malware scan (`tools/fetch_hf.py`, ClamAV), hardened container, bring-up findings
     (a cold compile leaves no KV memory on 24 GB).

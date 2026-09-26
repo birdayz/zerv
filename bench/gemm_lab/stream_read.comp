@@ -1,0 +1,24 @@
+#version 450
+// Bandwidth calibration for zerv-decode-f16-bench (not a GEMM): the grid's workgroups read
+// the layer's weight rows [64 x, 64 x + 64) of split part z as contiguous vec4s and write
+// one word per workgroup (keeps the loads live). Same bindings and push as gemm_f16d.
+layout(local_size_x=128) in;
+layout(set=0,binding=0,std430) readonly buffer A4 { uvec4 aw4[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(push_constant) uniform P {
+    uint a_base, a_rs, a_cs, a_bs, a_group;
+    uint x_base, x_rs, x_bs;
+    uint y_base, y_rs, y_bs;
+    uint m, k;
+    uint flags;
+    uint k_chunk;
+} p;
+void main() {
+    uint rows=64u, parts=gl_NumWorkGroups.z;
+    uint bytes=rows*p.a_rs, per=(bytes/16u+parts-1u)/parts;
+    uint start=(p.a_base+gl_WorkGroupID.x*rows*p.a_rs)/16u+gl_WorkGroupID.z*per;
+    uint end=min(start+per,(p.a_base+gl_WorkGroupID.x*rows*p.a_rs)/16u+bytes/16u);
+    uvec4 s=uvec4(0u);
+    for (uint i=start+gl_LocalInvocationID.x;i<end;i+=128u) s^=aw4[i];
+    if (s.x==0x12345678u) act[p.y_base]=1.0;
+}

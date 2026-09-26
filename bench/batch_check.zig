@@ -17,11 +17,12 @@
 //!      permutation of a larger pool (non-identity, interleaved page tables);
 //!   4. error cases (duplicate slot, page in use, unmapped slot);
 //!   5. timings: decodeBatch per row count at a common position, and step().
-//! Usage: zerv-batch-check MODEL [f32|f16 [PAGE_TOKENS [CONTEXT [f32|f16]]]] > report.jsonl
+//! Usage: zerv-batch-check MODEL [f32|f16 [PAGE_TOKENS [CONTEXT [f32|f16[@v1|@v2][@all]]]]] > report.jsonl
 //! (KV type, page tokens, context, decode precision; exit status 1 on any mismatch). With
 //! decode precision f16 the reference is the same mode on a one-slot model, each sequence
 //! decoded alone through one-row batches (batch invariance within the mode).
 const std = @import("std");
+const w = @import("matvec_workload");
 const zerv = @import("zerv");
 const gpu = zerv.gpu;
 const model = zerv.model;
@@ -66,7 +67,21 @@ pub fn main(init: std.process.Init) !void {
     const kv_type: model.KvType = if (args.len >= 3) std.meta.stringToEnum(model.KvType, args[2]) orelse return error.Usage else .f32;
     const page: u32 = if (args.len >= 4) (if (std.mem.eql(u8, args[3], "context")) 0 else try std.fmt.parseInt(u32, args[3], 10)) else model.layout.default_kv_page;
     const context: u32 = if (args.len >= 5) try std.fmt.parseInt(u32, args[4], 10) else 2048;
-    const precision: model.DecodePrecision = if (args.len >= 6) std.meta.stringToEnum(model.DecodePrecision, args[5]) orelse return error.Usage else .f32;
+    // DECODE_PRECISION[@v1|@v2]: `Options.decode_f16_kernel` for f16.
+    var precision: model.DecodePrecision = .f32;
+    var dkernel: model.DecodeF16Kernel = .v2;
+    var dformats: model.DecodeF16Formats = .q4_0;
+    if (args.len >= 6) {
+        var pp = std.mem.splitScalar(u8, args[5], '@');
+        precision = std.meta.stringToEnum(model.DecodePrecision, pp.first()) orelse return error.Usage;
+        while (pp.next()) |k| {
+            if (std.meta.stringToEnum(model.DecodeF16Kernel, k)) |v| {
+                dkernel = v;
+            } else if (std.mem.eql(u8, k, "all")) {
+                dformats = .all;
+            } else return error.Usage;
+        }
+    }
     var stdout_buffer: [4096]u8 = undefined;
     var stdout = std.Io.File.stdout().writer(io, &stdout_buffer);
     const out = &stdout.interface;
@@ -75,7 +90,7 @@ pub fn main(init: std.process.Init) !void {
     defer file.deinit();
     var container = try zerv.artifact.gguf.Container.parse(a, file.bytes, .{});
     defer container.deinit();
-    var device = try gpu.Device.open(.{ .max_allocated_bytes = 23 * 1024 * 1024 * 1024, .storage16 = kv_type == .f16, .cooperative_matrix = precision == .f16 });
+    var device = try gpu.Device.open(.{ .max_allocated_bytes = 23 * 1024 * 1024 * 1024, .storage16 = kv_type == .f16, .cooperative_matrix = precision == .f16, .subgroup_size_control = precision == .f16 });
     defer device.deinit() catch @panic("live device resources");
 
     var prng = std.Random.DefaultPrng.init(0x18b2);
@@ -95,7 +110,7 @@ pub fn main(init: std.process.Init) !void {
     var step_ns: [T]u64 = undefined;
     {
         var m: model.Model = undefined;
-        try m.init(&device, &container, .{ .context = context, .prefill_rows = 512, .kv_type = kv_type, .kv_page_tokens = page, .batch_rows = if (precision == .f16) 1 else 0, .decode_precision = precision });
+        try m.init(&device, &container, .{ .context = context, .prefill_rows = 512, .kv_type = kv_type, .kv_page_tokens = page, .batch_rows = if (precision == .f16) 1 else 0, .decode_precision = precision, .decode_f16_kernel = dkernel, .decode_f16_formats = dformats });
         defer m.deinit();
         for (0..K) |i| {
             try m.reset();
@@ -116,7 +131,7 @@ pub fn main(init: std.process.Init) !void {
     var m: model.Model = undefined;
     const seq_pages = model.layout.stateWith(context, 0xf000_0000, false, kv_type, page, 1, 0) catch unreachable;
     const pool = K * seq_pages.seq_pages + 5;
-    try m.init(&device, &container, .{ .context = context, .prefill_rows = 512, .kv_type = kv_type, .kv_page_tokens = page, .slots = K, .batch_rows = K, .kv_pages = pool, .decode_precision = precision });
+    try m.init(&device, &container, .{ .context = context, .prefill_rows = 512, .kv_type = kv_type, .kv_page_tokens = page, .slots = K, .batch_rows = K, .kv_pages = pool, .decode_precision = precision, .decode_f16_kernel = dkernel, .decode_f16_formats = dformats });
     defer m.deinit();
     try out.print("{{\"phase\":\"batched\",\"slots\":{d},\"pool_pages\":{d},\"seq_pages\":{d},\"page\":{d}}}\n", .{ K, m.state_layout.pages, m.state_layout.seq_pages, m.state_layout.page });
     var stats: Stats = .{};
@@ -281,9 +296,66 @@ pub fn main(init: std.process.Init) !void {
         try out.print("{{\"timing\":\"decodeBatch\",\"rows\":{d},\"position\":{d},\"ms_median\":{d:.3},\"tok_s\":{d:.1}}}\n", .{ b, m.slotPosition(0), ms, @as(f64, @floatFromInt(b)) * 1000 / ms });
         try out.flush();
     }
+    // Per-phase GPU time of one batched step (instrumented commands), 1 and K rows.
+    for ([_]u32{ 1, K }) |pb| {
+        var rec: Recorder = .{ .marks = try w.Marks.init(&device, max_marks) };
+        defer rec.marks.deinit();
+        var cmd = try gpu.Commands.init(&device);
+        defer cmd.deinit() catch @panic("profile commands");
+        try cmd.begin();
+        try rec.marks.begin(&cmd);
+        try m.recordBatchProfile(&cmd, pb, .{ .context = &rec, .mark = Recorder.mark });
+        try cmd.end();
+        var totals: [phase_count]f64 = @splat(0);
+        var total: f64 = 0;
+        for (0..3) |_| {
+            var rows: [K]model.BatchRow = undefined;
+            for (rows[0..pb], 0..) |*row, r| row.* = .{ .slot = @intCast(r), .token = 1000 + @as(u32, @intCast(r)) };
+            _ = try m.decodeBatchProfiled(rows[0..pb], &cmd);
+            total = try rec.totals(&totals); // the last run's
+        }
+        try out.print("{{\"profile\":\"decodeBatch\",\"rows\":{d},\"gpu_ms\":{d:.3},\"phases_ms\":{{", .{ pb, total / 1e6 });
+        var first = true;
+        inline for (@typeInfo(model.Phase).@"enum".fields, 0..) |f, i| if (totals[i] > 0) {
+            try out.print("{s}\"{s}\":{d:.3}", .{ if (first) "" else ",", f.name, totals[i] / 1e6 });
+            first = false;
+        };
+        try out.writeAll("}}\n");
+        try out.flush();
+    }
 
     const passed = stats.failures == 0 and errors_ok and sizes_seen == (1 << K) - 1 and interleaved > 0;
+    // Hash of the reference logits (phase A): equal across decode kernels of one arithmetic.
+    var hasher = std.hash.Wyhash.init(0);
+    hasher.update(std.mem.sliceAsBytes(ref));
+    try out.print("{{\"reference_logits_hash\":\"{x}\"}}\n", .{hasher.final()});
     try out.print("{{\"summary\":true,\"compared\":{d},\"failures\":{d},\"batch_sizes_seen\":{d},\"batches_between_segments\":{d},\"errors_ok\":{},\"passed\":{}}}\n", .{ stats.compared, stats.failures, @popCount(sizes_seen), interleaved, errors_ok, passed });
     try out.flush();
     if (!passed) std.process.exit(1);
 }
+
+const phase_count = @typeInfo(model.Phase).@"enum".fields.len;
+const max_marks = 1024;
+/// GPU timestamps between the recorded phases (as zerv-model-profile).
+const Recorder = struct {
+    marks: w.Marks,
+    phases: [max_marks]model.Phase = undefined,
+
+    fn mark(context: *anyopaque, commands: *gpu.Commands, phase: model.Phase, layer: i32) error{ProbeFailed}!void {
+        _ = layer;
+        const self: *Recorder = @ptrCast(@alignCast(context));
+        const index = self.marks.mark(commands) catch return error.ProbeFailed;
+        self.phases[index] = phase;
+    }
+    fn totals(self: *Recorder, out: *[phase_count]f64) !f64 {
+        var gaps: [max_marks]f64 = undefined;
+        try self.marks.read(gaps[0 .. self.marks.count - 1]);
+        out.* = @splat(0);
+        var sum: f64 = 0;
+        for (gaps[0 .. self.marks.count - 1], 1..) |gap, i| {
+            out[@intFromEnum(self.phases[i])] += gap;
+            sum += gap;
+        }
+        return sum;
+    }
+};

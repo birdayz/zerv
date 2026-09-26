@@ -1,0 +1,102 @@
+#version 450
+// Lab variant of src/model/gemm_f16d.comp (block 18e decode v2), same arithmetic per chunk:
+// long contiguous weight reads for DRAM locality. Per iteration the wave's 16 rows x BLK
+// Q4_0 blocks (16 x 18 BLK bytes; 16-byte aligned: a_base, a_rs % 16 == 0 and k_chunk, K
+// multiples of 32 BLK) are read by all 32 lanes as consecutive 16-byte pieces of the
+// row-major [row][piece] segment (each load instruction reads 512 contiguous bytes but for
+// row seams), staged in a wave-private LDS slice (subgroup barriers only), then each lane
+// reads its row's blocks from LDS. Lane half hl dequantizes half hl of each block (the other
+// half from lane ^ 16); X from the producer's f16 copy (x_base, x_rs in halves).
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_cooperative_matrix : require
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_shuffle : require
+#ifndef WAVES
+#define WAVES 4
+#endif
+#ifndef BLK
+#define BLK 32u
+#endif
+#define RPIECES (18u*BLK/16u)      // 16-byte pieces per row segment
+#define PIECES (16u*RPIECES)
+#define PER ((PIECES+31u)/32u)
+layout(local_size_x=WAVES*32) in;
+layout(set=0,binding=0,std430) readonly buffer A4 { uvec4 aw4[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=2,std430) readonly buffer Io { uint io[]; };
+layout(set=0,binding=3,std430) readonly restrict buffer ActX16 { uvec4 x16[]; };
+layout(push_constant) uniform P {
+    uint a_base, a_rs, a_cs, a_bs, a_group;
+    uint x_base, x_rs, x_bs;
+    uint y_base, y_rs, y_bs;
+    uint m, k;
+    uint flags;
+    uint k_chunk;
+} p;
+#define IO_COUNT 2
+shared uvec4 slice[WAVES][PIECES];
+uint lw(uint wave, uint w) { return slice[wave][w>>2u][w&3u]; }
+
+void main() {
+    uint lane=gl_SubgroupInvocationID, wave=gl_SubgroupID, hl=lane>>4u;
+    uint n=io[IO_COUNT];
+    uint m0=(gl_WorkGroupID.x*WAVES+wave)*16u, t0=gl_WorkGroupID.y*16u;
+    if (t0>=n) return; // uniform per workgroup
+    uint tok=min(t0+lane%16u,n-1u);
+    uint kb=gl_WorkGroupID.z*p.k_chunk, ke=p.k_chunk!=0u ? min(p.k,kb+p.k_chunk) : p.k;
+    coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> acc=coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(0.0);
+    uint xrow=(p.x_base+tok*p.x_rs)/8u;
+    uint rs16=p.a_rs/16u, base16=p.a_base/16u+m0*rs16;
+    uint rowbyte=(lane%16u)*18u*BLK;
+    for (uint k0=kb;k0<ke;k0+=32u*BLK) {
+        uint seg=(k0/32u)*18u/16u; // first piece of this iteration within a row
+        uvec4 v[PER];
+        [[unroll]] for (uint j=0u;j<PER;j++) {
+            uint c=min(lane+32u*j,PIECES-1u);
+            v[j]=aw4[base16+(c/RPIECES)*rs16+seg+c%RPIECES];
+        }
+        subgroupMemoryBarrierShared(); subgroupBarrier(); // previous iteration's readers done
+        [[unroll]] for (uint j=0u;j<PER;j++) if (lane+32u*j<PIECES) slice[wave][lane+32u*j]=v[j];
+        subgroupMemoryBarrierShared(); subgroupBarrier();
+        [[dont_unroll]] for (uint u=0u;u<BLK;u++) {
+            uint b=rowbyte+u*18u, wb=b>>2u;
+            bool o=(b&2u)!=0u;
+            uint w0=lw(wave,wb), w1=lw(wave,wb+1u), w2=lw(wave,wb+2u), w3=lw(wave,wb+3u), w4=lw(wave,wb+4u);
+            f16vec2 d=f16vec2(float16_t(unpackHalf2x16(o ? w0>>16u : w0).x));
+            uint qw[4]=uint[4](o ? w1 : (w0>>16u)|(w1<<16u), o ? w2 : (w1>>16u)|(w2<<16u),
+                               o ? w3 : (w2>>16u)|(w3<<16u), o ? w4 : (w3>>16u)|(w4<<16u));
+            uint mine[8];
+            [[unroll]] for (uint q=0u;q<4u;q++) {
+                uint x=(qw[q]>>(4u*hl))&0x0F0F0F0Fu;
+                uint p01=(x&0xFFu)|((x<<8u)&0xFF0000u), p23=((x>>16u)&0xFFu)|((x>>8u)&0xFF0000u);
+                mine[2u*q]=packFloat2x16((unpackFloat2x16(p01|0x64006400u)-f16vec2(float16_t(1032.0)))*d);
+                mine[2u*q+1u]=packFloat2x16((unpackFloat2x16(p23|0x64006400u)-f16vec2(float16_t(1032.0)))*d);
+            }
+            uint theirs[8];
+            [[unroll]] for (uint i=0u;i<8u;i++) theirs[i]=subgroupShuffleXor(mine[i],16u);
+            uint xk=xrow+(k0+32u*u)/8u;
+            [[unroll]] for (uint h=0u;h<2u;h++) {
+                coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB> fb;
+                [[unroll]] for (uint c=0u;c<2u;c++) {
+                    uvec4 xv=x16[xk+2u*h+c];
+                    uint xw[4]=uint[4](xv.x,xv.y,xv.z,xv.w);
+                    [[unroll]] for (uint q=0u;q<4u;q++) { f16vec2 f=unpackFloat2x16(xw[q]); fb[8u*c+2u*q]=f.x; fb[8u*c+2u*q+1u]=f.y; }
+                }
+                bool own=hl==h;
+                coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> fa;
+                [[unroll]] for (uint i=0u;i<8u;i++) {
+                    f16vec2 f=unpackFloat2x16(own ? mine[i] : theirs[i]);
+                    fa[2u*i]=f.x; fa[2u*i+1u]=f.y;
+                }
+#if DIAG==5
+                acc=acc+coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(float(fa[0]));
+#else
+                acc=coopMatMulAdd(fa, fb, acc);
+#endif
+            }
+        }
+    }
+    coopMatStore(acc, act, p.y_base+gl_WorkGroupID.z*p.y_bs+t0*p.y_rs+m0, p.y_rs, gl_CooperativeMatrixLayoutColumnMajor);
+}

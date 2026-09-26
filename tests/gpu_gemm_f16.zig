@@ -353,6 +353,94 @@ test "f16 GEMM n16: every row bitwise equal to gemm_f16 (Q4_0, Q4_1, Q5_K; 1..40
     std.debug.print("gemm_f16n: {d} (format, rows) cases bitwise equal to gemm_f16\n", .{checked});
 }
 
+// ---- gemm_f16d (block 18e, decode v2): wave32 streaming tiles -------------------------------
+// Spec gate (docs/specs/concurrent.md, "18e design", kernel v2): every row of every split part
+// equals gemm_f16n's (v1) bit for bit, same push (the model's split chunks, unsplit, 1..32
+// rows, K 512..17408, subnormal-scale weights); words around the output untouched.
+fn checkDecodeV2(device: *gpu.Device, M_: u32, K: u32, chunk: u32, n: u32, seed: u64) !void {
+    const row_bytes: u32 = K / 32 * 18;
+    const span: u32 = std.mem.alignForward(u32, n, gemm.f16n_tile_n);
+    const parts: u32 = gemm.splitCount(K, chunk);
+    const x_base: u32 = 16;
+    const y1: u32 = x_base + span * K + 64;
+    const y2: u32 = y1 + parts * span * M_ + 64;
+    const total: u32 = y2 + parts * span * M_ + 64;
+    var a = try gpu.Buffer.init(device, @as(u64, M_) * row_bytes + 64, .host);
+    defer a.deinit() catch @panic("a");
+    var act = try gpu.Buffer.init(device, @as(u64, total) * 4, .host);
+    defer act.deinit() catch @panic("act");
+    var io = try gpu.Buffer.init(device, 1024, .host);
+    defer io.deinit() catch @panic("io");
+    var v1 = try gpu.Kernel.init(device, try gemm.moduleF16n(.q4_0), &.{ &a, &act, &io, &act }, @sizeOf(gemm.Push));
+    defer v1.deinit() catch @panic("v1");
+    var v2 = try gpu.Kernel.initWith(device, try gemm.moduleF16d(.q4_0), &.{ &a, &act, &io, &act }, @sizeOf(gemm.Push), .{ .subgroup_size = gemm.f16d_subgroup, .full_subgroups = true });
+    defer v2.deinit() catch @panic("v2");
+    var cmd = try gpu.Commands.init(device);
+    defer cmd.deinit() catch @panic("cmd");
+    var prng = std.Random.DefaultPrng.init(seed);
+    const random = prng.random();
+    const wa = try a.mapped();
+    @memset(wa, 0);
+    q4Blocks(wa[0 .. M_ * row_bytes], random);
+    const words = std.mem.bytesAsSlice(f32, try act.mapped());
+    @memset(words, 12345.0);
+    for (0..span) |r| for (0..K) |k| {
+        words[x_base + r * K + k] = if (r < n) random.floatNorm(f32) else std.math.inf(f32);
+    };
+    std.mem.bytesAsSlice(u32, try io.mapped())[2] = n;
+    const p1: gemm.Push = .{ .a_base = 0, .a_rs = row_bytes, .x_base = x_base, .x_rs = K, .y_base = y1, .y_rs = M_, .y_bs = span * M_, .m = M_, .k = K, .k_chunk = chunk };
+    var p2 = p1;
+    p2.y_base = y2;
+    const lim: gemm.Limits = .{ .rows = span, .batches = parts };
+    const g1 = try gemm.validateF16n(.q4_0, p1, lim, a.size, act.size);
+    const g2 = try gemm.validateF16d(.q4_0, p2, lim, a.size, act.size);
+    try t.expectEqual([3]u32{ M_ / 64, span / 16, parts }, g2);
+    try cmd.begin();
+    try cmd.barrier(.host, .compute);
+    try cmd.dispatch(&v1, std.mem.asBytes(&p1), g1);
+    try cmd.dispatch(&v2, std.mem.asBytes(&p2), g2);
+    try cmd.barrier(.compute, .host);
+    try cmd.end();
+    try cmd.run(timeout_ns);
+    for (0..parts) |z| {
+        const got = std.mem.bytesAsSlice(u32, std.mem.sliceAsBytes(words[y2 + z * span * M_ ..][0 .. n * M_]));
+        const want = std.mem.bytesAsSlice(u32, std.mem.sliceAsBytes(words[y1 + z * span * M_ ..][0 .. n * M_]));
+        for (got, want, 0..) |g, w_, i| if (g != w_) {
+            std.debug.print("gemm_f16d M={d} K={d} chunk={d} n={d} part {d}: row {d} m {d}: 0x{x} != gemm_f16n 0x{x}\n", .{ M_, K, chunk, n, z, i / M_, i % M_, g, w_ });
+            return error.NotBitwiseEqual;
+        };
+    }
+    for (words[total - 64 .. total]) |value| try t.expectEqual(@as(f32, 12345.0), value);
+    for (words[y2 - 64 .. y2]) |value| try t.expectEqual(@as(f32, 12345.0), value);
+}
+
+test "f16 decode v2: every row and split part bitwise equal to gemm_f16n (Q4_0, 1..32 rows)" {
+    var device = (try openDeviceX()) orelse return error.SkipZigTest;
+    defer device.deinit() catch @panic("device");
+    var cases: u32 = 0;
+    for ([_]u32{ 1, 3, 8, 16, 17, 32 }, 0..) |n, i| {
+        try checkDecodeV2(&device, 5120, 5120, gemm.f16nChunk(5120, 5120, 384), n, 0x18d0 + i);
+        try checkDecodeV2(&device, 17408, 5120, gemm.f16nChunk(17408, 5120, 384), n, 0x18d8 + i);
+        cases += 2;
+    }
+    try checkDecodeV2(&device, 5120, 17408, gemm.f16nChunk(5120, 17408, 384), 8, 0x18e0); // ffn_down, 10 parts
+    try checkDecodeV2(&device, 6144, 512, 0, 5, 0x18e1); // unsplit
+    try checkDecodeV2(&device, 12288, 5120, gemm.f16nChunk(12288, 5120, 384), 8, 0x18e2);
+    cases += 3;
+    // Selection and validation.
+    try t.expect(gemm.f16dEligible(.q4_0, 5120, 17408, 1792));
+    try t.expect(!gemm.f16dEligible(.q4_1, 5120, 17408, 1792));
+    try t.expect(!gemm.f16dEligible(.q4_0, 5120, 5120 + 32, 0));
+    try t.expect(!gemm.f16dEligible(.q4_0, 4096 + 128 * 3 - 64, 5120, 0) or (4096 + 128 * 3 - 64) % 64 == 0);
+    const ok: gemm.Push = .{ .a_base = 0, .a_rs = 18 * 16, .x_base = 0, .x_rs = 512, .y_base = 1 << 20, .y_rs = M, .m = M, .k = 512 };
+    _ = try gemm.validateF16d(.q4_0, ok, .{ .rows = 16 }, 1 << 30, 1 << 30);
+    var bad = ok;
+    bad.x_rs = 514;
+    try t.expectError(error.InvalidShape, gemm.validateF16d(.q4_0, bad, .{ .rows = 16 }, 1 << 30, 1 << 30));
+    try t.expectError(error.InvalidShape, gemm.validateF16d(.q4_1, ok, .{ .rows = 16 }, 1 << 30, 1 << 30));
+    std.debug.print("gemm_f16d: {d} (shape, rows) cases bitwise equal to gemm_f16n\n", .{cases});
+}
+
 // ---- gemm_f16m (block 18c.2, --f16-small-tile): 32 x 128 tile ---------------------------
 // Spec gate (docs/specs/concurrent.md, "18c.2 design"): every valid row equals gemm_f16's
 // result bit for bit (Q4_0, Q4_1, Q5_K; one and two 128-row tiles, row tails, K 512..5120);

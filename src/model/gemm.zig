@@ -324,6 +324,36 @@ pub fn validateF16n(v: Variant, p: Push, lim: Limits, a_bytes: u64, act_bytes: u
     return .{ p.m / f16_tile_m, lim.rows / f16n_tile_n, grid[2] };
 }
 
+/// Batched decode kernel v2 (gemm_f16d.comp, block 18e): wave32 (required size, full
+/// subgroups), one 16 x 16 tile per wave, 4 waves per workgroup along M, Q4_0 only. Per
+/// output element the same arithmetic as `moduleF16n` with the same `k_chunk` (bitwise).
+pub const f16d_subgroup = 32;
+pub const f16d_tile_m = 64; // M per workgroup
+pub const f16d_k_step = 256; // K per loop iteration (8 Q4_0 blocks)
+
+pub fn moduleF16d(v: Variant) Error![]align(4) const u8 {
+    const M = struct {
+        const q4_0 align(4) = @embedFile("shaders/gemm_f16d_q4_0.spv").*;
+    };
+    return switch (v) {
+        .q4_0 => &M.q4_0,
+        else => error.InvalidShape,
+    };
+}
+
+/// Whether a decode projection can run on the v2 kernel (else v1, `moduleF16n`).
+pub fn f16dEligible(v: Variant, M: u32, K: u32, k_chunk: u32) bool {
+    return v == .q4_0 and f16DecodeEligible(v, M) and M % f16d_tile_m == 0 and K % f16d_k_step == 0 and k_chunk % f16d_k_step == 0;
+}
+
+/// Checks a v2 dispatch: `validateF16n`'s rules plus the v2 shape rules and X rows aligned to
+/// vec4 words. Returns the grid.
+pub fn validateF16d(v: Variant, p: Push, lim: Limits, a_bytes: u64, act_bytes: u64) Error![3]u32 {
+    const grid = try validateF16n(v, p, lim, a_bytes, act_bytes);
+    if (!f16dEligible(v, p.m, p.k, p.k_chunk) or p.x_base % 4 != 0 or p.x_rs % 4 != 0) return error.InvalidShape;
+    return .{ p.m / f16d_tile_m, grid[1], grid[2] };
+}
+
 /// Worst-case extents for validation before recording. Sizes are in elements (M, K,
 /// rows); `max_keys` bounds M/K when taken from the io block at run time.
 pub const Limits = struct { rows: u32, batches: u32 = 1, max_keys: u32 = 0 };

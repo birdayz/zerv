@@ -284,12 +284,21 @@ Nothing checks these for us, so each is enforced in code and covered by a test:
 - **Kernel v1.** `gemm_f16.comp -DSMALLN=1` (`gemm_f16n_*`): a 128 × 16 tile with 4
   subgroups of 32 × 16, the prefill kernel's dequantize-to-LDS scheme, and a split-K z
   dimension. Rows past the batch read the last row; the span is the batch rounded up to 16.
+- **Kernel v2** (2026-09-26, [report](../bench/2026-09-26-decode-v2.md)): `gemm_f16d.comp`,
+  Q4_0 only, wave32 (required size, full subgroups); one 16 × 16 tile per wave streaming its
+  16 weight rows (8 blocks per iteration, no LDS); the lane halves split the dequantization
+  and swap (`subgroupShuffleXor` 16). Per element the same chain as v1 with the same
+  `k_chunk`. `Options.decode_f16_kernel = .v2` (default) | `.v1`.
+- **Formats** (2026-09-26): `Options.decode_f16_formats = .q4_0` (default: Q4_1 and Q5_K
+  projections stay FP32, measured faster) | `.all` (the definition above).
 - **Knob.** `Model.Options.decode_precision = .f32 | .f16`. The CLI `--decode-precision` is
   not exposed until the mode beats FP32 (see the report). `.f16` needs `batch_rows > 0` and a
   device with cooperative matrices and subgroups of 64.
 - **Gates.**
   1. Component: every `gemm_f16n` row equals `gemm_f16` bitwise for the same X row (unsplit),
-     and every split part equals the unsplit kernel over its K range (gpu-test).
+     and every split part equals the unsplit kernel over its K range (gpu-test); every
+     `gemm_f16d` row and split part equals `gemm_f16n`'s (gpu-test), and the reference
+     logits hash of `zerv-batch-check f16@v1@all` equals `f16@v2@all`'s.
   2. Batch invariance: `zerv-batch-check … f16` compares against the same mode on a one-slot
      model, one row per batch.
   3. Quality against FP64: not yet run.

@@ -266,7 +266,7 @@ def main():
         for spec in table.values():
             if spec["cmd"][0] == str(zerv_binary): spec["cmd"] = spec["cmd"]+["--prefix-cache-slots", "0"]
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, host=platform.uname()._asdict(), model_sha256=MODEL_SHA,
-                    workload_sha256=sha(a.workload), zerv_sha256=sha(zerv_binary), llama_server_sha256=sha(LLAMA_SERVER),
+                    workload_sha256=sha(a.workload), zerv_sha256=sha(zerv_binary), llama_server_sha256=sha(LLAMA_SERVER), vllm_image=VLLM_IMAGE, vllm_model=str(VLLM_MODEL.relative_to(ROOT)),
                     llama_version=subprocess.run([LLAMA_SERVER, "--version"], capture_output=True, text=True).stderr.strip(),
                     template_sha256=sha(TEMPLATE), build=build, context=a.context, repeats=a.repeats, engines={}, vram_before=vram_used(),
                     client="python http.client streaming SSE; TTFT = first reasoning/content delta; decode rate = (completion_tokens-1)/(last_delta-first_delta)")

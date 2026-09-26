@@ -1,0 +1,45 @@
+#version 450
+// Bandwidth probe (not a GEMM): the v2 grid's waves each read their 16 rows' k-chunk
+// segments (row-major [row][piece], 32 lanes x 16 bytes per instruction, BLK blocks per
+// iteration) without LDS and fold them into one word. Same bindings and push as gemm_f16d.
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_EXT_control_flow_attributes : require
+#ifndef BLK
+#define BLK 32u
+#endif
+#define RP (18u*BLK/16u)
+#define PIECES (16u*RP)
+#define PER ((PIECES+31u)/32u)
+layout(local_size_x=128) in;
+layout(set=0,binding=0,std430) readonly buffer A4 { uvec4 aw4[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(push_constant) uniform P {
+    uint a_base, a_rs, a_cs, a_bs, a_group;
+    uint x_base, x_rs, x_bs;
+    uint y_base, y_rs, y_bs;
+    uint m, k;
+    uint flags;
+    uint k_chunk;
+} p;
+void main() {
+    uint lane=gl_SubgroupInvocationID, wave=gl_SubgroupID;
+    uint m0=(gl_WorkGroupID.x*4u+wave)*16u;
+    uint kb=gl_WorkGroupID.z*p.k_chunk, ke=p.k_chunk!=0u ? min(p.k,kb+p.k_chunk) : p.k;
+    uint rs16=p.a_rs/16u, base16=p.a_base/16u+m0*rs16;
+    uvec4 s=uvec4(0u);
+    for (uint k0=kb;k0<ke;k0+=32u*BLK) {
+        uint seg=(k0/32u)*18u/16u;
+#if OWN
+        // Lane-owns-row: lane l reads row l % 16, pieces (l / 16) + 2 j.
+        uvec4 v[RP/2u];
+        [[unroll]] for (uint j=0u;j<RP/2u;j++) v[j]=aw4[base16+(lane%16u)*rs16+seg+(lane>>4u)+2u*j];
+        [[unroll]] for (uint j=0u;j<RP/2u;j++) s^=v[j];
+#else
+        for (uint j=0u;j<PER;j++) {
+            uint c=min(lane+32u*j,PIECES-1u);
+            s^=aw4[base16+(c/RP)*rs16+seg+c%RP];
+        }
+#endif
+    }
+    if (s.x==0x12345678u) act[p.y_base]=1.0;
+}

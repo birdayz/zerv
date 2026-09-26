@@ -1,0 +1,108 @@
+#version 450
+// Lab variant of src/model/gemm_f16d.comp (block 18e decode v2), same arithmetic:
+// - weights: a row's 8 Q4_0 blocks per iteration (144 bytes, 16-byte aligned: a_base,
+//   a_rs % 16 == 0, k_chunk, K % 256 == 0) as 9 16-byte pieces; lane half hl (lane / 16)
+//   loads pieces 4 hl .. 4 hl + 4 (5 b128 loads), the halves swap theirs (subgroupShuffleXor
+//   16), so every lane holds its row's 144 bytes; block offsets are compile-time constants;
+// - one iteration of pieces prefetched ahead in registers;
+// - lane half hl dequantizes half hl of each block; the other half comes from lane ^ 16;
+// - X from the producer's f16 copy (x_base, x_rs in halves, multiples of 8).
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_cooperative_matrix : require
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_shuffle : require
+#define WAVES 4
+#ifndef PREF
+#define PREF 1
+#endif
+layout(local_size_x=WAVES*32) in;
+layout(set=0,binding=0,std430) readonly buffer A4 { uvec4 aw4[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=2,std430) readonly buffer Io { uint io[]; };
+layout(set=0,binding=3,std430) readonly restrict buffer ActX16 { uvec4 x16[]; };
+layout(push_constant) uniform P {
+    uint a_base, a_rs, a_cs, a_bs, a_group;
+    uint x_base, x_rs, x_bs;
+    uint y_base, y_rs, y_bs;
+    uint m, k;
+    uint flags;
+    uint k_chunk;
+} p;
+#define IO_COUNT 2
+
+void main() {
+    uint lane=gl_SubgroupInvocationID, wave=gl_SubgroupID, hl=lane>>4u;
+    uint n=io[IO_COUNT];
+    uint m0=(gl_WorkGroupID.x*WAVES+wave)*16u, t0=gl_WorkGroupID.y*16u;
+    if (t0>=n) return; // uniform per workgroup
+    uint tok=min(t0+lane%16u,n-1u);
+    uint kb=gl_WorkGroupID.z*p.k_chunk, ke=p.k_chunk!=0u ? min(p.k,kb+p.k_chunk) : p.k;
+    coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> acc=coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(0.0);
+    uint xrow=(p.x_base+tok*p.x_rs)/8u;
+    uint rbase=(p.a_base+(m0+lane%16u)*p.a_rs)/16u+4u*hl; // this lane's first piece
+    // PREF iterations of pieces in flight (segments past ke are not loaded).
+    uvec4 nxt[PREF][5];
+    [[unroll]] for (uint s=0u;s<PREF;s++) if (kb+256u*s<ke) [[unroll]] for (uint j=0u;j<5u;j++) nxt[s][j]=aw4[rbase+(kb/256u+s)*9u+j];
+    for (uint kp=kb;kp<ke;kp+=256u*PREF) {
+      uvec4 grp[PREF][5]=nxt;
+      if (kp+256u*PREF<ke) [[unroll]] for (uint s=0u;s<PREF;s++) if (kp+256u*(PREF+s)<ke) [[unroll]] for (uint j=0u;j<5u;j++) nxt[s][j]=aw4[rbase+(kp/256u+PREF+s)*9u+j];
+      [[unroll]] for (uint s=0u;s<PREF;s++) {
+        uint k0=kp+256u*s;
+        if (k0>=ke) break;
+        uvec4 cur[5]=grp[s];
+        // The row's 36 words: own pieces 4 hl .. 4 hl + 4, the partner's 4 (1 - hl) .. .
+        uvec4 oth[5];
+        [[unroll]] for (uint j=0u;j<5u;j++) oth[j]=subgroupShuffleXor(cur[j],16u);
+        uint rw[36];
+        [[unroll]] for (uint j=0u;j<4u;j++) {
+            uvec4 lo=hl==0u ? cur[j] : oth[j];      // pieces 0..3
+            uvec4 hi=hl==0u ? oth[j+1u] : cur[j+1u]; // pieces 5..8
+            rw[4u*j]=lo.x; rw[4u*j+1u]=lo.y; rw[4u*j+2u]=lo.z; rw[4u*j+3u]=lo.w;
+            rw[20u+4u*j]=hi.x; rw[20u+4u*j+1u]=hi.y; rw[20u+4u*j+2u]=hi.z; rw[20u+4u*j+3u]=hi.w;
+        }
+        uvec4 mid=hl==0u ? cur[4] : cur[0]; // piece 4 (both halves loaded it)
+        rw[16]=mid.x; rw[17]=mid.y; rw[18]=mid.z; rw[19]=mid.w;
+        [[unroll]] for (uint u=0u;u<8u;u++) {
+            // Block u at bytes 18u .. 18u + 17 of the row segment (compile-time word offset).
+            const uint wb=(18u*u)/4u;
+            const bool o=((18u*u)&2u)!=0u;
+            uint w0=rw[wb], w1=rw[wb+1u], w2=rw[wb+2u], w3=rw[wb+3u], w4=rw[wb+4u];
+            f16vec2 d=f16vec2(float16_t(unpackHalf2x16(o ? w0>>16u : w0).x));
+            uint qw[4]=uint[4](o ? w1 : (w0>>16u)|(w1<<16u), o ? w2 : (w1>>16u)|(w2<<16u),
+                               o ? w3 : (w2>>16u)|(w3<<16u), o ? w4 : (w3>>16u)|(w4<<16u));
+            uint mine[8];
+            [[unroll]] for (uint q=0u;q<4u;q++) {
+                uint x=(qw[q]>>(4u*hl))&0x0F0F0F0Fu;
+                uint p01=(x&0xFFu)|((x<<8u)&0xFF0000u), p23=((x>>16u)&0xFFu)|((x>>8u)&0xFF0000u);
+                mine[2u*q]=packFloat2x16((unpackFloat2x16(p01|0x64006400u)-f16vec2(float16_t(1032.0)))*d);
+                mine[2u*q+1u]=packFloat2x16((unpackFloat2x16(p23|0x64006400u)-f16vec2(float16_t(1032.0)))*d);
+            }
+            uint theirs[8];
+            [[unroll]] for (uint i=0u;i<8u;i++) theirs[i]=subgroupShuffleXor(mine[i],16u);
+            uint xk=xrow+(k0+32u*u)/8u;
+            [[unroll]] for (uint h=0u;h<2u;h++) {
+                coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB> fb;
+                [[unroll]] for (uint c=0u;c<2u;c++) {
+                    uvec4 xv=x16[xk+2u*h+c];
+                    uint xw[4]=uint[4](xv.x,xv.y,xv.z,xv.w);
+                    [[unroll]] for (uint q=0u;q<4u;q++) { f16vec2 v=unpackFloat2x16(xw[q]); fb[8u*c+2u*q]=v.x; fb[8u*c+2u*q+1u]=v.y; }
+                }
+                bool own=hl==h;
+                coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> fa;
+                [[unroll]] for (uint i=0u;i<8u;i++) {
+                    f16vec2 v=unpackFloat2x16(own ? mine[i] : theirs[i]);
+                    fa[2u*i]=v.x; fa[2u*i+1u]=v.y;
+                }
+#if DIAG==5
+                acc=acc+coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(float(fa[0]));
+#else
+                acc=coopMatMulAdd(fa, fb, acc);
+#endif
+            }
+        }
+      }
+    }
+    coopMatStore(acc, act, p.y_base+gl_WorkGroupID.z*p.y_bs+t0*p.y_rs+m0, p.y_rs, gl_CooperativeMatrixLayoutColumnMajor);
+}
