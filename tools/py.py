@@ -17,8 +17,13 @@ def main():
     if len(sys.argv) < 2: raise SystemExit(__doc__)
     os.chdir(os.environ.get("BUILD_WORKING_DIRECTORY", os.getcwd()))
     script = os.path.abspath(sys.argv[1])
-    # The packages are on this process's path (runfiles); children inherit them.
+    # The packages are on this process's path (runfiles); children inherit them. The script's
+    # directory is on its path, as with `python3 SCRIPT` (rules_python sets PYTHONSAFEPATH).
     os.environ["PYTHONPATH"] = os.pathsep.join(p for p in sys.path[1:] if p)
+    os.environ.pop("PYTHONSAFEPATH", None)
+    # Bazel started from the script must go through tools/bazel again (bazelisk sets this for
+    # the wrapper it runs; inherited, it would skip --nohome_rc in a nested build).
+    os.environ.pop("BAZELISK_SKIP_WRAPPER", None)
     os.environ["ZERV_HERMETIC_PYTHON"] = "1"
     os.execv(sys.executable, [sys.executable, script, *sys.argv[2:]])
 

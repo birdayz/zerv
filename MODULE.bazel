@@ -32,6 +32,9 @@ register_toolchains("@zig_sdk//toolchain:linux_amd64_gnu.2.28")
 
 bazel_dep(name = "bazel_skylib", version = "1.9.2")
 
+# SHA-256 (openssl/sha.h) for the reference C programs (tests/reference), test oracles only.
+bazel_dep(name = "boringssl", version = "0.20260813.0")
+
 # Vulkan API registry and headers (the link stub //src/gpu:vulkan, reference programs), and the
 # shader compiler and validator, built from source at the revisions of the host packages
 # that produced the committed SPIR-V (shaderc 2026.3 with glslang and SPIRV-Tools of
@@ -55,6 +58,14 @@ http_archive(
     sha256 = "77e3579b4f2a7059db03821899f78843f80756c831359805ab0db1e8c039fe34",
     strip_prefix = "ggml-456172ec733a135778adcd32d00e576a58232e45",
     urls = ["https://github.com/ggml-org/ggml/archive/456172ec733a135778adcd32d00e576a58232e45.tar.gz"],
+)
+
+http_archive(
+    name = "llama_cpp",
+    build_file = "//bazel/third_party:llama_cpp.BUILD",
+    sha256 = "03fb04316eb32a7b7347004a79a8dd60531c02f5a064d853fed3b53828951723",
+    strip_prefix = "llama.cpp-b29c606e28a01b1bc8c1351026a0fa6e616bf6c4",
+    urls = ["https://github.com/ggml-org/llama.cpp/archive/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4.tar.gz"],
 )
 
 http_archive(

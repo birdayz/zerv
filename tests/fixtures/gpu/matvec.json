@@ -1,21 +1,30 @@
 {
   "schema_version": 1,
   "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
-  "pins": {
-    "/usr/lib/libggml-base.so.0.24.0": "7d9065538f5df6342613b4fa92e661d5ad8fd811c2dbe16ff0e4b62a77777073",
-    "/usr/lib/ggml/libggml-vulkan.so": "d09aac86141492bdf22daad0c61b5ded720f772b3f18d8167aae1f264532979a",
-    "/usr/include/ggml-backend.h": "46d84cb998105f871240864fd0f55446939a2fe86c5c281afa63a010fb1f65a2",
-    "/usr/include/ggml-alloc.h": "94e4cd069b9313b2ceb35dacec901981e0bb478d8bb31035b7126be091998c23",
-    "/usr/include/ggml-vulkan.h": "7eae5dad2cc7bb4d3eca828539f441816d5fd59fdc7b224d49aa229fc7b7248c"
+  "oracle": {
+    "label": "//tests:oracle_gpu_matvec",
+    "sha256": "51442e7cea20c80daa168bf1ed8dbec41bf10108cb4e7d9abfb400cd8fbca968",
+    "path": "bazel-out/k8-fastbuild/bin/tests/oracle_gpu_matvec",
+    "ggml": {
+      "path": "bazel-out/k8-fastbuild/bin/external/+http_archive+ggml/libggml-base.so",
+      "sha256": "98361244b1613af5e9aa997fdb23a24429edc77ce6521aaed9de3df26bb79d64",
+      "ggml_version": "0.24.0",
+      "ggml_commit": "456172ec",
+      "build": {
+        "label": "@ggml//:ggml_base_so",
+        "sha256": "98361244b1613af5e9aa997fdb23a24429edc77ce6521aaed9de3df26bb79d64",
+        "path": "bazel-out/k8-fastbuild/bin/external/+http_archive+ggml/libggml-base.so"
+      }
+    }
   },
-  "oracle_binary_sha256": "528a2464e67154ce96b081d014a4856f44b071a128a5b1c3f650fb5779f255db",
+  "oracle_binary_sha256": "51442e7cea20c80daa168bf1ed8dbec41bf10108cb4e7d9abfb400cd8fbca968",
   "sources": {
-    "generate_gpu_matvec.py": "1570ce4068d071930ddade3e97dba15756347e27be389bb82ecfd95247cea477",
+    "generate_gpu_matvec.py": "e34a5c6418493061552b91d13e089bd3211518815aeff49eb1e8d367ccf7c1d3",
     "gpu_matvec.c": "b8f9d016206b3fbbbe1bfe8344dd8bef9be3bb36fffd7acdc53750bcaf3e8bab",
-    "gguf_oracle.py": "3c3287822ea108828ed91b0b6474c7a7b178825be29f62e2a781fba74801262a",
-    "generate_q4_1_goldens.py": "8f4c2a63d4962cf20c41d97319679c64df890aa7c7dd003c8c05884cd21d4fca",
-    "generate_q5_k_goldens.py": "0b7d8d1a0d2449292207f4cfad12c06559b7dfcf650d12a397a0e8d09c451728",
-    "generate_q6_k_goldens.py": "10edef1b8271fcf3f72873c0ec1c416532a52e154379626c139db393d5d343da"
+    "gguf_oracle.py": "1b596249acb9fe021d70988eea306068f9703b90ecc632b12ceb49fbf6bfaa1e",
+    "generate_q4_1_goldens.py": "876f6d32c77dc33bb7635f95e1721ad50e8bf96067f49f644caf0b1c8fc7d020",
+    "generate_q5_k_goldens.py": "9a0b1503c654c3e4af431aec48edfeb5be22cd9e14b791e617a17daad9fa59cb",
+    "generate_q6_k_goldens.py": "5c1170daed58aa19ed847d2975d3459829a5ecdd10979e38576934cb23945f3c"
   },
   "cases": [
     {

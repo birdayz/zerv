@@ -10,6 +10,7 @@ cc_library(
     name = "vulkan_headers",
     hdrs = glob([
         "include/vulkan/*.h",
+        "include/vulkan/*.hpp",
         "include/vk_video/*.h",
     ]),
     includes = ["include"],

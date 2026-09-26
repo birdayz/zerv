@@ -1,14 +1,19 @@
 {
   "schema_version": 1,
-  "generator_sha256": "241e46cf2eb791f8fbafb35a6ffee20a43f11107dfb575bc8b9f34c50a96a4a4",
+  "generator_sha256": "3b2b3663a1dac8349a059a473e975a73624d25a5f7ebc2b039b198d2d612e506",
   "oracle": {
-    "library_path": "/usr/lib/libggml-base.so.0.24.0",
-    "library_sha256": "7d9065538f5df6342613b4fa92e661d5ad8fd811c2dbe16ff0e4b62a77777073",
+    "library_path": "bazel-out/k8-fastbuild/bin/external/+http_archive+ggml/libggml-base.so",
+    "build": {
+      "label": "@ggml//:ggml_base_so",
+      "sha256": "98361244b1613af5e9aa997fdb23a24429edc77ce6521aaed9de3df26bb79d64",
+      "path": "bazel-out/k8-fastbuild/bin/external/+http_archive+ggml/libggml-base.so"
+    },
+    "library_sha256": "98361244b1613af5e9aa997fdb23a24429edc77ce6521aaed9de3df26bb79d64",
     "version": "0.24.0",
-    "commit": "456172ec-dirty",
+    "commit": "456172ec",
     "source_commit": "456172ec733a135778adcd32d00e576a58232e45",
-    "source_note": "Inspected source; binary may report dirty. Binary hash is authoritative.",
-    "python": "3.14.7",
+    "source_note": "Built from source in the graph (docs/specs/hermetic-build.md).",
+    "python": "3.14.4",
     "machine": "x86_64"
   },
   "pattern": "v1: scale_bits ascending finite binary16; q4 byte[j]=j|((15-j)<<4); q8 bytes=0..255 in 8 blocks",

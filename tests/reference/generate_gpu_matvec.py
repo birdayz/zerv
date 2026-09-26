@@ -12,20 +12,16 @@ import struct
 import subprocess
 import sys
 
-from gguf_oracle import Oracle
-from generate_q4_1_goldens import LIB_SHA, MODEL_SHA, sha
+from gguf_oracle import Oracle, library
+from generate_q4_1_goldens import MODEL_SHA, sha
 from generate_q5_k_goldens import scalar as scalar_q5
 from generate_q6_k_goldens import scalar as scalar_q6
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).absolute().parents[2]
 TYPES = {"f32": (0, 1, 4), "q4_0": (2, 32, 18), "q4_1": (3, 32, 20), "q5_k": (13, 256, 176), "q6_k": (14, 256, 210)}
-PINS = {
-    "/usr/lib/libggml-base.so.0.24.0": LIB_SHA,
-    "/usr/lib/ggml/libggml-vulkan.so": "d09aac86141492bdf22daad0c61b5ded720f772b3f18d8167aae1f264532979a",
-    "/usr/include/ggml-backend.h": "46d84cb998105f871240864fd0f55446939a2fe86c5c281afa63a010fb1f65a2",
-    "/usr/include/ggml-alloc.h": "94e4cd069b9313b2ceb35dacec901981e0bb478d8bb31035b7126be091998c23",
-    "/usr/include/ggml-vulkan.h": "7eae5dad2cc7bb4d3eca828539f441816d5fd59fdc7b224d49aa229fc7b7248c",
-}
+# The oracle: tests/reference/gpu_matvec.c against the source-built ggml and its Vulkan backend
+# (//tests:oracle_gpu_matvec, docs/specs/hermetic-build.md); pinned by the sources in
+# MODULE.bazel, identified in the fixture by label and hash.
 
 
 def canonical(values):
@@ -96,18 +92,15 @@ def metrics(actual, ideal, sumabs, exact=False, enforce=True):
 
 
 def build_oracle(directory):
-    for path, digest in PINS.items():
-        if sha(Path(path)) != digest: raise ValueError("pin mismatch: "+path)
-    # Headers come from the installed-identical pinned research tree.
-    include = ROOT/"third_party/ggml/456172ec733a135778adcd32d00e576a58232e45/include"
-    for name in ("ggml.h", "ggml-backend.h", "ggml-alloc.h", "ggml-vulkan.h"):
-        if sha(include/name) != sha(Path("/usr/include")/name): raise ValueError("header mismatch: "+name)
+    """The oracle binary (built by Bazel), copied into DIRECTORY; returns its path and records
+    its identity in DIRECTORY/build.json."""
+    sys.path.insert(0, str(ROOT/"tools"))
+    import zerv_build
+    built, identity = zerv_build.oracle("oracle_gpu_matvec")
     binary = directory/"gpu-matvec-oracle"
-    command = ["cc", "-std=c11", "-O3", "-fno-fast-math", "-ffp-contract=off", "-Wall", "-Wextra", "-Werror", "-I"+str(include), str(ROOT/"tests/reference/gpu_matvec.c"), "-o", str(binary),
-               "/usr/lib/ggml/libggml-vulkan.so", "/usr/lib/libggml-base.so.0.24.0", "-lm"]
-    subprocess.run(command, check=True)
-    (directory/"build.json").write_text(json.dumps(dict(command=command, compiler=subprocess.check_output(["cc", "--version"], text=True), binary_sha256=sha(binary)), indent=2)+"\n")
-    return binary
+    binary.write_bytes(built.read_bytes()); binary.chmod(0o755)
+    (directory/"build.json").write_text(json.dumps(dict(identity, binary_sha256=sha(binary)), indent=2)+"\n")
+    return binary, identity
 
 
 def run_oracle(binary, case_path, output, iterations=0, default=False):
@@ -133,9 +126,11 @@ def main():
     if a.output.exists() or a.work_dir.exists(): p.error("fresh output and work directory required")
     if sha(a.model) != MODEL_SHA: raise ValueError("model mismatch")
     a.work_dir.mkdir(parents=True)
-    binary = build_oracle(a.work_dir.resolve())
-    oracle = Oracle("/usr/lib/libggml-base.so.0.24.0")
-    result = dict(schema_version=1, model_sha256=MODEL_SHA, pins=PINS, oracle_binary_sha256=sha(binary), sources={}, cases=[])
+    binary, identity = build_oracle(a.work_dir.resolve())
+    lib, built = library()
+    oracle = Oracle(lib)
+    result = dict(schema_version=1, model_sha256=MODEL_SHA, oracle=dict(identity, ggml=dict(oracle.identity, build=built)),
+                  oracle_binary_sha256=sha(binary), sources={}, cases=[])
     for name in ("generate_gpu_matvec.py", "gpu_matvec.c", "gguf_oracle.py", "generate_q4_1_goldens.py", "generate_q5_k_goldens.py", "generate_q6_k_goldens.py"):
         result["sources"][name] = sha(Path(__file__).with_name(name))
 
@@ -237,4 +232,7 @@ def main():
     print("wrote", a.output, sha(a.output))
 
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
+    main()

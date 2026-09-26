@@ -9,8 +9,8 @@ import random
 import struct
 import sys
 
-from gguf_oracle import Oracle
-from generate_q4_1_goldens import EDGE, LIB_SHA, MODEL_SHA, sha
+from gguf_oracle import Oracle, library as oracle_library
+from generate_q4_1_goldens import EDGE, MODEL_SHA, sha
 
 SCALES = [-128, -127, -64, -33, -32, -2, -1, 0, 1, 2, 31, 32, 63, 64, 126, 127]
 
@@ -46,15 +46,16 @@ def scalar(packed):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--library", type=Path, required=True)
+    p.add_argument("--library", type=Path, help="default: the source-built ggml (@ggml//:ggml_base_so)")
     p.add_argument("--model", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()
     if a.output.exists():
         p.error("output exists")
-    library, model = a.library.resolve(strict=True), a.model.resolve(strict=True)
-    if sys.byteorder != "little" or C.sizeof(C.c_float) != 4 or sha(library) != LIB_SHA or sha(model) != MODEL_SHA:
-        raise ValueError("host/model/library mismatch")
+    library, built = oracle_library(a.library)
+    library, model = library.resolve(strict=True), a.model.resolve(strict=True)
+    if sys.byteorder != "little" or C.sizeof(C.c_float) != 4 or sha(model) != MODEL_SHA:
+        raise ValueError("host/model mismatch")
     oracle = Oracle(library)
     decode = oracle.bind("dequantize_row_q6_K", None, [C.c_void_p, C.POINTER(C.c_float), C.c_int64])
 
@@ -74,7 +75,7 @@ def main():
     fixed = [pattern(p) for p in range(4)]
     result = dict(schema_version=1, generator_sha256=sha(Path(__file__)),
                   helper_sha256=sha(Path(__file__).with_name("generate_q4_1_goldens.py")),
-                  oracle=oracle.identity, model_sha256=MODEL_SHA, patterns_hex=[b.hex() for b in fixed],
+                  oracle=dict(oracle.identity, build=built), model_sha256=MODEL_SHA, patterns_hex=[b.hex() for b in fixed],
                   fingerprint={}, scales_fingerprint={}, examples=[])
     h = hashlib.sha256()
     finite = [n for n in range(65536) if n & 0x7c00 != 0x7c00]
@@ -134,4 +135,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     main()

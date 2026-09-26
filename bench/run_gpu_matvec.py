@@ -18,7 +18,7 @@ ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import 
 sys.path.insert(0, str(ROOT / "tools"))
 import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
 sys.path.insert(0, str(ROOT/"tests/reference"))
-from generate_gpu_matvec import TYPES, PINS, MODEL_SHA, Oracle, build_oracle, encode_case, metrics, run_oracle, sha
+from generate_gpu_matvec import TYPES, MODEL_SHA, Oracle, build_oracle, encode_case, library, metrics, run_oracle, sha
 from run_gpu_driver import gpu_snapshot
 from generate_vulkan_goldens import PINS as DRIVER_PINS
 
@@ -59,9 +59,9 @@ def main():
     try:
         if sha(a.model) != MODEL_SHA: raise ValueError("model mismatch")
         manifest["model"] = dict(path=str(a.model.resolve()), sha256=MODEL_SHA)
-        for path, digest in dict(PINS, **DRIVER_PINS).items():
+        for path, digest in DRIVER_PINS.items():
             if sha(Path(path)) != digest: raise ValueError("pin mismatch: "+path)
-        manifest["pins"] = dict(PINS, **DRIVER_PINS)
+        manifest["pins"] = DRIVER_PINS
         fixture = json.loads((ROOT/"tests/fixtures/gpu/matvec.json").read_text())
         for name, digest in fixture["sources"].items():
             if sha(ROOT/"tests/reference"/name) != digest: raise ValueError("fixture source changed")
@@ -85,7 +85,7 @@ def main():
             for relative, digest in baseline["sources"].items():
                 if sha(a.baseline_run/"source"/relative) != digest: raise ValueError("baseline source changed")
             manifest["baseline"] = dict(manifest_path=str(baseline_record), manifest_sha256=sha(baseline_record), binary_path=str(baseline_native), binary_sha256=sha(baseline_native))
-        reference = build_oracle(artifact)
+        reference, manifest["reference_build"] = build_oracle(artifact)
         shutil.copyfile(artifact/"build.json", dest/"reference-build.json")
         for name, binary in (("native", native), ("reference", reference)):
             deps = run(["ldd", binary]).stdout
@@ -104,7 +104,7 @@ def main():
         os.sched_setaffinity(0, {a.cpu}); manifest["measured_affinity"] = sorted(os.sched_getaffinity(0))
         governor = Path(f"/sys/devices/system/cpu/cpu{a.cpu}/cpufreq/scaling_governor")
         manifest["governor"] = governor.read_text().strip() if governor.exists() else None
-        oracle = Oracle("/usr/lib/libggml-base.so.0.24.0")
+        oracle = Oracle(library()[0])
         inv = oracle.inspect(a.model, samples=False)
         seen = set(); cases = []
         with a.model.open("rb") as model:

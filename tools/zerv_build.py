@@ -14,6 +14,7 @@ their paths, e.g. `"$(tools/zerv_build.py zerv-spec-check)" MODEL`.
 """
 import sys
 import hashlib
+import os
 import subprocess
 from pathlib import Path
 
@@ -24,6 +25,13 @@ BAZEL = "bazelisk"
 TARGETS = {
     "zerv": "//src:zerv",
     "zig": "//bazel:zig",
+    # External test oracles, source-built (docs/specs/hermetic-build.md, phase 3).
+    "libggml-base.so": "@ggml//:ggml_base_so",
+    "libllama.so.0.4.1": "@llama_cpp//:llama_so",
+    "oracle_tokenizer_pieces": "//tests:oracle_tokenizer_pieces",
+    "oracle_tokenizer_bench": "//tests:oracle_tokenizer_bench",
+    "oracle_model_quant_bench": "//tests:oracle_model_quant_bench",
+    "oracle_gpu_matvec": "//tests:oracle_gpu_matvec",
     "glslc": "@shaderc//:glslc",
     "spirv-val": "@spirv_tools//:spirv-val",
     "zerv-model-capture": "//tools:zerv-model-capture",
@@ -41,6 +49,12 @@ TARGETS = {
 # in both modes for GPU measurements.
 TESTS = ("//...",)
 GPU_TESTS = ("//...", "//tests:gpu", "//tests:gpu_release_fast")
+
+
+# Every Bazel invocation goes through tools/bazel (--nohome_rc --nosystem_rc). bazelisk sets
+# BAZELISK_SKIP_WRAPPER for the wrapper it runs; a harness started under `bazel run` inherits it
+# and would reach Bazel without the wrapper, i.e. with ~/.bazelrc.
+os.environ.pop("BAZELISK_SKIP_WRAPPER", None)
 
 
 def bazel(*args, capture=False):
@@ -66,7 +80,8 @@ def path(name, config="release", root=ROOT):
     label = TARGETS[name]
     files = subprocess.run([BAZEL, "cquery", *_config(config), "--output=files", label], cwd=root, check=True,
                            text=True, capture_output=True).stdout.split()
-    exe = [f for f in files if Path(f).name == label.rsplit(":", 1)[1]]
+    # A target used as a tool elsewhere in the graph also has an exec-configuration output.
+    exe = [f for f in files if Path(f).name in (label.rsplit(":", 1)[1], name) and "-exec/" not in f]
     if len(exe) != 1: raise SystemExit(f"{label}: expected one executable among {files}")
     return root / exe[0]
 
@@ -87,6 +102,13 @@ def shader_tools():
     that compile experimental variants; never the host's."""
     tools = build("glslc", "spirv-val", config=None)
     return str(tools["glslc"]), str(tools["spirv-val"])
+
+
+def oracle(name):
+    """A source-built test oracle (library or reference program), built in the default
+    configuration; returns its path and identity (Bazel label, content hash) for manifests."""
+    path = build(name, config=None)[name]
+    return path, dict(label=TARGETS[name], sha256=sha(path), path=str(path.relative_to(ROOT)))
 
 
 def test(*labels):

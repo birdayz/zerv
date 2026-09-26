@@ -10,11 +10,10 @@ import random
 import struct
 import sys
 
-from gguf_oracle import Oracle
+from gguf_oracle import Oracle, library
 
 EDGE = [0, 0x8000, 1, 0x8001, 0x03ff, 0x0400, 0x3c00, 0xbc00, 0x3555, 0x7bff, 0xfbff]
 MODEL_SHA = "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d"
-LIB_SHA = "7d9065538f5df6342613b4fa92e661d5ad8fd811c2dbe16ff0e4b62a77777073"
 
 
 def sha(path):
@@ -34,7 +33,7 @@ def scalar(packed):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--library", type=Path, required=True)
+    p.add_argument("--library", type=Path, help="default: the source-built ggml (@ggml//:ggml_base_so)")
     p.add_argument("--model", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()
@@ -42,9 +41,10 @@ def main():
         p.error("output exists; generate separately and review")
     if sys.byteorder != "little" or C.sizeof(C.c_float) != 4:
         raise ValueError("requires little-endian IEEE float")
-    lib, model = a.library.resolve(strict=True), a.model.resolve(strict=True)
-    if sha(lib) != LIB_SHA or sha(model) != MODEL_SHA:
-        raise ValueError("oracle/model identity mismatch")
+    lib, built = library(a.library)
+    lib, model = lib.resolve(strict=True), a.model.resolve(strict=True)
+    if sha(model) != MODEL_SHA:
+        raise ValueError("model identity mismatch")
     reference = Oracle(lib)
     decode = reference.bind("dequantize_row_q4_1", None, [C.c_void_p, C.POINTER(C.c_float), C.c_int64])
 
@@ -62,7 +62,7 @@ def main():
             raise ValueError("independent scalar/oracle mismatch: " + packed.hex())
         return result
 
-    result = dict(schema_version=1, generator_sha256=sha(Path(__file__)), oracle=reference.identity,
+    result = dict(schema_version=1, generator_sha256=sha(Path(__file__)), oracle=dict(reference.identity, build=built),
                   source_commit="456172ec733a135778adcd32d00e576a58232e45", python=platform.python_version(),
                   model_sha256=MODEL_SHA, edge_fields=EDGE, fingerprint={}, examples=[])
     digest = hashlib.sha256()
@@ -113,4 +113,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     main()

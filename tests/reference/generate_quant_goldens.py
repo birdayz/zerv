@@ -12,14 +12,17 @@ import sys
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--library", type=Path, required=True)
+    parser.add_argument("--library", type=Path, help="default: the source-built ggml (@ggml//:ggml_base_so)")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.output.exists():
         parser.error("output exists; generate a new file and review the diff")
     if sys.byteorder != "little" or ctypes.sizeof(ctypes.c_float) != 4:
         parser.error("oracle extraction requires little-endian 32-bit C floats")
-    library_path = args.library.resolve(strict=True)
+    sys.path.insert(0, str(Path(__file__).absolute().parent))
+    from gguf_oracle import library, portable
+    library_path, built = library(args.library)
+    library_path = library_path.resolve(strict=True)
     library = ctypes.CDLL(str(library_path))
 
     def identity(name):
@@ -68,12 +71,13 @@ def main():
         "schema_version": 1,
         "generator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "oracle": {
-            "library_path": str(library_path),
+            "library_path": portable(library_path),
+            "build": built,
             "library_sha256": hashlib.sha256(library_path.read_bytes()).hexdigest(),
             "version": identity("ggml_version"),
             "commit": identity("ggml_commit"),
             "source_commit": "456172ec733a135778adcd32d00e576a58232e45",
-            "source_note": "Inspected source; binary may report dirty. Binary hash is authoritative.",
+            "source_note": "Built from source in the graph (docs/specs/hermetic-build.md).",
             "python": platform.python_version(),
             "machine": platform.machine(),
         },
@@ -119,4 +123,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     main()

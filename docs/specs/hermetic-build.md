@@ -1,6 +1,7 @@
 # Hermetic build — specification
 
-Status: **in progress** (branch `bazel`). User requirement 2026-09-26: "everything must be 100%
+Status: **in progress** (branch `bazel`). Done: phases 1–2 (build graph, container proof),
+3a (scripts under the pinned Python). In progress: 3b (oracles from source). User requirement 2026-09-26: "everything must be 100%
 hermetic. go hardcore all in on this"; merge to main only once it all is.
 
 ## Definition
@@ -68,3 +69,12 @@ test result depends on pinned driver sources, not on the host's Mesa package.
   enforces this. Approved by the user's instruction for a fully hermetic build.
 - Generated artifacts (SPIR-V, native kernel code) stay committed with drift tests
   (docs/development.md, "Shaders").
+- **GPU runtime is test-only** (user, 2026-09-26, option "1a"): the Vulkan loader and Mesa
+  RADV built in the graph are what GPU tests and GPU oracle captures run on. zerv in
+  production keeps using the host's driver (the OS/GPU driver interface boundary of
+  AGENTS.md; no C++ ships). The native gemm_f16x binary is keyed to one exact driver build, so
+  a native binary valid for the test driver is separate from the one for the host driver
+  (phase 4 resolves how both are carried or which path each exercises).
+- **Competitors** (user, 2026-09-26): pinned container image digests plus pinned source
+  revisions count as hermetic (the tuned llama.cpp HIP build needs ROCm); llama-server's
+  Vulkan build is built in the graph.

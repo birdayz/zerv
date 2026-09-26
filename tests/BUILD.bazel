@@ -1,4 +1,5 @@
 load("@rules_zig//zig:defs.bzl", "zig_configure_test", "zig_library", "zig_test")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_python//python:py_test.bzl", "py_test")
 load("//bazel:defs.bzl", "zerv_test")
 
@@ -540,4 +541,65 @@ py_test(
     srcs = ["test_linkage.py"],
     args = ["$(rootpaths %s)" % label for label in EXECUTABLES],
     data = EXECUTABLES,
+)
+
+# External test oracles (docs/specs/hermetic-build.md, phase 3): the reference programs of
+# tests/reference, built against the source-built ggml and llama.cpp. They are never part of
+# zerv; built on request (manual, tag oracle; tools/zerv_build.py builds them for harnesses).
+ORACLE_TAGS = [
+    "manual",
+    "oracle",
+]
+
+# llama.cpp's raw token pieces (tokenizer goldens; docs/research/tokenizer-bpe.md).
+cc_binary(
+    name = "oracle_tokenizer_pieces",
+    srcs = ["reference/tokenizer_pieces.c"],
+    copts = ["-std=c11"],
+    tags = ORACLE_TAGS,
+    deps = ["@llama_cpp//:llama"],
+)
+
+# libllama tokenizer benchmark (bench/run_tokenizer_matched.py).
+cc_binary(
+    name = "oracle_tokenizer_bench",
+    srcs = ["reference/tokenizer_bench.c"],
+    copts = [
+        "-std=c11",
+        "-O3",
+        "-march=native",
+    ],
+    tags = ORACLE_TAGS,
+    deps = ["@llama_cpp//:llama"],
+)
+
+# ggml row decoders over the real model (bench/run_model_quant.py).
+cc_binary(
+    name = "oracle_model_quant_bench",
+    srcs = ["reference/model_quant_bench.c"],
+    copts = [
+        "-std=c11",
+        "-O3",
+        "-march=native",
+    ],
+    tags = ORACLE_TAGS,
+    deps = [
+        "@boringssl//:crypto",
+        "@ggml//:ggml_base",
+    ],
+)
+
+# ggml-vulkan matvec reference (tests/reference/generate_gpu_matvec.py, bench/run_gpu_matvec.py).
+cc_binary(
+    name = "oracle_gpu_matvec",
+    srcs = ["reference/gpu_matvec.c"],
+    copts = [
+        "-std=c11",
+        "-O3",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+    ],
+    linkopts = ["-lm"],
+    tags = ORACLE_TAGS,
+    deps = ["@ggml//:ggml_vulkan_all"],
 )

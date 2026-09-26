@@ -20,6 +20,7 @@ genrule(
 
 zig_shared_library(
     name = "vulkan",
+    # Also the link stub of the source-built test oracles (@ggml//:ggml_vulkan).
     main = ":vulkan_stub_zig",
     # Output file and SONAME libvulkan.so.1; only the stub symbols (no sanitizer runtime).
     shared_lib_name = "libvulkan.so.1",

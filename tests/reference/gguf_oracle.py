@@ -17,6 +17,21 @@ SCALARS = {0: ("u8", C.c_uint8, 241), 1: ("i8", C.c_int8, -97),
            11: ("i64", C.c_int64, -1234567890123456789), 12: ("f64", C.c_double, 1.125)}
 
 
+def portable(path):
+    """A path for a manifest: relative to Bazel's execution root for built files (the output
+    base differs per machine), else as given."""
+    return str(path).split("/execroot/_main/", 1)[-1]
+
+
+def library(path=None):
+    """The ggml oracle library: PATH, else the source-built one (@ggml//:ggml_base_so,
+    docs/specs/hermetic-build.md). Returns (path, Bazel identity or None)."""
+    if path is not None: return Path(path), None
+    sys.path.insert(0, str(Path(__file__).absolute().parents[2]/"tools"))
+    import zerv_build
+    return zerv_build.oracle("libggml-base.so")
+
+
 class InitParams(C.Structure):
     _fields_ = [("no_alloc", C.c_bool), ("ctx", C.c_void_p)]
 
@@ -31,7 +46,7 @@ class Oracle:
             raise RuntimeError("oracle requires little-endian IEEE floats")
         self.path = Path(path).resolve(strict=True)
         self.lib = C.CDLL(str(self.path))
-        self.identity = {"path": str(self.path), "sha256": hashlib.sha256(self.path.read_bytes()).hexdigest()}
+        self.identity = {"path": portable(self.path), "sha256": hashlib.sha256(self.path.read_bytes()).hexdigest()}
         for name in ("ggml_version", "ggml_commit"):
             self.identity[name] = self.bind(name, C.c_char_p, [])().decode()
         self.load = self.bind("gguf_init_from_file", C.c_void_p, [C.c_char_p, InitParams])
@@ -164,7 +179,7 @@ class Oracle:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--library", type=Path, required=True)
+    parser.add_argument("--library", type=Path, help="default: the source-built ggml (@ggml//:ggml_base_so)")
     sub = parser.add_subparsers(dest="action", required=True)
     fixture = sub.add_parser("fixtures")
     fixture.add_argument("--output", type=Path, required=True)
@@ -172,8 +187,9 @@ def main():
     inspect.add_argument("model", type=Path)
     inspect.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    oracle = Oracle(args.library)
-    provenance = {"oracle": oracle.identity, "generator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+    path, built = library(args.library)
+    oracle = Oracle(path)
+    provenance = {"oracle": dict(oracle.identity, build=built), "generator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
     if args.action == "fixtures":
         args.output.mkdir(parents=True, exist_ok=False)
         cases = []
@@ -193,4 +209,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     main()
