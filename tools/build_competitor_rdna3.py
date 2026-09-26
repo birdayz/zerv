@@ -10,7 +10,7 @@ vLLM ROCm image (by digest; its ROCm 7.2.3 clang, CMake and Ninja), which also r
 capabilities, the source read-only. Configuration: the fork's README build command with the
 image's compiler paths, plus what the image cannot provide (no libcurl/OpenSSL: HTTPS model
 downloads only) and the build number and commit that git would supply (the archive has no
-.git). OUTPUT (fresh) receives bin/ (llama-server and its shared libraries), the source
+.git). ggml's commit string comes from a git stand-in (the archive has no .git). OUTPUT (fresh) receives bin/ (llama-server and its shared libraries), the source
 archive's tree under src/, and manifest.json (inputs, command, output hashes).
 """
 import argparse
@@ -39,7 +39,21 @@ CMAKE = ["cmake", "-S", "/src", "-B", "/build", "-G", "Ninja",
          "-DCMAKE_HIP_FLAGS=-mllvm --amdgpu-unroll-threshold-local=600",
          "-DGGML_HIP=ON", "-DGGML_HIP_GRAPHS=ON", "-DAMDGPU_TARGETS=gfx1100",
          "-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_CURL=OFF", "-DLLAMA_OPENSSL=OFF",
+         "-DGGML_CCACHE=OFF",  # the image has ccache; its cache dir is not writable as our uid
+         "-DGIT_EXE=/tools/git",  # ggml's commit string (below)
          f"-DLLAMA_BUILD_NUMBER={BUILD_NUMBER}", f"-DLLAMA_BUILD_COMMIT={COMMIT[:9]}"]
+
+
+# ggml's CMake asks git for the commit (`rev-parse --short HEAD`) and a clean tree (`diff-index`)
+# and overwrites any given commit with the answer ("unknown" for an archive). The archive's
+# commit is pinned, so this stand-in answers exactly those two questions and nothing else.
+GIT_STANDIN = f"""#!/bin/sh
+case "$*" in
+  "rev-parse --short HEAD") echo {COMMIT[:9]} ;;
+  "diff-index --quiet HEAD -- .") exit 0 ;;
+  *) echo "git stand-in: unsupported: $*" >&2; exit 1 ;;
+esac
+"""
 
 
 def sha(path):
@@ -64,8 +78,10 @@ def main():
         t.extractall(out / "src", filter="data")
     source = out / "src" / f"llama.cpp-RDNA3-7900xtx-opt-{COMMIT}"
     build = out / "build"; build.mkdir()
+    tools = out / "tools"; tools.mkdir()
+    (tools / "git").write_text(GIT_STANDIN); (tools / "git").chmod(0o755)
     docker = ["docker", "run", "--rm", "--network", "none", "--user", f"{os.getuid()}:{os.getgid()}", "--cap-drop", "ALL",
-              "--security-opt", "no-new-privileges", "-e", "HOME=/tmp", "-v", f"{source}:/src:ro", "-v", f"{build}:/build",
+              "--security-opt", "no-new-privileges", "-e", "HOME=/tmp", "-v", f"{source}:/src:ro", "-v", f"{build}:/build", "-v", f"{tools}:/tools:ro",
               "--entrypoint", "/bin/sh", IMAGE, "-c"]
     script = " ".join(f"'{c}'" if " " in c else c for c in CMAKE) + f" && cmake --build /build -j {a.jobs} --target llama-server"
     started = datetime.now(timezone.utc).isoformat()

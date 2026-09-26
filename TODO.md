@@ -118,9 +118,9 @@ must be 100% hermetic", merge to main only once it all is): Bazel builds and tes
 ([report](docs/bench/2026-09-26-bazel-build.md), [commands](docs/development.md),
 [spec](docs/specs/hermetic-build.md)). Done on the branch: source-built shader tools, oracles
 (ggml, llama.cpp), GPU test runtime (Mesa RADV, Vulkan loader), fixtures regenerated with
-them, harnesses without host programs, llama-server built in the graph. Open on the branch,
-not a building block: the GPU tests in the container (`tools/hermetic_check.sh --gpu`), the
-HIP competitor built by its recipe, a matched cold-build comparison.
+them, harnesses without host programs, llama-server built in the graph, the HIP competitor's
+recipe (byte-identical rebuild), the GPU tests in the container (`tools/hermetic_check.sh
+--gpu`, 70/70). Open: merge to main; a matched cold-build comparison.
 
 - [ ] **18 · concurrent sequences: batched decode for several requests** — parked 2026-09-26
   for block 19.

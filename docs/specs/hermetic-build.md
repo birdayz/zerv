@@ -2,9 +2,9 @@
 
 Status: **in progress** (branch `bazel`). Done: phases 1–2 (build graph, container proof),
 3a (scripts under the pinned Python), 3b (oracle libraries and reference programs from
-source; fixtures that need the GPU or the model not yet regenerated), 4 on the host (GPU tests
-on the source-built runtime; the container run with `/dev/dri` is open). Open: GPU and model
-fixtures, harness host tools, competitors (phase 5). User requirement 2026-09-26: "everything must be 100%
+source), 4 (GPU tests on the source-built runtime, also in the container with only `/dev/dri`),
+3 (fixtures regenerated, harnesses without host programs), 5 in part (llama-server built in the
+graph, the HIP competitor built by its recipe byte-identically). Open: merge to main. User requirement 2026-09-26: "everything must be 100%
 hermetic. go hardcore all in on this"; merge to main only once it all is.
 
 ## Definition
@@ -150,13 +150,21 @@ wrapped by `env_test` (`bazel/defs.bzl`), which sets `GPU_ENV`.
 kernel run and bitwise equal, no skip), `//tests:gpu_spills` pass, all on the source-built
 runtime; `bazel test //...` 65/65.
 
+**Acceptance (container, 2026-09-26):** `tools/hermetic_check.sh --gpu //... //tests:gpu
+//tests:gpu_release_fast //tests:gpu_spills` at 448b26f: debian:trixie-slim (pinned digest)
+with none of cc, gcc, clang, python3, glslc, spirv-val, zig and no libvulkan; empty repository,
+disk and output caches; only `/dev/dri` from the host. 70/70 tests passed (the GPU tests with
+their driver-identity check), 2352 actions, 25.8 min wall.
+
 ## Phase 3 — tools and fixtures without host programs (2026-09-26)
 
 **Rule.** Harnesses and generators execute only the pinned interpreter (`tools/py`), programs
 built in the graph, and the execution platform (glibc's dynamic linker, a POSIX shell). What a
 benchmark records about the host it reads from the kernel and from files, never by running a
 host program. `test_build_lists` enforces the host-Python guard on every script of `bench/`,
-`tools/` and `tests/reference/`.
+`tools/` and `tests/reference/`, and that none names a host tool as the program of a command
+(or uses `shutil.which`, `shell=True`, `os.system`); negative control: an added
+`["git", "status"]` fails it.
 
 | host program | replacement |
 | --- | --- |
@@ -215,5 +223,12 @@ host driver and record it.
   `/usr/bin/llama-server` is referenced only as an explicit `--llama-server` comparison.
 - **llama.cpp-RDNA3-7900xtx-opt (HIP)**: `tools/build_competitor_rdna3.py` builds it from the
   pinned source archive (commit 15995a12, sha256 952679df…) in the pinned vLLM ROCm image
-  (digest), network off, with the fork's README configuration.
+  (digest), network off, as our uid, with the fork's README configuration plus what the image
+  and the archive require (no ccache, no curl/OpenSSL; the build number and commit that git
+  supplied, ggml's through a two-answer git stand-in). Result (2026-09-26, 4.5 min): the five
+  binaries recorded for the build the competitor benchmarks used (llama-server, libggml,
+  libggml-base, -cpu, -hip) are **byte-identical**; `run_serving.py --engines rdna3` serves
+  from it (smoke run, hash recorded in the manifest). Negative results: CMake picked up the
+  image's ccache (not writable as our uid); without the stand-in ggml embeds commit
+  "unknown" (libggml-base then differs).
 - **vLLM**: the pinned image digest and model revision (unchanged).

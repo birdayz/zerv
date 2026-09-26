@@ -56,8 +56,12 @@ Python, Vulkan or shader tools, from empty caches. Pins:
   Zig 0.16 provides (the host has 2.44). Every Zig compile uses `-mcpu=native` (as `zig build`
   did; a cache shared across machines would need an explicit CPU model).
 
-The diagnostic GPU shader is compiled/validated with pinned `glslc`/SPIR-V tools; its
-checked-in SPIR-V fixture removes those development tools from ordinary tests.
+- GPU tests: a test-only Vulkan runtime built in the graph (`//tests:gpu_runtime`: Mesa 26.2.3
+  RADV, Vulkan-Loader 1.4.357.0, libdrm 2.4.133); the tests use it and check that they do
+  (`ZERV_TEST_GPU_RUNTIME`). Production zerv and benchmarks use the host's driver.
+- Shader tools (glslc, glslang, SPIRV-Tools), oracles (ggml, llama.cpp), vulkaninfo and the
+  llama-server competitor are built from pinned sources; harness scripts execute no host
+  program (`tests/test_build_lists.py`). Spec: [hermetic-build.md](specs/hermetic-build.md).
 
 ## Verified native commands
 
@@ -65,10 +69,11 @@ From the repository root (`just` recipes in `justfile`):
 
 ```sh
 bazel test //...        # required checks: zig fmt, CPU unit tests Debug + ReleaseFast, Python tests,
-                        # generated SPIR-V / native code up to date (needs the pinned host glslc,
-                        # spirv-val: without them --test_tag_filters=-shaders)
+                        # generated files up to date (SPIR-V, native code, vk.zig, Vulkan fixtures;
+                        # tools built from source)
 bazel test --config=quick //...   # Debug unit tests and Python tests only
-bazel test //tests:gpu //tests:gpu_release_fast //tests:gpu_spills   # real device
+bazel test //tests:gpu //tests:gpu_release_fast //tests:gpu_spills   # real device, test-only runtime
+tools/hermetic_check.sh --gpu //... //tests:gpu   # the same in a slim container, empty caches
 bazel build --config=release //...   # ReleaseFast, native CPU: server, benchmarks, tools
 tools/zerv_build.py zerv-spec-check  # build (release) and print an executable's path
 ```

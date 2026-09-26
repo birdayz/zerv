@@ -284,12 +284,14 @@ def main():
     p.add_argument("--port", type=int, default=18090)
     p.add_argument("--zerv-binary", type=Path, help="reuse a previously benchmarked zerv binary (no rebuild; its hash is recorded)")
     p.add_argument("--llama-server", type=Path, help="another llama-server build to run (default: built in the graph; its hash is recorded)")
+    p.add_argument("--rdna3-build", type=Path, help="another build directory of the RDNA3 fork (bin/llama-server; default: tools/build_competitor_rdna3.py's)")
     p.add_argument("--no-prompt-cache", action="store_true", help="cold prefill every request: zerv --prefix-cache-slots 0, llama cache_prompt=false")
     p.add_argument("--stall-timeout", type=float, default=STALL_S, help="fail a request after this many seconds without data")
     p.add_argument("--request-timeout", type=float, default=LIMIT_S, help="fail a request after this many seconds in total")
     a = p.parse_args()
-    global LLAMA_SERVER_OVERRIDE
+    global LLAMA_SERVER_OVERRIDE, RDNA3_BUILD
     if a.llama_server: LLAMA_SERVER_OVERRIDE = str(a.llama_server.resolve(strict=True))
+    if a.rdna3_build: RDNA3_BUILD = a.rdna3_build.resolve(strict=True)
     out = a.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     if sha(a.model) != MODEL_SHA: raise SystemExit("model mismatch")
     workload = json.loads(a.workload.read_text())
@@ -311,6 +313,8 @@ def main():
                     workload_sha256=sha(a.workload), zerv_sha256=sha(zerv_binary), llama_server_sha256=sha(llama_server()), vllm_image=VLLM_IMAGE, vllm_model=str(VLLM_MODEL.relative_to(ROOT)),
                     llama_version=subprocess.run([llama_server(), "--version"], capture_output=True, text=True).stderr.strip(),
                     template_sha256=sha(TEMPLATE), build=build, context=a.context, repeats=a.repeats, engines={}, vram_before=vram_used(),
+                    rdna3_build=dict(path=str(RDNA3_BUILD), llama_server_sha256=sha(RDNA3_BUILD/"bin/llama-server"))
+                    if (RDNA3_BUILD/"bin/llama-server").exists() else None,
                     client="python http.client streaming SSE; TTFT = first reasoning/content delta; decode rate = (completion_tokens-1)/(last_delta-first_delta)")
     raw = (out/"raw.jsonl").open("w")
     for name in a.engines.split(";" if "@" in a.engines else ","):

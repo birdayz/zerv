@@ -13,6 +13,9 @@
   tools/py runs it with the pinned interpreter and packages.
 - The build definitions name no host path (docs/specs/hermetic-build.md): every tool,
   library and header is an external archive pinned by sha256 or built in the graph.
+- Scripts run no host program (docs/specs/hermetic-build.md, phase 3): no command list starts
+  with a host tool's name, and no `shutil.which`, `shell=True` or `os.system` (tools/host_info.py
+  reads what the host is without executing it). `docker` runs the competitors' pinned images.
 - Fetching an external archive runs no host tool: patches are files applied by Bazel's own
   patcher (`patches`), never `patch_cmds` or `patch_tool`, and no repository rule of ours
   executes a program.
@@ -96,6 +99,21 @@ class BuildLists(unittest.TestCase):
                     code = line.split("#", 1)[0].strip()
                     if code.startswith("common --disk_cache="): continue  # where results are cached, not an input
                     self.assertNotRegex(code, r'"/(usr|opt|home|etc|lib|lib64|bin|sbin)\b|~/', f"host path: {line.strip()}")
+
+    def test_scripts_run_no_host_program(self):
+        host_tools = {"cc", "gcc", "g++", "clang", "clang++", "ld", "ldd", "readelf", "objdump", "nm", "strip", "lscpu",
+                      "vulkaninfo", "pacman", "dpkg", "rpm", "taskset", "numactl", "git", "curl", "wget", "pgrep", "pkill",
+                      "ps", "sensors", "rocm-smi", "nvidia-smi", "python", "python3", "zig", "glslc", "glslangValidator",
+                      "spirv-val", "make", "ninja", "meson", "sh", "bash", "env", "sudo"}
+        scripts = sorted([*(ROOT / "bench").rglob("*.py"), *(ROOT / "tools").glob("*.py"), *(ROOT / "tests/reference").glob("*.py")])
+        self.assertGreater(len(scripts), 70)
+        for path in scripts:
+            text = path.read_text()
+            with self.subTest(script=str(path.relative_to(ROOT))):
+                programs = set(re.findall(r'\[\s*"([A-Za-z0-9_.+-]+)"\s*,', text))
+                self.assertFalse(programs & host_tools, f"runs a host program: {sorted(programs & host_tools)}")
+                for marker in ("shutil.which(", "shell=True", "os.system(", "os.popen("):
+                    self.assertNotIn(marker, text)
 
     def test_fetching_runs_no_host_tool(self):
         module = (ROOT / "MODULE.bazel").read_text()

@@ -158,6 +158,11 @@ source-built runtime):
   GPU test requires the device key of the source-built driver (negative control: the host
   driver fails with `WrongDriver`). `bazel test //...` 67/67.
 
+**Container proof with the GPU:** `tools/hermetic_check.sh --gpu //... //tests:gpu
+//tests:gpu_release_fast //tests:gpu_spills` (448b26f; slim Debian without compilers, Python or
+Vulkan; empty caches; `/dev/dri` only): 70/70 passed, 25.8 min
+(log kept locally under `third_party/hermetic-check/`).
+
 **Failures and negative results on the way** (kept in the spec): Mesa's meson linking the host
 `libelf` through Zig's search-dir answer; a segfault at exit without `-z nodelete`; build IDs
 differing by output base until `--strip-debug`; `gpu_release_fast` silently on the host driver
