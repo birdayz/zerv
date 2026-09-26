@@ -457,6 +457,8 @@ def generate(prio="wmma", dq_part=2, abl=(), order="ij", probe=False):
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     ap = argparse.ArgumentParser()
     ap.add_argument("out")
     ap.add_argument("--prio", default="wmma", choices=["none", "wmma"])

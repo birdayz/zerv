@@ -17,3 +17,10 @@ py_binary(
 
 # Read by //tests:test_build_lists.
 exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])
+
+# Every Python script (//tests:test_build_lists checks how they run).
+filegroup(
+    name = "py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tests:__pkg__"],
+)

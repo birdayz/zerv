@@ -3,6 +3,7 @@
 `POST /v1/chat/completions` request body, in order, as JSON lines. Responses (including
 SSE streams) are forwarded unchanged. Used to capture real client sessions (e.g. bruh)
 for replay benchmarks. Usage: record_proxy.py --listen 18201 --upstream 18080 --output FILE"""
+import sys
 import argparse
 import http.client
 import http.server
@@ -61,4 +62,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     main()

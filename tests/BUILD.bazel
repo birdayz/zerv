@@ -466,7 +466,7 @@ filegroup(
 py_test(
     name = "test_build_lists",
     srcs = ["test_build_lists.py"],
-    data = ["BUILD.bazel", ":zig_srcs", "//bench:py_srcs", "//tools:py_srcs"] + [
+    data = ["BUILD.bazel", ":zig_srcs", "//bench:py_srcs", "//bench/isa_lab:py_srcs", "//tools:py_srcs"] + glob(["reference/*.py"]) + [
         "//:.bazelrc",
         "//:BUILD.bazel",
         "//:MODULE.bazel",

@@ -16,6 +16,7 @@ Usage: thermal_log.py --output FILE.jsonl [--seconds 60] [--hz 2]
 With --load, CMD starts after 5 s of baseline; logging continues until it exits, then for
 --cooldown seconds. A summary (min / median / max per signal, throttle-bit shares while
 loaded) is printed and written to FILE.summary.json."""
+import sys
 import argparse
 import json
 import shlex
@@ -149,4 +150,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     main()

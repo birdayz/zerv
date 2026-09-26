@@ -1,6 +1,16 @@
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 load("//bazel:defs.bzl", "zig_fmt_test")
 
 exports_files(["requirements_lock.txt"])
+
+# requirements_lock.txt from requirements.in, with hashes: bazel run //:requirements.update.
+# Its check (requirements_test) needs the network, so it is manual.
+compile_pip_requirements(
+    name = "requirements",
+    src = "requirements.in",
+    requirements_txt = "requirements_lock.txt",
+    tags = ["manual"],
+)
 
 # The build definitions, read by //tests:test_build_lists.
 exports_files(

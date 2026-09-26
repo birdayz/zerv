@@ -12,6 +12,7 @@ then `path(...)`. `provenance()` is the build identity a benchmark manifest reco
 From a shell: `tools/zerv_build.py NAME...` builds the executables (release) and prints
 their paths, e.g. `"$(tools/zerv_build.py zerv-spec-check)" MODEL`.
 """
+import sys
 import hashlib
 import subprocess
 from pathlib import Path
@@ -123,6 +124,8 @@ def provenance():
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     import argparse
     parser = argparse.ArgumentParser(description="Build zerv executables with Bazel; print their paths.")
     parser.add_argument("names", nargs="+", choices=sorted(TARGETS))

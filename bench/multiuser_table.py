@@ -4,6 +4,7 @@ and over rounds x reps (interference, queue).
 
   multiuser_table.py docs/bench/data/DATE-multiuser/final/summary.json [--names A=label,B=label]
 """
+import sys
 import argparse, json, statistics
 
 
@@ -58,4 +59,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     main()

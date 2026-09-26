@@ -68,6 +68,8 @@ def splice(blob, code_path, out, vgprs=None, sgprs=None, lds=None):
     open(out, "wb").write(new)
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     a = sys.argv[1:]
     if a[0] == "asm": assemble(a[1], a[2])
     elif a[0] == "dis2s": dis2s(a[1], a[2])

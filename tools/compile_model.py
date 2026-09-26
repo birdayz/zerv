@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Rebuild owned Vulkan1.1 model-operator modules with pinned offline tools; never runtime code."""
+import sys
 import argparse
 import json
 from pathlib import Path
@@ -105,4 +106,7 @@ def main():
     if not a.quiet: print(json.dumps(manifest, indent=2))
 
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
+    main()

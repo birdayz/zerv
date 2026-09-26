@@ -7,6 +7,7 @@ summary of the documents. The output JSON is checked in and frozen; the descript
 records the source files and their hashes, so the text never has to be regenerated.
 
 Usage: bench/make_long_workload.py --chars 215000 --name long-v2 --output bench/workloads/long-v2.json"""
+import sys
 import argparse
 import hashlib
 import json
@@ -52,4 +53,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     main()

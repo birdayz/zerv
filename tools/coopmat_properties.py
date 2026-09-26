@@ -4,6 +4,7 @@ Vulkan driver reports (vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR), which
 vulkaninfo does not print. It uses ctypes against the system loader and is not a
 runtime dependency. Enum and struct values come from the pinned registry
 (third_party/vulkan/1.4.354/registry/vk.xml; VK_KHR_cooperative_matrix is extension 507)."""
+import sys
 import argparse
 import ctypes as C
 import json
@@ -69,4 +70,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     main()

@@ -206,7 +206,7 @@ results and limitations are in [the dated report](bench/2026-09-22-quant-decode.
 ## Repeatable CPU component benchmark
 
 ```sh
-python3 bench/run_quant.py \
+tools/py bench/run_quant.py \
   --reference /usr/lib/libggml-base.so.0.24.0 \
   --cpu 0 \
   --output docs/bench/data/YYYY-MM-DD-quant-unique-run
@@ -234,7 +234,7 @@ separate process, checks the external results with independent scalar arithmetic
 and records the exact oracle binary and generator hash. No network/package install.
 
 ```sh
-python3 tests/reference/generate_quant_goldens.py \
+tools/py tests/reference/generate_quant_goldens.py \
   --library /usr/lib/libggml-base.so.0.24.0 \
   --output third_party/quantization-candidate.json
 diff -u tests/fixtures/quantization.json third_party/quantization-candidate.json
@@ -293,10 +293,10 @@ native tests need only the committed JSON, not Python or the oracle library.
 ```sh
 bazel build --config=release //tools:zerv-inspect
 bazel-bin/tools/zerv-inspect models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf
-python3 bench/run_gguf.py --library /usr/lib/libggml-base.so.0.24.0 \
+tools/py bench/run_gguf.py --library /usr/lib/libggml-base.so.0.24.0 \
   --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf \
   --output docs/bench/data/YYYY-MM-DD-gguf-unique --cpu 2
-.tools/tokenizer-oracle-venv/bin/python bench/run_chat.py \
+tools/py bench/run_chat.py \
   --config third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/tokenizer_config.json \
   --output docs/bench/data/YYYY-MM-DD-chat-unique --cpu 2
 ```
@@ -304,21 +304,20 @@ python3 bench/run_gguf.py --library /usr/lib/libggml-base.so.0.24.0 \
 The exact actual run directories/results are linked in the
 [GGUF report](bench/2026-09-22-gguf-loading.md) and
 [chat report](bench/2026-09-22-chat-template.md). Chat, normalization and tokenizer
-oracles/benchmarks need isolated development Python packages; ordinary tests do not. Setup used:
-
-```sh
-python3 -m venv .tools/tokenizer-oracle-venv
-.tools/tokenizer-oracle-venv/bin/python -m pip install \
-  tokenizers==0.22.2 Jinja2==3.1.6 regex==2026.9.10
-```
+oracles/benchmarks need development Python packages (tokenizers 0.22.2, Jinja2 3.1.6, regex
+2026.9.10 and their dependencies, exactly the former `.tools/tokenizer-oracle-venv`, which
+produced the goldens): they are hash-locked in `requirements_lock.txt` (from
+`requirements.in`; relock with `bazel run //:requirements.update`), and every script runs
+under the pinned interpreter with them through `tools/py SCRIPT ARGS` (`bazel run //tools:py`).
+Scripts refuse the host's Python.
 
 No system package changes. Full installed versions/hashes are in fixture/benchmark
 manifests. Unicode-9 NFC has its own completed verification and benchmark loop:
 
 ```sh
-.tools/tokenizer-oracle-venv/bin/python bench/run_nfc.py \
+tools/py bench/run_nfc.py \
   --cpu 2 --output docs/bench/data/YYYY-MM-DD-nfc-unique
-.tools/tokenizer-oracle-venv/bin/python tests/reference/generate_nfc.py \
+tools/py tests/reference/generate_nfc.py \
   --ucd third_party/unicode/9.0.0 \
   --data third_party/nfc-candidate/nfc9.bin \
   --fixtures third_party/nfc-candidate/fixtures
@@ -332,7 +331,7 @@ Follow [TODO.md](../TODO.md): one active building block/package at a time.
 The subsequent Qwen splitter is independently verified and measured as well:
 
 ```sh
-.tools/tokenizer-oracle-venv/bin/python bench/run_split.py \
+tools/py bench/run_split.py \
   --cpu 2 --output docs/bench/data/YYYY-MM-DD-split-unique
 ```
 
@@ -353,23 +352,23 @@ records. Raw decoding deliberately does not perform per-piece UTF-8 replacement.
 Regenerate fixtures explicitly into new paths:
 
 ```sh
-python3 tests/reference/gguf_oracle.py --library /usr/lib/libggml-base.so.0.24.0 \
+tools/py tests/reference/gguf_oracle.py --library /usr/lib/libggml-base.so.0.24.0 \
   fixtures --output third_party/gguf-candidate
-.tools/tokenizer-oracle-venv/bin/python tests/reference/generate_chat_goldens.py \
+tools/py tests/reference/generate_chat_goldens.py \
   --config third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/tokenizer_config.json \
   --publisher-template third_party/unsloth/Qwen3.8-27B-GGUF/4ca720788d1e01f1bff70c033e0d0028fd02e502/embedded-template.jinja \
   --output third_party/chat-candidate.json
 # Tool-calling prompt oracle (tests/fixtures/chat-tools.json); --compare RAW.json diffs it
 # against llama-server /apply-template prompts recorded by tools/check_tool_parity.py.
-.tools/tokenizer-oracle-venv/bin/python tests/reference/render_tools.py \
+tools/py tests/reference/render_tools.py \
   --output third_party/chat-tools-candidate.json
 ```
 
 Tool-calling parity with llama-server (one engine at a time; GPU):
 
 ```sh
-python3 tools/check_tool_parity.py --engines llama-fp32-full --output docs/bench/data/YYYY-MM-DD-tool-parity/llama
-python3 tools/check_tool_parity.py --engines zerv --zerv-binary PATH \
+tools/py tools/check_tool_parity.py --engines llama-fp32-full --output docs/bench/data/YYYY-MM-DD-tool-parity/llama
+tools/py tools/check_tool_parity.py --engines zerv --zerv-binary PATH \
   --reference-raw docs/bench/data/YYYY-MM-DD-tool-parity/llama/raw.json --output docs/bench/data/YYYY-MM-DD-tool-parity/zerv
 ```
 
@@ -379,7 +378,7 @@ The old direct-native/HTTP table is **not** relative tokenizer-speed evidence.
 The direct reference harness checks the same installed libllama used by the server:
 
 ```sh
-.tools/tokenizer-oracle-venv/bin/python bench/run_tokenizer_matched.py \
+tools/py bench/run_tokenizer_matched.py \
   --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf \
   --tokenizer third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/tokenizer.json \
   --cpu 10 --output docs/bench/data/YYYY-MM-DD-tokenizer-matched-unique
@@ -401,7 +400,7 @@ compare regenerated bytes rather than replacing expectations after a test failur
 If the ignored saved baseline binary is gone, rebuild from the archived sources:
 
 ```sh
-python3 bench/rebuild_tokenizer_baseline.py \
+tools/py bench/rebuild_tokenizer_baseline.py \
   --run docs/bench/data/2026-09-22-tokenizer-matched-wide-baseline \
   --output third_party/tokenizer-restored/NEW-UNIQUE-RESTORE \
   --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf
@@ -419,12 +418,12 @@ It rebuilds both binaries, runs both native test modes, checks actual model/libr
 header identities, and validates full slice outputs before accepting timings.
 
 ```sh
-python3 tests/reference/generate_q6_k_goldens.py \
+tools/py tests/reference/generate_q6_k_goldens.py \
   --library /usr/lib/libggml-base.so.0.24.0 \
   --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf \
   --output third_party/NEW-q6_k-candidate.json
 cmp tests/fixtures/q6_k.json third_party/NEW-q6_k-candidate.json
-python3 bench/run_model_quant.py --format q6_k \
+tools/py bench/run_model_quant.py --format q6_k \
   --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf \
   --cpu 10 --output docs/bench/data/NEW-q6_k-run
 ```
@@ -440,7 +439,7 @@ workloads and their own `generate_q4_1_goldens.py`/`generate_q5_k_goldens.py` to
 bazel test //tests:gpu //tests:gpu_release_fast
 bazel build --config=release //bench:zerv-gpu-driver-bench
 bazel-bin/bench/zerv-gpu-driver-bench
-python3 bench/run_gpu_driver.py --cpu 10 --output docs/bench/data/NEW-gpu-driver
+tools/py bench/run_gpu_driver.py --cpu 10 --output docs/bench/data/NEW-gpu-driver
 ```
 
 Shader spill gate (required when shaders, compile defines or tuning tables change;
@@ -450,9 +449,9 @@ Bazel test; the model checks need the model, which is not a Bazel input:
 
 ```sh
 bazel test //tests:gpu_spills   # log: bazel-testlogs/tests/gpu_spills/test.outputs/shaderstats.txt
-python3 tools/check_shader_spills.py --log third_party/spill-gate/spec.txt -- "$(tools/zerv_build.py zerv-spec-check)" MODEL
-python3 tools/check_shader_spills.py --log third_party/spill-gate/mtp.txt -- "$(tools/zerv_build.py zerv-mtp-check)" MODEL third_party/mtp-check/tokens-short-nothink.json third_party/spill-gate/mtp-dump
-python3 tools/check_shader_spills.py --log third_party/spill-gate/f16.txt -- "$(tools/zerv_build.py zerv-model-profile)" MODEL 4096 512 600 2 f16 f16
+tools/py tools/check_shader_spills.py --log third_party/spill-gate/spec.txt -- "$(tools/zerv_build.py zerv-spec-check)" MODEL
+tools/py tools/check_shader_spills.py --log third_party/spill-gate/mtp.txt -- "$(tools/zerv_build.py zerv-mtp-check)" MODEL third_party/mtp-check/tokens-short-nothink.json third_party/spill-gate/mtp-dump
+tools/py tools/check_shader_spills.py --log third_party/spill-gate/f16.txt -- "$(tools/zerv_build.py zerv-model-profile)" MODEL 4096 512 600 2 f16 f16
 ```
 
 GPU tests exercise actual transfers/compute and resource/state failures; default
@@ -502,7 +501,7 @@ lab binary, and must be followed by the gates in the spec (`bazel test //tests:g
 ```sh
 cc -std=gnu11 -O2 -Wall -Wextra -Ithird_party/vulkan/1.4.354/include \
   bench/isa_lab/pipeline_binary_lab.c -lvulkan -lm -o third_party/isa-lab/pipeline_binary_lab
-python3 tools/build_native_gemm.py --output-dir third_party/NEW-native   # then review and copy
+tools/py tools/build_native_gemm.py --output-dir third_party/NEW-native   # then review and copy
 ```
 
 The binary is valid only where the driver's global pipeline key equals
@@ -517,11 +516,11 @@ the fallback and runs the SPIR-V. `--gemm-code spirv` selects the SPIR-V explici
 bazel test //... //tests:gpu //tests:gpu_release_fast
 
 # Explicit independent replay: fresh paths, existing pinned model/tools/libraries.
-python3 tools/replay_matvec.py --output-dir .tools/NEW-matvec-replay --restore-sources
+tools/py tools/replay_matvec.py --output-dir .tools/NEW-matvec-replay --restore-sources
 
 # Rebuild both competitors and benchmark all eleven complete dense shape/type pairs.
-python3 bench/run_gpu_matvec.py --cpu 10 --output docs/bench/data/NEW-matvec-run1
-python3 bench/run_gpu_matvec.py --cpu 10 --output docs/bench/data/NEW-matvec-repeat
+tools/py bench/run_gpu_matvec.py --cpu 10 --output docs/bench/data/NEW-matvec-run1
+tools/py bench/run_gpu_matvec.py --cpu 10 --output docs/bench/data/NEW-matvec-repeat
 ```
 
 The replay tool verifies 62 retained ggml research files, optionally fetching only
@@ -532,7 +531,7 @@ or weight download is needed. Original replay actually executed and passed; see
 [validation/logs](research/2026-09-22-gpu-matvec-validation.md).
 
 To rebuild shaders alone into a review directory:
-`python3 tools/compile_matvec.py --output-dir .tools/NEW-matvec-shaders` (or `bazel build
+`tools/py tools/compile_matvec.py --output-dir .tools/NEW-matvec-shaders` (or `bazel build
 //src/matvec:generated_shaders`). Only `bazel run //src/matvec:update_shaders` overwrites the
 production shader files.
 The benchmark separately records FP32-input and default (activation-quantized)
@@ -544,11 +543,11 @@ counterfactual, correctness-gated candidate harness and separately labelled alig
 views. Full repeated protocol (fresh output directories; no concurrent GPU work):
 
 ```sh
-python3 bench/rebuild_matvec_baseline.py --output third_party/matvec-dfs/NEW-baseline
-python3 bench/run_gpu_matvec.py --cpu 10 --aligned \
+tools/py bench/rebuild_matvec_baseline.py --output third_party/matvec-dfs/NEW-baseline
+tools/py bench/run_gpu_matvec.py --cpu 10 --aligned \
   --baseline-run third_party/matvec-dfs/NEW-baseline \
   --output docs/bench/data/NEW-dfs-run1
-python3 bench/run_gpu_matvec.py --cpu 10 --aligned \
+tools/py bench/run_gpu_matvec.py --cpu 10 --aligned \
   --baseline-run third_party/matvec-dfs/NEW-baseline \
   --output docs/bench/data/NEW-dfs-repeat
 ```
@@ -571,11 +570,11 @@ curl -s localhost:8080/v1/chat/completions -H 'content-type: application/json' \
 # Oracle (explicit; needs pinned libllama/ggml, the model, and the tokenizer venv
 # for template rendering). Fresh paths; the fixture replays except two volatile
 # fields (libllama stderr hashes, absolute build path).
-python3 tests/reference/generate_model_oracle.py --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf \
+tools/py tests/reference/generate_model_oracle.py --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf \
   --work-dir third_party/model-oracle/NEW --output .tools/NEW-oracle.json
 
 # The >512-token case (one full 512-row chunk; block 13h) is a separate fixture.
-python3 tests/reference/generate_model_oracle.py --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf \
+tools/py tests/reference/generate_model_oracle.py --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf \
   --work-dir third_party/model-oracle/NEW-long --output .tools/NEW-oracle-long.json --case-set long
 
 # Native forward gates against the oracle work dirs (thresholds in docs/specs/model.md).
@@ -583,32 +582,32 @@ python3 tests/reference/generate_model_oracle.py --model models/qwen3.8-27b/Qwen
 # files are byte-identical to 2026-09-22-a; only oracle.stderr differs. The fixture's
 # file hashes refer to the new directory. The old fixture is kept in
 # docs/bench/data/2026-09-23-gemm-efficiency/qwen38-oracle-2026-09-22-a.json.
-python3 tools/verify_model.py --oracle-dir third_party/model-oracle/2026-09-23-default-regen \
+tools/py tools/verify_model.py --oracle-dir third_party/model-oracle/2026-09-23-default-regen \
   --modes 0,1,13,29,60,512 --work-dir third_party/model-native/NEW --report docs/bench/data/NEW/report.json
-python3 tools/verify_model.py --fixture tests/fixtures/model/qwen38-oracle-long.json \
+tools/py tools/verify_model.py --fixture tests/fixtures/model/qwen38-oracle-long.json \
   --oracle-dir third_party/model-oracle/2026-09-23-long --modes 0,512,64 \
   --work-dir third_party/model-native/NEW-long --report docs/bench/data/NEW/report-long.json
 
 # Rerun a gate with an archived capture binary (every work dir keeps its copy), e.g. to
 # attribute a difference to a build: same flags plus --tool.
-python3 tools/verify_model.py --tool third_party/model-native/OLD/zerv-model-capture \
+tools/py tools/verify_model.py --tool third_party/model-native/OLD/zerv-model-capture \
   --oracle-dir third_party/model-oracle/2026-09-23-default-regen --modes 0 \
   --work-dir third_party/model-native/NEW-rerun --report third_party/model-native/NEW-rerun.json
 
 # Interleaved (ABBA) A/B of zerv-model-profile binaries: per-phase decode/prefill GPU time.
 # An engine may carry its own arguments after "|", e.g. KV page sizes of one binary.
-python3 bench/race_profile.py --engine old=PATH --engine new=PATH --rounds 2 \
+tools/py bench/race_profile.py --engine old=PATH --engine new=PATH --rounds 2 \
   --output docs/bench/data/NEW-race --args 32768 512 30000 32 f16@native f32
-python3 bench/race_profile.py --engine "p128=PATH|32768 512 30000 32 f16@native f32@page=128" \
+tools/py bench/race_profile.py --engine "p128=PATH|32768 512 30000 32 f16@native f32@page=128" \
   --engine "ctx=PATH|32768 512 30000 32 f16@native f32@page=context" --rounds 2 \
   --output docs/bench/data/NEW-pages --args 32768 512 30000 32 f16@native f32
 # verify_model.py --kv-page-tokens N|context gates another KV page size (default 128).
 
 # End-to-end greedy equality through the real server (JSON and SSE).
-python3 tools/check_session.py --output docs/bench/data/NEW/session.json
+tools/py tools/check_session.py --output docs/bench/data/NEW/session.json
 
 # Matched serving benchmark vs llama-server (engines run one at a time).
-python3 bench/run_serving.py --output docs/bench/data/NEW-serving
+tools/py bench/run_serving.py --output docs/bench/data/NEW-serving
 ```
 
 `verify_model.py` builds its native capture tool (`//tools:zerv-model-capture`) itself. The oracle's FP64 pass uses all CPU cores for ~25 minutes; do

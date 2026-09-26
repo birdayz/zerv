@@ -31,6 +31,18 @@ py_library(
     data = ["//src/matvec:glsl"],
 )
 
+# The pinned interpreter with every locked package, for running repository scripts: tools/py.
+py_binary(
+    name = "py",
+    srcs = ["py.py"],
+    deps = [
+        "@zerv_pypi//jinja2",
+        "@zerv_pypi//numpy",
+        "@zerv_pypi//regex",
+        "@zerv_pypi//tokenizers",
+    ],
+)
+
 py_binary(
     name = "vulkan_stub",
     srcs = ["vulkan_stub.py"],

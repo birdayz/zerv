@@ -9,6 +9,10 @@
 - No harness builds with anything but Bazel (tools/zerv_build.py): no `zig build`, zig-out/
   or a Zig outside the toolchain. Exception: bench/rebuild_*_baseline.py rebuild archived
   trees, which carry their own build.zig.
+- Every script (bench/, tools/) refuses to run under the host's Python: tools/py runs it with
+  the pinned interpreter and packages. tests/reference/ generators are pinned by hash in the
+  fixtures they produced; they get the guard when the fixtures are regenerated with the
+  source-built oracles (docs/specs/hermetic-build.md, phase 3).
 - The build definitions name no host path (docs/specs/hermetic-build.md): every tool,
   library and header is an external archive pinned by sha256 or built in the graph.
 """
@@ -70,6 +74,15 @@ class BuildLists(unittest.TestCase):
                     self.assertNotIn('@import("zerv")', text, f"{path.relative_to(ROOT)}: a package cannot import the umbrella")
                     used = set(re.findall(r'@import\("([a-z_]+)"\)', text)) & set(dirs)
                     self.assertLessEqual(used, deps, f"{path.relative_to(ROOT)} imports undeclared packages {sorted(used - deps)}")
+
+    def test_scripts_refuse_the_host_python(self):
+        scripts = sorted([*(ROOT / "bench").rglob("*.py"), *(ROOT / "tools").glob("*.py")])
+        self.assertGreater(len(scripts), 50)
+        for path in scripts:
+            text = path.read_text()
+            if '__name__ == "__main__"' not in text: continue
+            with self.subTest(script=str(path.relative_to(ROOT))):
+                self.assertIn('if "/bazel-out/" not in sys.executable:', text, "no host-Python guard (tools/py)")
 
     def test_build_definitions_name_no_host_path(self):
         files = [ROOT / name for name in ("MODULE.bazel", ".bazelrc")]

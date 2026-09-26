@@ -4,6 +4,7 @@
 The tools are glslc and spirv-val built from source by Bazel (MODULE.bazel):
 `bazel run //tools:compile_matvec -- --output-dir DIR` (the build itself runs this script as
 //src/matvec:generated_shaders)."""
+import sys
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
@@ -124,4 +125,7 @@ def main():
     if not a.quiet: print(json.dumps(manifest, indent=2))
 
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
+    main()

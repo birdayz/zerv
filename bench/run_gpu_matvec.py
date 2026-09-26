@@ -172,4 +172,7 @@ def main():
         (dest/"manifest.json").write_text(json.dumps(manifest, indent=2)+"\n")
 
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
+    main()
