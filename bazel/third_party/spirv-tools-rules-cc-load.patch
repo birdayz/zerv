@@ -1,0 +1,10 @@
+SPIRV-Tools' BUILD.bazel uses the C/C++ rules without load() (removed from Bazel 9's globals).
+docs/specs/hermetic-build.md, phase 1.
+
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -1,3 +1,4 @@
++load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+ load(
+     ":build_defs.bzl",
+     "CLDEBUGINFO100_GRAMMAR_JSON_FILE",

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run pipeline_binary_lab race with a sysfs sampler (research tool, docs/research/native-isa-via-vulkan.md).
 
-  race.py REF CAND [key=value ...] [--warm SECONDS]
+  race.py REF CAND [key=value ...] [--warm SECONDS] [--lab PATH]
 
 REF is a SPIR-V module or a pipeline binary (.bin); CAND is a pipeline binary. Before the race,
 an untimed warm-up race (--warm seconds, default 3) heats the card to its sustained state. Prints
@@ -12,7 +12,17 @@ GPU process of this project (zerv*, llama-server) is running.
 """
 import json, os, pathlib, statistics, subprocess, sys, threading, time
 
-LAB = pathlib.Path(__file__).resolve().parents[2] / "third_party/isa-lab/pipeline_binary_lab"
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
+
+
+def lab(args):
+    """The lab executable: `--lab PATH` (removed from args), else built by Bazel."""
+    if "--lab" in args:
+        i = args.index("--lab"); path = args[i + 1]; del args[i:i + 2]
+        return path
+    return str(zerv_build.binary("pipeline_binary_lab", config=None))
 
 
 def hwmon():
@@ -46,6 +56,7 @@ def busy():
 
 def main():
     args = sys.argv[1:]
+    exe = lab(args)
     warm = 3.0
     if "--warm" in args:
         i = args.index("--warm"); warm = float(args[i + 1]); del args[i:i + 2]
@@ -56,11 +67,11 @@ def main():
     if warm > 0:
         t0 = time.time()
         while time.time() - t0 < warm:
-            subprocess.run([str(LAB), "race", ref, cand, "reps=51"] + [x for x in kv if not x.startswith("reps=")],
+            subprocess.run([exe, "race", ref, cand, "reps=51"] + [x for x in kv if not x.startswith("reps=")],
                            check=True, capture_output=True)
     # The lab prints the bitwise line right before the timed reps: sample from then on.
     smp = Sampler(hwmon())
-    pr = subprocess.Popen([str(LAB), "race", ref, cand] + kv, stdout=subprocess.PIPE, text=True)
+    pr = subprocess.Popen([exe, "race", ref, cand] + kv, stdout=subprocess.PIPE, text=True)
     out = []
     for line in pr.stdout:
         out.append(line)

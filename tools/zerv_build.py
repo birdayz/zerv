@@ -32,6 +32,8 @@ TARGETS = {
     "oracle_tokenizer_bench": "//tests:oracle_tokenizer_bench",
     "oracle_model_quant_bench": "//tests:oracle_model_quant_bench",
     "oracle_gpu_matvec": "//tests:oracle_gpu_matvec",
+    # Development tool (bench/isa_lab): RADV pipeline binaries of native kernels.
+    "pipeline_binary_lab": "//bench/isa_lab:pipeline_binary_lab",
     "glslc": "@shaderc//:glslc",
     "spirv-val": "@spirv_tools//:spirv-val",
     "zerv-model-capture": "//tools:zerv-model-capture",
@@ -109,6 +111,34 @@ def oracle(name):
     configuration; returns its path and identity (Bazel label, content hash) for manifests."""
     path = build(name, config=None)[name]
     return path, dict(label=TARGETS[name], sha256=sha(path), path=str(path.relative_to(ROOT)))
+
+
+GPU_RUNTIME = "//tests:gpu_runtime"
+
+
+def host_vulkan_env(base=None):
+    """`base` (default os.environ) without any variable that configures a Vulkan loader or
+    driver (VK_*, RADV_*, ACO_*, MESA_*, AMD_*, LD_LIBRARY_PATH): the host's Vulkan stack as
+    installed."""
+    return {k: v for k, v in (os.environ if base is None else base).items()
+            if not k.startswith(("VK_", "RADV_", "ACO_", "MESA_", "AMD_")) and k != "LD_LIBRARY_PATH"}
+
+
+def gpu_runtime(base=None):
+    """The test-only GPU runtime (docs/specs/hermetic-build.md, phase 4: the source-built Vulkan
+    loader and Mesa RADV), built. Returns (environment, identity): host_vulkan_env(base) plus
+    the variables of tests/BUILD.bazel's GPU_ENV with absolute paths, so
+    a child process loads that runtime and nothing of the host's Vulkan stack; and the runtime's
+    label and file hashes for manifests."""
+    env = host_vulkan_env(base)
+    bazel("build", GPU_RUNTIME)
+    files = sorted(ROOT / f for f in bazel("cquery", "--output=files", GPU_RUNTIME, capture=True).stdout.split())
+    d = files[0].parent
+    if {f.name for f in files} != {"amdgpu.ids", "libvulkan.so.1", "libvulkan_radeon.so", "radeon_icd.json"} or any(f.parent != d for f in files):
+        raise SystemExit(f"{GPU_RUNTIME}: unexpected files {files}")
+    env.update(LD_LIBRARY_PATH=str(d), VK_DRIVER_FILES=str(d / "radeon_icd.json"), VK_LOADER_LAYERS_DISABLE="~all~",
+               AMDGPU_ASIC_ID_TABLE_PATHS=str(d), ZERV_TEST_GPU_RUNTIME="test_radv")
+    return env, dict(label=GPU_RUNTIME, files={f.name: sha(f) for f in files})
 
 
 def test(*labels):

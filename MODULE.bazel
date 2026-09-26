@@ -35,6 +35,11 @@ bazel_dep(name = "bazel_skylib", version = "1.9.2")
 # SHA-256 (openssl/sha.h) for the reference C programs (tests/reference), test oracles only.
 bazel_dep(name = "boringssl", version = "0.20260813.0")
 
+# Meson and Ninja build the test-only GPU runtime (Mesa RADV, docs/specs/hermetic-build.md).
+bazel_dep(name = "meson", version = "1.12.1")
+bazel_dep(name = "ninja", version = "1.13.2")
+bazel_dep(name = "rules_shell", version = "0.8.0")
+
 # Vulkan API registry and headers (the link stub //src/gpu:vulkan, reference programs), and the
 # shader compiler and validator, built from source at the revisions of the host packages
 # that produced the committed SPIR-V (shaderc 2026.3 with glslang and SPIRV-Tools of
@@ -68,6 +73,34 @@ http_archive(
     urls = ["https://github.com/ggml-org/llama.cpp/archive/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4.tar.gz"],
 )
 
+# The test-only GPU runtime (docs/specs/hermetic-build.md, phase 4): Mesa RADV and its libdrm.
+http_archive(
+    name = "mesa",
+    build_file = "//bazel/third_party:mesa.BUILD",
+    # Applied by Bazel's own patcher (no host tool); the patch says why.
+    patch_strip = 1,
+    patches = ["//bazel/third_party:mesa-addrlib-no-x86-simd.patch"],
+    sha256 = "1628058a8d2c0615975de5a15ab7bbb9638c50000b5bed9456ff423ea034a81f",
+    strip_prefix = "mesa-26.2.3",
+    urls = ["https://archive.mesa3d.org/mesa-26.2.3.tar.xz"],
+)
+
+http_archive(
+    name = "vulkan_loader",
+    build_file = "//bazel/third_party:vulkan_loader.BUILD",
+    sha256 = "54f2537df22313768da0317dda2abdaaab7711b4081c48c869a79db343d0ae70",
+    strip_prefix = "Vulkan-Loader-vulkan-sdk-1.4.357.0",
+    urls = ["https://github.com/KhronosGroup/Vulkan-Loader/archive/refs/tags/vulkan-sdk-1.4.357.0.tar.gz"],
+)
+
+http_archive(
+    name = "libdrm",
+    build_file = "//bazel/third_party:libdrm.BUILD",
+    sha256 = "fc68f9d0ba2ea63c9432a299e14fea09fad7a8a66e8039fcd7802ca59f77b4f5",
+    strip_prefix = "libdrm-2.4.133",
+    urls = ["https://dri.freedesktop.org/libdrm/libdrm-2.4.133.tar.xz"],
+)
+
 http_archive(
     name = "spirv_headers",
     sha256 = "232899f1ad4104fb5bc377b94596c7621575eee62ad9a9e8f929b63a7dd8a7ad",
@@ -78,8 +111,10 @@ http_archive(
 http_archive(
     name = "spirv_tools",
     sha256 = "5cd1a935296c324e7bfa8f0e4c223742ac490d45d6af0577fa3c2cf7e1a7dd22",
-    # Its BUILD.bazel uses the C/C++ rules without load() (removed from Bazel 9's globals).
-    patch_cmds = ["sed -i '1i load(\"@rules_cc//cc:defs.bzl\", \"cc_binary\", \"cc_library\", \"cc_test\")' BUILD.bazel"],
+    # Its BUILD.bazel uses the C/C++ rules without load() (removed from Bazel 9's globals);
+    # applied by Bazel's own patcher (no host tool).
+    patch_strip = 1,
+    patches = ["//bazel/third_party:spirv-tools-rules-cc-load.patch"],
     strip_prefix = "SPIRV-Tools-9a49b0883b9b635689a85b5647dbfcb223268151",
     urls = ["https://github.com/KhronosGroup/SPIRV-Tools/archive/9a49b0883b9b635689a85b5647dbfcb223268151.tar.gz"],
 )

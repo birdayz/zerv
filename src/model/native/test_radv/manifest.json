@@ -1,12 +1,15 @@
 {
   "kernel": "gemm_f16x_q4_0",
-  "driver": "RADV of the host (Mesa 26.2.3 binary layout; valid only where the global key matches)",
-  "runtime": "host",
+  "driver": "RADV built from source (//tests:gpu_runtime, Mesa 26.2.3; valid only where the global key matches)",
+  "runtime": "test",
   "driver_runtime": {
-    "packages": [
-      "mesa 1:26.2.3-1",
-      "vulkan-radeon 1:26.2.3-1"
-    ]
+    "label": "//tests:gpu_runtime",
+    "files": {
+      "amdgpu.ids": "ffd2a8f1bfa755f4d90f537b4969fc4676f116e5af051ce2f18ef93a96d8beb6",
+      "libvulkan.so.1": "730c35a97158aa61db944956c256cbee116192708146bffeafab23763a40faec",
+      "libvulkan_radeon.so": "0623459745a34d630f1b69246b1c20648602c56b05828995773b702a82717ba8",
+      "radeon_icd.json": "d654a57cda9eb11eb323c87220dce6d6469bd2076b2ba5284b35fe8537f3c7bd"
+    }
   },
   "spirv_sha256": "22e995af44fd7bc33150e82aeeb23b9781b532cba7a7051f34c3a2689592bd09",
   "generator_sha256": "5bac5fea3939bf098bc503245e491014954c30feeb5199d0c2ae0c2d01e54cb1",
@@ -31,7 +34,7 @@
       "bytes": 11904
     },
     "gemm_f16x_q4_0.global": {
-      "sha256": "329c0c2a8d347201470dbcd20c90c7894ff7f57065c0850dec59868f3d77befd",
+      "sha256": "714d380e2be7abd2d2d678cbc110ca69a60657e8146b745b4a9e34aae0f86cfe",
       "bytes": 32
     },
     "gemm_f16x_q4_0.key": {

@@ -1,6 +1,7 @@
 # glslang (KhronosGroup/glslang vulkan-sdk-1.4.357.0, 168d452a), the GLSL front end of glslc.
 # Sources and defines follow upstream BUILD.gn (glslang_sources_common with enable_opt, no
 # HLSL: zerv's shaders are GLSL).
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:py_binary.bzl", "py_binary")
 
@@ -84,4 +85,40 @@ cc_library(
     copts = COPTS,
     includes = ["."],
     deps = [":glslang"],
+)
+
+# glslangValidator, the standalone compiler (Mesa's build compiles RADV's BVH shaders with it).
+py_binary(
+    name = "gen_extension_headers",
+    srcs = ["gen_extension_headers.py"],
+)
+
+genrule(
+    name = "extension_headers",
+    srcs = glob(["glslang/ExtensionHeaders/*.glsl"]),
+    outs = ["include/glslang/glsl_intrinsic_header.h"],
+    cmd = "$(location :gen_extension_headers) -i $$(dirname $(location glslang/ExtensionHeaders/GL_EXT_shader_realtime_clock.glsl)) -o $@",
+    tools = [":gen_extension_headers"],
+)
+
+cc_library(
+    name = "extension_headers_lib",
+    hdrs = [":extension_headers"],
+    includes = ["include"],
+)
+
+cc_binary(
+    name = "glslangValidator",
+    srcs = [
+        "StandAlone/DirStackFileIncluder.h",
+        "StandAlone/StandAlone.cpp",
+        "StandAlone/Worklist.h",
+    ],
+    copts = COPTS,
+    deps = [
+        ":default_resource_limits",
+        ":extension_headers_lib",
+        ":glslang",
+        "@spirv_tools",
+    ],
 )

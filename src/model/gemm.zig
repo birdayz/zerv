@@ -168,22 +168,37 @@ pub fn moduleF16x(v: Variant) Error![]align(4) const u8 {
 /// it from our RDNA3 pipeline binary when the driver's global key matches, else SPIR-V.
 pub const Code = enum { spirv, native };
 
-/// A driver pipeline binary of a kernel: data, binary key, and the driver global key it is
-/// valid for (src/model/native/, built by tools/build_native_gemm.py).
-pub const NativeCode = struct { data: []const u8, key: []const u8, global_key: *const [32]u8 };
+/// A driver pipeline binary of a kernel: data, binary key, the driver global key it is valid
+/// for, and the name of that driver build (src/model/native/, built by
+/// tools/build_native_gemm.py).
+pub const NativeCode = struct { data: []const u8, key: []const u8, global_key: *const [32]u8, driver: []const u8 };
 
-/// The native gemm_f16x binary (Q4_0 only), or null for other variants.
-pub fn nativeF16x(v: Variant) ?NativeCode {
+fn nativeCode(comptime dir: []const u8, comptime driver: []const u8) NativeCode {
     const N = struct {
-        const data = @embedFile("native/gemm_f16x_q4_0.bin");
-        const key = @embedFile("native/gemm_f16x_q4_0.key");
-        const global = @embedFile("native/gemm_f16x_q4_0.global");
+        const data = @embedFile(dir ++ "gemm_f16x_q4_0.bin");
+        const key = @embedFile(dir ++ "gemm_f16x_q4_0.key");
+        const global = @embedFile(dir ++ "gemm_f16x_q4_0.global");
     };
     comptime std.debug.assert(N.global.len == 32 and N.key.len >= 1 and N.key.len <= 32);
+    return .{ .data = N.data, .key = N.key, .global_key = N.global[0..32], .driver = driver };
+}
+
+/// The native gemm_f16x binaries (Q4_0 only; empty for other variants), one per driver build
+/// they are valid for (docs/specs/prefill.md, "One binary per driver build"): the host's Mesa,
+/// ("host"), and the Mesa of the test-only GPU runtime ("test_radv"). The same code in each.
+pub fn nativeF16xBuilds(v: Variant) []const NativeCode {
+    const all = comptime [_]NativeCode{ nativeCode("native/", "host"), nativeCode("native/test_radv/", "test_radv") };
     return switch (v) {
-        .q4_0 => .{ .data = N.data, .key = N.key, .global_key = N.global[0..32] },
-        else => null,
+        .q4_0 => &all,
+        else => &.{},
     };
+}
+
+/// The native gemm_f16x binary valid for a driver with global key `driver_key`, or null
+/// (other variant, other driver build: the SPIR-V kernel then).
+pub fn nativeF16x(v: Variant, driver_key: [32]u8) ?NativeCode {
+    for (nativeF16xBuilds(v)) |n| if (std.mem.eql(u8, &driver_key, n.global_key)) return n;
+    return null;
 }
 
 /// The device must be opened with `pipeline_binaries` for this precision and code.

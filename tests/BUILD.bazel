@@ -1,7 +1,7 @@
 load("@rules_zig//zig:defs.bzl", "zig_configure_test", "zig_library", "zig_test")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_python//python:py_test.bzl", "py_test")
-load("//bazel:defs.bzl", "zerv_test")
+load("//bazel:defs.bzl", "env_test", "zerv_test")
 
 # CPU unit tests: one per file, each with the packages it imports and the files it embeds.
 # GPU tests (gpu.zig and its imports) are separate: they need the device.
@@ -154,6 +154,48 @@ zerv_test(
 #   bazel test //tests:gpu //tests:gpu_release_fast //tests:gpu_spills
 GPU_TAGS = ["manual", "exclusive", "gpu"]
 
+# The test-only GPU runtime (docs/specs/hermetic-build.md, phase 4): the source-built Vulkan
+# loader and Mesa RADV with an ICD manifest naming the driver relative to itself. GPU_ENV
+# selects it for a test and its child processes (paths relative to the runfiles root, where
+# tests start): nothing of the host's Vulkan stack is loaded. The loader searches no host
+# directory (bazel/third_party/vulkan_loader.BUILD), layers are disabled.
+genrule(
+    name = "gpu_runtime",
+    srcs = [
+        "@libdrm//:data/amdgpu.ids",
+        "@mesa//:radv",
+        "@vulkan_loader//:libvulkan",
+    ],
+    outs = [
+        "gpu_runtime/amdgpu.ids",
+        "gpu_runtime/libvulkan.so.1",
+        "gpu_runtime/libvulkan_radeon.so",
+        "gpu_runtime/radeon_icd.json",
+    ],
+    cmd = """
+for f in $(SRCS); do
+  case $$f in
+    */libvulkan.so.1|*/libvulkan_radeon.so|*/amdgpu.ids) cp $$f $(RULEDIR)/gpu_runtime/ ;;
+  esac
+done
+printf '{"file_format_version": "1.0.1", "ICD": {"library_path": "./libvulkan_radeon.so", "api_version": "1.4.354", "library_arch": "64"}}\\n' > $(RULEDIR)/gpu_runtime/radeon_icd.json
+""",
+    tags = ["manual"],
+)
+
+GPU_RUNTIME = [":gpu_runtime"]
+
+GPU_ENV = {
+    "LD_LIBRARY_PATH": "tests/gpu_runtime",
+    "VK_DRIVER_FILES": "tests/gpu_runtime/radeon_icd.json",
+    "VK_LOADER_LAYERS_DISABLE": "~all~",
+    # libdrm's device-name table (RADV reports "AMD Radeon RX 7900 XTX" from it).
+    "AMDGPU_ASIC_ID_TABLE_PATHS": "tests/gpu_runtime",
+    # The GPU tests check that the driver loaded is this runtime's (tests/gpu_gemm_f16.zig:
+    # the device's pipeline key must be the one of src/model/native/test_radv/).
+    "ZERV_TEST_GPU_RUNTIME": "test_radv",
+}
+
 zig_test(
     name = "gpu",
     main = "gpu.zig",
@@ -178,7 +220,8 @@ zig_test(
     data = [
         "//src/matvec:shaders/f32_small.spv",
         "//src/gpu:vulkan",
-    ],
+    ] + GPU_RUNTIME,
+    env = GPU_ENV,
     linkopts = ["$(location //src/gpu:vulkan)"],
     zigopts = ["-lc"],
     deps = ["//src:zerv_lib", "//src/gpu", "//src/matvec"],
@@ -187,10 +230,19 @@ zig_test(
 )
 
 zig_configure_test(
-    name = "gpu_release_fast",
+    name = "gpu_release_fast_exe",
     actual = ":gpu",
     mode = "release_fast",
     zigopt = ["-mcpu=native", "-fstrip"],
+    size = "large",
+    tags = ["manual"],
+)
+
+# zig_configure_test drops the `env` of :gpu; env_test sets it (bazel/defs.bzl).
+env_test(
+    name = "gpu_release_fast",
+    actual = ":gpu_release_fast_exe",
+    env = GPU_ENV,
     size = "large",
     tags = GPU_TAGS + ["release_fast"],
 )
@@ -202,7 +254,8 @@ py_test(
     srcs = ["//tools:check_shader_spills.py"],
     main = "//tools:check_shader_spills.py",
     args = ["--", "$(rootpath :gpu_release_fast)"],
-    data = [":gpu_release_fast"],
+    data = [":gpu_release_fast"] + GPU_RUNTIME,
+    env = GPU_ENV,
     size = "large",
     tags = GPU_TAGS,
 )

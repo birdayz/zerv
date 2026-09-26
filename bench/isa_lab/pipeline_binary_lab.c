@@ -20,7 +20,7 @@
 // Interface of gemm_f16x (src/model/gemm_f16x.comp): bindings 0 A (Q4_0 rows, bytes),
 // 1 Y (f32), 2 io (io[2] = row count), 3 X (f16, halves); push constants gemm.Push
 // (15 u32); workgroup 256, required subgroup size 32, full subgroups; grid (M/128, rows/256).
-// Build: cc -std=c11 -O2 -Ithird_party/vulkan/1.4.354/include bench/isa_lab/pipeline_binary_lab.c -lvulkan
+// Build: bazel build //bench/isa_lab:pipeline_binary_lab (tools/zerv_build.py builds it for the scripts)
 #include <vulkan/vulkan_core.h>
 #include <stdint.h>
 #include <stdio.h>

@@ -2132,7 +2132,7 @@ pub const Model = struct {
     /// The gemm_f16x pipeline binary to offer `gpu.Kernel` (`Options.gemm_code`).
     fn f16xBinary(self: *const Model, v: gemm.Variant) ?gpu.Kernel.Binary {
         if (self.options.gemm_code != .native) return null;
-        const n = gemm.nativeF16x(v) orelse return null;
+        const n = gemm.nativeF16x(v, self.device.pipeline_key orelse return null) orelse return null;
         return .{ .data = n.data, .key = n.key, .global_key = n.global_key };
     }
 
@@ -2141,8 +2141,7 @@ pub const Model = struct {
         if (self.options.prefill_precision != .f16) return "unused (fp32 prefill)";
         if (self.options.gemm_code == .spirv) return "spirv (--gemm-code spirv)";
         const key = self.device.pipeline_key orelse return "spirv (fallback: pipeline binaries not enabled on this device, or the driver lacks VK_KHR_pipeline_binary)";
-        const n = gemm.nativeF16x(.q4_0).?;
-        if (!std.mem.eql(u8, &key, n.global_key)) return "spirv (fallback: the driver's pipeline key differs from the binary's; other Mesa build, GPU or driver options)";
+        if (gemm.nativeF16x(.q4_0, key) == null) return "spirv (fallback: the driver's pipeline key matches none of the binaries'; other Mesa build, GPU or driver options)";
         return "native";
     }
 

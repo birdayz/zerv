@@ -949,8 +949,16 @@ test "f16-mode producers: the f16 copy is f16(y) of the FP32 output, bit for bit
 // every plan row (rows >= n included, they read row n - 1); a wrong global key falls back to
 // SPIR-V; malformed binaries are rejected before any driver call.
 
-fn nativeBinary() gpu.Kernel.Binary {
-    const n = gemm.nativeF16x(.q4_0).?;
+/// The native binary valid for the driver with global key `key` (the host's Mesa or the test
+/// runtime's), or null for another driver build.
+fn nativeBinary(key: [32]u8) ?gpu.Kernel.Binary {
+    const n = gemm.nativeF16x(.q4_0, key) orelse return null;
+    return .{ .data = n.data, .key = n.key, .global_key = n.global_key };
+}
+
+/// A native binary whatever the driver (for devices that do not use it).
+fn anyNativeBinary() gpu.Kernel.Binary {
+    const n = gemm.nativeF16xBuilds(.q4_0)[0];
     return .{ .data = n.data, .key = n.key, .global_key = n.global_key };
 }
 
@@ -1003,12 +1011,22 @@ test "native gemm_f16x: bitwise equal to the SPIR-V kernel; fallback on another 
     };
     defer device.deinit() catch @panic("device");
     if (!device.full_subgroups or device.subgroup_sizes.min > gemm.f16x_subgroup or device.subgroup_sizes.max < gemm.f16x_subgroup) return error.SkipZigTest;
-    const binary = nativeBinary();
     const key = device.pipeline_key orelse return error.SkipZigTest;
-    if (!std.mem.eql(u8, &key, binary.global_key)) {
-        std.debug.print("native gemm_f16x: driver key differs from the binary's (another Mesa build?); skipped\n", .{});
-        return error.SkipZigTest;
+    // Under Bazel the GPU tests name the runtime they must run on (tests/BUILD.bazel GPU_ENV):
+    // the device's key must then be that driver build's, which also proves which driver the
+    // loader chose (never the host's).
+    if (std.testing.environ.getPosix("ZERV_TEST_GPU_RUNTIME")) |runtime| {
+        for (gemm.nativeF16xBuilds(.q4_0)) |n| {
+            if (!std.mem.eql(u8, n.driver, runtime)) continue;
+            if (std.mem.eql(u8, &key, n.global_key)) break;
+            std.debug.print("native gemm_f16x: ZERV_TEST_GPU_RUNTIME={s}, but the driver's pipeline key is another build's\n", .{runtime});
+            return error.WrongDriver;
+        } else return error.UnknownTestRuntime;
     }
+    const binary = nativeBinary(key) orelse {
+        std.debug.print("native gemm_f16x: no binary for this driver's key (another Mesa build?); skipped\n", .{});
+        return error.SkipZigTest;
+    };
     var a = try gpu.Buffer.init(&device, @as(u64, M) * (5120 / 32 * 18) + 64, .host);
     defer a.deinit() catch @panic("a");
     var act = try gpu.Buffer.init(&device, (64 + rows_x * 5120 / 2 + 2 * rows_x * M + 256) * 4, .host);
@@ -1068,7 +1086,7 @@ test "native gemm_f16x: a device without pipeline binaries uses the SPIR-V" {
     try t.expect(device.pipeline_key == null);
     var buffer = try gpu.Buffer.init(&device, 4096, .device);
     defer buffer.deinit() catch @panic("buffer");
-    var k = try gpu.Kernel.initWith(&device, try gemm.moduleF16x(.q4_0), &.{ &buffer, &buffer, &buffer, &buffer }, @sizeOf(gemm.Push), .{ .subgroup_size = gemm.f16x_subgroup, .full_subgroups = true, .binary = nativeBinary() });
+    var k = try gpu.Kernel.initWith(&device, try gemm.moduleF16x(.q4_0), &.{ &buffer, &buffer, &buffer, &buffer }, @sizeOf(gemm.Push), .{ .subgroup_size = gemm.f16x_subgroup, .full_subgroups = true, .binary = anyNativeBinary() });
     defer k.deinit() catch @panic("kernel");
     try t.expect(!k.native);
 }

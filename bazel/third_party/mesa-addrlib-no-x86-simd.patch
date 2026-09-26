@@ -1,0 +1,14 @@
+addrlib's x86 AVX2 swizzle path (host image copies, unused by compute) dispatches with
+__builtin_cpu_supports, whose __cpu_model Zig's compiler runtime does not provide: build
+addrlib without SIMD on x86 (the portable path). docs/specs/hermetic-build.md, phase 4.
+
+--- a/src/amd/addrlib/meson.build
++++ b/src/amd/addrlib/meson.build
+@@ -52,6 +52,6 @@
+ 
+ # The SIMD path in addrlib only supports x86 and Aarch64 (NEON).
+-if host_machine.cpu_family() in ['x86', 'x86_64', 'aarch64']
++if host_machine.cpu_family() in ['aarch64']
+   cpp_args_addrlib += '-DADDR_ALLOW_SIMD=1'
+ endif
+ 

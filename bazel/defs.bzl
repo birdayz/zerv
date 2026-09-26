@@ -111,6 +111,25 @@ zig_exe = rule(
     executable = True,
 )
 
+def _env_test_impl(ctx):
+    out = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.symlink(output = out, target_file = ctx.executable.actual, is_executable = True)
+    runfiles = ctx.runfiles(files = [out]).merge(ctx.attr.actual[DefaultInfo].default_runfiles)
+    return [DefaultInfo(executable = out, runfiles = runfiles), RunEnvironmentInfo(environment = ctx.attr.env)]
+
+env_test = rule(
+    implementation = _env_test_impl,
+    doc = """Runs the test `actual` with its runfiles and the environment `env`.
+
+    rules_zig's zig_configure_test (a test in another mode) forwards no RunEnvironmentInfo, so
+    the `env` of the test it configures does not reach the configured one; this sets it.""",
+    attrs = {
+        "actual": attr.label(executable = True, cfg = "target", mandatory = True, doc = "The test executable."),
+        "env": attr.string_dict(doc = "Environment of the test (runfiles-relative paths as in `env` of native tests)."),
+    },
+    test = True,
+)
+
 CcRulesInfo = provider(doc = "C/C++ rule targets in the transitive dependencies.", fields = ["labels"])
 
 def _cc_rules_aspect_impl(target, ctx):

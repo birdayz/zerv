@@ -7,7 +7,12 @@ zig_library(
     name = "model",
     main = "root.zig",
     srcs = glob(["*.zig"], exclude = ["root.zig"]),
-    extra_srcs = glob(["shaders/*.spv", "native/*.bin", "native/*.global", "native/*.key"]),
+    extra_srcs = glob([
+        "shaders/*.spv",
+        "native/**/*.bin",
+        "native/**/*.global",
+        "native/**/*.key",
+    ]),
     deps = ["//src/artifact", "//src/gpu", "//src/matvec"],
     visibility = ["//visibility:public"],
 )
@@ -38,31 +43,40 @@ spirv_modules(
 )
 
 # The native gemm_f16x code regenerated and assembled by Bazel (bazel/native.bzl);
-# native_code_test: the committed assembly and pipeline binary are exactly that. A change
-# needs the GPU: tools/build_native_gemm.py (driver capture and bitwise sweep).
-native_code(
-    name = "native_code",
-    kernel = "gemm_f16x_q4_0",
-    template = "native/gemm_f16x_q4_0.bin",
-    generator = "//bench/isa_lab:gen_f16x",
-    isa_tool = "//bench/isa_lab:isa_tool",
-)
-
-py_test(
-    name = "native_code_test",
-    srcs = ["//tools:check_generated.py"],
-    main = "//tools:check_generated.py",
-    args = [
-        "src/model/native_code",
-        "src/model/native",
-        "--subset",
-        "--hint",
-        # (args are shell-tokenized)
-        "'regenerate with tools/build_native_gemm.py (needs the GPU; docs/development.md)'",
-    ],
-    data = [":native_code"] + glob(["native/*"]),
-    size = "small",
-)
+# native_code_test: the committed assembly and pipeline binary are exactly that, for each
+# driver build a binary is carried for (docs/specs/prefill.md, "One binary per driver build":
+# native/ the host's Mesa, native/test_radv/ the test-only GPU runtime's). A change needs the
+# GPU: tools/build_native_gemm.py --runtime host|test (driver capture and bitwise sweep).
+[
+    (
+        native_code(
+            name = name,
+            kernel = "gemm_f16x_q4_0",
+            template = directory + "/gemm_f16x_q4_0.bin",
+            generator = "//bench/isa_lab:gen_f16x",
+            isa_tool = "//bench/isa_lab:isa_tool",
+        ),
+        py_test(
+            name = name + "_test",
+            srcs = ["//tools:check_generated.py"],
+            main = "//tools:check_generated.py",
+            args = [
+                "src/model/" + name,
+                "src/model/" + directory,
+                "--subset",
+                "--hint",
+                # (args are shell-tokenized)
+                "'regenerate with tools/build_native_gemm.py --runtime %s (needs the GPU; docs/development.md)'" % runtime,
+            ],
+            data = [":" + name] + glob([directory + "/*"]),
+            size = "small",
+        ),
+    )
+    for name, directory, runtime in [
+        ("native_code", "native", "host"),
+        ("native_code_test_radv", "native/test_radv", "test"),
+    ]
+]
 
 # Every Zig source of this package (the format check, //:zig_fmt).
 filegroup(

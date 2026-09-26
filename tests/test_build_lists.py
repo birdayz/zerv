@@ -15,6 +15,9 @@
   source-built oracles (docs/specs/hermetic-build.md, phase 3).
 - The build definitions name no host path (docs/specs/hermetic-build.md): every tool,
   library and header is an external archive pinned by sha256 or built in the graph.
+- Fetching an external archive runs no host tool: patches are files applied by Bazel's own
+  patcher (`patches`), never `patch_cmds` or `patch_tool`, and no repository rule of ours
+  executes a program.
 """
 import re
 import unittest
@@ -95,6 +98,15 @@ class BuildLists(unittest.TestCase):
                     code = line.split("#", 1)[0].strip()
                     if code.startswith("common --disk_cache="): continue  # where results are cached, not an input
                     self.assertNotRegex(code, r'"/(usr|opt|home|etc|lib|lib64|bin|sbin)\b|~/', f"host path: {line.strip()}")
+
+    def test_fetching_runs_no_host_tool(self):
+        module = (ROOT / "MODULE.bazel").read_text()
+        self.assertIn("patches = [", module)  # the check below looks at the right file
+        for attr in ("patch_cmds", "patch_tool"):
+            self.assertNotRegex(module, rf"^\s*{attr}\s*=", f"{attr} runs host tools at fetch time; use patches")
+        for path in sorted((ROOT / "bazel").rglob("*.bzl")):
+            with self.subTest(file=str(path.relative_to(ROOT))):
+                self.assertNotRegex(path.read_text(), r"\.execute\(", "a repository rule executes a host program")
 
     def test_harnesses_build_with_bazel(self):
         scripts = sorted([*(ROOT / "bench").glob("*.py"), *(ROOT / "tools").glob("*.py")])

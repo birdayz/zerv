@@ -483,6 +483,15 @@ generator, of the SPIR-V the placeholder was compiled from, tool and driver vers
 Regenerated only by `tools/build_native_gemm.py` (needs the GPU, RADV and clang); ordinary
 builds embed the files.
 
+**One binary per driver build (2026-09-26).** A pipeline binary is valid for exactly one
+driver build (the global key hashes RADV's build ID). Two are carried, with the same code:
+`src/model/native/` for the host's Mesa (Arch vulkan-radeon 26.2.3, what production runs
+on), and `src/model/native/test_radv/` for the Mesa 26.2.3 built in the graph, the test-only
+GPU runtime of the hermetic build ([hermetic-build.md](hermetic-build.md); its build is
+reproducible, so its key is stable). The model offers the binary whose global key equals the
+device's; with none, the SPIR-V kernel runs (unchanged fallback). Bazel checks that both
+carry exactly the generated code (`//src/model:native_code_test`, per build).
+
 **Knob** `--gemm-code spirv|native` (`Model.Options.gemm_code`), f16 mode only:
 
 | Value | Behaviour |
