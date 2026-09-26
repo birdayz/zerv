@@ -47,6 +47,16 @@ http_archive(
     urls = ["https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/vulkan-sdk-1.4.357.0.tar.gz"],
 )
 
+# External test oracles (never linked into zerv): ggml and llama.cpp at the revisions of the
+# host packages that produced the oracle fixtures, built from source (bazel/third_party).
+http_archive(
+    name = "ggml",
+    build_file = "//bazel/third_party:ggml.BUILD",
+    sha256 = "77e3579b4f2a7059db03821899f78843f80756c831359805ab0db1e8c039fe34",
+    strip_prefix = "ggml-456172ec733a135778adcd32d00e576a58232e45",
+    urls = ["https://github.com/ggml-org/ggml/archive/456172ec733a135778adcd32d00e576a58232e45.tar.gz"],
+)
+
 http_archive(
     name = "spirv_headers",
     sha256 = "232899f1ad4104fb5bc377b94596c7621575eee62ad9a9e8f929b63a7dd8a7ad",

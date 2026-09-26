@@ -1,5 +1,12 @@
 # BUILD files for external source archives without upstream Bazel support (MODULE.bazel).
 exports_files(glob(["*.BUILD"]), visibility = ["//visibility:public"])
 
+# Every BUILD file of this directory (//tests:test_build_lists reads them).
+filegroup(
+    name = "build_files",
+    srcs = glob(["*.BUILD"]),
+    visibility = ["//tests:__pkg__"],
+)
+
 # Read by //tests:test_build_lists.
 exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])
