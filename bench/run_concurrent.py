@@ -138,7 +138,7 @@ def main():
     for name in names:
         spec = dict(rs.resolve_engine(table, name, zerv_binary))
         cmd = list(spec["cmd"])
-        if cmd[0] == str(rs.LLAMA_SERVER):
+        if cmd[0] == str(rs.LLAMA_SERVER) or "/llama/bin/llama-server" in cmd:
             cmd[cmd.index("-np") + 1] = str(parallel)
         elif "--parallel" in cmd:
             cmd[cmd.index("--context") + 1] = str(a.context_per_slot)

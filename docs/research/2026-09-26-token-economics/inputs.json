@@ -1,0 +1,86 @@
+{
+  "about": "Inputs of tools/token_economics.py for docs/research/2026-09-26-token-economics.md. Every number has a kind: measured (this machine, docs/bench), sourced (sources.json), derived (computed from the others by the tool), assumed (operator/agent assumption, change freely).",
+  "hours_per_month": 730,
+  "usd_per_eur": {"value": 1.1403, "kind": "sourced", "src": "ecb, 2026-09-25 reference rate"},
+  "prefill_tok_s": {"value": 1200, "kind": "derived", "src": "measured single-user f16 TTFT 2.49 s at 3,223 tokens (1,294 tok/s) and 10.14 s at 12,034 tokens (1,187 tok/s), docs/bench/2026-09-24-gemm-f16x-isa.md; rounded down for parallel mode (interference scenario of docs/bench/2026-09-25-multiuser.md implies ~1,160 tok/s while 6 users decode)"},
+  "modes": [
+    {"key": "M8", "name": "8 users (--parallel 8)", "kind": "measured",
+     "aggregate_tok_s": 150.9, "workload_prompt_tokens": 137, "workload_output_tokens": 256,
+     "per_user_tok_s": 19.3, "context_per_request": 8192,
+     "src": "docs/bench/2026-09-25-multiuser.md steady, 8 users (median of 2 rounds); prompt mean 137 tokens from final/raw.jsonl; per-user = slowest user"},
+    {"key": "M4", "name": "4 users (--parallel 8, 4 busy)", "kind": "measured",
+     "aggregate_tok_s": 138.7, "workload_prompt_tokens": 137, "workload_output_tokens": 256,
+     "per_user_tok_s": 35.6, "context_per_request": 8192,
+     "src": "docs/bench/2026-09-25-multiuser.md steady, 4 users; measured with 8 slots of 8,192 tokens (a --parallel 4 server with larger slots was not measured)"},
+    {"key": "M1", "name": "1 user, MTP speculation", "kind": "measured range, assumed point",
+     "aggregate_tok_s": 100, "workload_prompt_tokens": 0, "workload_output_tokens": 1,
+     "per_user_tok_s": 100, "context_per_request": 44896,
+     "src": "decode 77-127 tok/s by content (prose 77, code 123; handoff 2026-09-26), 71-125 in docs/bench/2026-09-24-speculative.md; 100 is an assumed mix point; context: docs/bench/2026-09-24-context-max.md default"},
+    {"key": "M8+", "name": "8 users, roadmap (NOT measured)", "kind": "assumed",
+     "aggregate_tok_s": 205, "workload_prompt_tokens": 137, "workload_output_tokens": 256,
+     "per_user_tok_s": 25.6, "context_per_request": 8192,
+     "src": "engineering estimate 190-220 tok/s (handoff); upside scenario only; model-level 8-row step 38.6 ms in docs/bench/2026-09-26-decode-v2.md is an internal mode"}
+  ],
+  "mixes": [
+    {"key": "r3", "input_per_output": 3, "kind": "assumed", "src": "chat, low end of the handoff's 3-10x"},
+    {"key": "r10", "input_per_output": 10, "kind": "assumed", "src": "chat, high end of the handoff's 3-10x"},
+    {"key": "r20", "input_per_output": 20, "kind": "sourced", "src": "OpenRouter Qwen3.8-27B, 2026-08-27..09-26: daily prompt/completion 11-29x, median ~23x (activity json); 52-79% of prompt tokens were cache hits at the providers, zerv --parallel has no prefix cache so all of it is prefilled here"}
+  ],
+  "prices_usd_per_mtok": [
+    {"key": "decay", "input": 0.09, "output": 0.34, "kind": "sourced", "src": "google/gemma-4-31b-it on OpenRouter (a comparable ~30B dense model); stress case for price decay over the hardware life"},
+    {"key": "floor4bit", "input": 0.10, "output": 1.80, "kind": "sourced", "src": "Darkbloom fp4 endpoint, lowest listed Qwen3.8-27B output price on OpenRouter"},
+    {"key": "median", "input": 0.22, "output": 2.55, "kind": "sourced", "src": "median of the 16 listed Qwen3.8-27B endpoints on OpenRouter (input 0.09-0.45, output 1.80-4.40)"},
+    {"key": "high", "input": 0.45, "output": 3.20, "kind": "sourced", "src": "Venice / Cloudflare list price, the highest listed input price"}
+  ],
+  "utilizations": [0.1, 0.3, 0.6, 0.9],
+  "request_shapes": [[3000, 500], [18500, 900]],
+  "request_shapes_src": "3,000 + 500 assumed chat request; 18,500 + 900 is the mean OpenRouter Qwen3.8-27B request of 2026-09-25 (46.8B prompt and 2.47B completion tokens over 2.53M requests), before the providers' cache hits",
+  "power": {
+    "gpu_load_w": {"value": 339, "kind": "measured", "src": "board power at the 339 W cap under decode load (docs/bench/2026-09-22-decode-overheads.md) and sustained GEMMs 310-339 W (docs/hardware.md); not re-measured for --parallel 8"},
+    "gpu_idle_w": {"value": 34, "kind": "measured", "src": "power1_average, 10 samples 2026-09-26 13:04, desktop session on the card, no inference"},
+    "host_load_w": {"value": 75, "kind": "assumed", "src": "Ryzen 9 3900X, X570, 64 GB, NVMe; CPU mostly idle while serving; 60-90 W DC"},
+    "host_idle_w": {"value": 45, "kind": "assumed", "src": "same host at idle, DC side"},
+    "psu_efficiency": {"value": 0.90, "kind": "assumed", "src": "80+ Gold-class unit at 40-50% load"}
+  },
+  "electricity_eur_per_kwh": [
+    {"key": "US-ind", "value": 0.0857, "kind": "sourced", "src": "EIA July 2026 US industrial 9.77 c/kWh / 1.1403"},
+    {"key": "DE-biz", "value": 0.26, "kind": "sourced", "src": "Eurostat nrg_pc_205 2025-S2 DE 20-499 MWh, excl. VAT (0.2618)"},
+    {"key": "DE-home", "value": 0.35, "kind": "assumed", "src": "handoff 0.30-0.40; Eurostat nrg_pc_204 2025-S2 DE 2.5-5 MWh all taxes 0.3869 (average incl. fixed charges)"},
+    {"key": "DE-high", "value": 0.45, "kind": "sourced", "src": "Eurostat nrg_pc_204 2025-S2 DE 1-2.5 MWh all taxes 0.4383, rounded"}
+  ],
+  "base_electricity": "DE-home",
+  "cost_bases": [
+    {"key": "owned", "name": "machine already owned and on anyway", "kind": "assumed",
+     "capex_eur_month": 0, "internet_eur_month": 0, "idle_power_counts": false,
+     "src": "sunk hardware; only the extra power under load is incremental"},
+    {"key": "used", "name": "dedicated box, used GPU", "kind": "assumed",
+     "gpu_eur": 800, "host_eur": 500, "resale_eur": 350, "life_months": 36, "internet_eur_month": 0, "idle_power_counts": true,
+     "src": "GPU: Kleinanzeigen asking prices 600-1,200 EUR, median 900 (sources.json), minus ~10% to a transaction price; host and resale assumed; 3-year life (2-4)"},
+    {"key": "new", "name": "dedicated box, new GPU", "kind": "assumed",
+     "gpu_eur": 1800, "host_eur": 500, "resale_eur": 350, "life_months": 36, "internet_eur_month": 0, "idle_power_counts": true,
+     "src": "GPU: the only new offer on geizhals.de, 1,799.99 EUR (the card is otherwise sold out); host and resale assumed"}
+  ],
+  "base_cost": "used",
+  "platform_fee_fraction": {"value": 0.0, "kind": "assumed", "src": "OpenRouter passes provider prices through with no markup (user pays 5.5% on credit purchases); provider-side terms are not public. Direct sales via Stripe: 1.5% + 0.25 EUR per EEA card charge"},
+  "ops_eur_month": {"value": 120, "kind": "assumed", "src": "4 h/month at 30 EUR/h; reported as a separate line"},
+  "cloud": {
+    "gpus_usd_per_hour": [
+      {"key": "H100 SXM, Vast p25", "value": 2.27, "kind": "sourced", "src": "vast-offers.json"},
+      {"key": "H100 SXM, Vast median", "value": 3.14, "kind": "sourced", "src": "vast-offers.json"},
+      {"key": "H100 SXM, RunPod", "value": 3.49, "kind": "sourced", "src": "runpod"}
+    ],
+    "h100_workloads": [
+      {"key": "ShareGPT, vLLM BF16", "output_tok_s": 1131.55, "input_tok_s": 1221.27, "kind": "sourced", "src": "gpustack-q32-h100 (Qwen3-32B)"},
+      {"key": "ShareGPT, TRT-LLM FP8", "output_tok_s": 2060.40, "input_tok_s": 2224.28, "kind": "sourced", "src": "gpustack-q32-h100 (Qwen3-32B)"},
+      {"key": "4000 in / 200 out, vLLM BF16", "output_tok_s": 102.21, "input_tok_s": 2046.48, "kind": "sourced", "src": "gpustack-q32-h100 (Qwen3-32B)"},
+      {"key": "4000 in / 200 out, TRT-LLM FP8", "output_tok_s": 234.70, "input_tok_s": 4694.46, "kind": "sourced", "src": "gpustack-q32-h100 (Qwen3-32B)"}
+    ],
+    "rtx3090": {
+      "usd_per_hour_vast_median": {"value": 0.151, "kind": "sourced", "src": "vast-offers.json, 64 offers"},
+      "usd_per_hour_runpod": {"value": 0.50, "kind": "sourced", "src": "runpod"},
+      "hyperqwen_c64_output_tok_s": {"value": 942, "kind": "sourced", "src": "HyperQwen batch/README.md @1cf86656, 128 in / 512 out, 64 concurrent, e2e"},
+      "hyperqwen_c8_output_tok_s": {"value": 298.4, "kind": "sourced", "src": "HyperQwen batch/README.md @1cf86656, cohort C8, 1,024-token answers"},
+      "power_w": {"value": 250, "kind": "sourced", "src": "HyperQwen README: RTX 3090 at 250 W"}
+    }
+  }
+}

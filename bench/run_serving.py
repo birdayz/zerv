@@ -65,6 +65,26 @@ def vllm_engine(port, context, extra=()):
     return dict(cmd=cmd, env={}, stop=["docker", "rm", "-f", name], ready_timeout=1800)
 
 
+# llama.cpp-RDNA3-7900xtx-opt (github.com/nasone32/llama.cpp-RDNA3-7900xtx-opt @ 15995a12, MIT):
+# built from source for gfx1100 in the pinned vLLM ROCm image (no network, our uid; source
+# and binaries ClamAV-scanned, the fork's diff over upstream reviewed; docs/bench/2026-09-26-competitors.md).
+# Run in that image with the same restrictions as vLLM: our uid, no capabilities, GPU device
+# nodes only, build and model read-only, API on 127.0.0.1.
+RDNA3_BUILD = ROOT/"third_party/research-serving/llama-rdna3-build"
+
+
+def rdna3_engine(model, port, context, extra):
+    name = f"zerv-bench-rdna3-{port}"
+    cmd = ["docker", "run", "--rm", "--name", name, "--user", f"{os.getuid()}:{os.getgid()}", "--device", "/dev/kfd", "--device", "/dev/dri/renderD128",
+           "--security-opt", "no-new-privileges", "--cap-drop", "ALL", "-p", f"127.0.0.1:{port}:{port}",
+           "-v", f"{RDNA3_BUILD}:/llama:ro", "-v", f"{Path(model).resolve()}:/model.gguf:ro", "-v", f"{TEMPLATE}:/template.jinja:ro",
+           "-e", "HOME=/tmp", "-e", "LD_LIBRARY_PATH=/llama/bin:/opt/rocm/lib", "--entrypoint", "/llama/bin/llama-server", VLLM_IMAGE,
+           "-m", "/model.gguf", "--host", "0.0.0.0", "--port", str(port), "-c", str(context), "-np", "1", "-ngl", "99",
+           "--no-context-shift", "--no-webui", "--jinja", "--chat-template-file", "/template.jinja",
+           "--reasoning-format", "deepseek", "--cache-ram", "0", "-a", "qwen3.8-27b", "-fa", "on", *extra]
+    return dict(cmd=cmd, env={}, stop=["docker", "rm", "-f", name], ready_timeout=900)
+
+
 def engines(model, port, context, zerv_binary):
     common = [LLAMA_SERVER, "-m", str(model), "--host", "127.0.0.1", "--port", str(port), "-c", str(context), "-np", "1", "-ngl", "99",
               "--spec-type", "none", "--no-context-shift", "--no-webui", "--jinja", "--chat-template-file", str(TEMPLATE),
@@ -87,6 +107,9 @@ def engines(model, port, context, zerv_binary):
         # Smaller prompt batch per server step: less stall for running requests (multi-user).
         "llama-fa-b512": dict(cmd=common+["-fa", "on", "-b", "512", "-ub", "512"], env={}),
         "vllm": vllm_engine(port, context),
+        "rdna3": rdna3_engine(model, port, context, ["--spec-type", "none", "-b", "2048", "-ub", "512"]),
+        "rdna3-b512": rdna3_engine(model, port, context, ["--spec-type", "none", "-b", "512", "-ub", "512"]),
+        "rdna3-mtp3": rdna3_engine(model, port, context, ["--spec-type", "draft-mtp-adaptive", "--spec-draft-n-max", "3", "-b", "2048", "-ub", "512"]),
         "vllm-mtp3": vllm_engine(port, context, ["--speculative-config", '{"method":"mtp","num_speculative_tokens":3}']),
         # Prefill chunks of 512 tokens (default 2048): shorter stalls for running requests.
         "vllm-b512": vllm_engine(port, context, ["--max-num-batched-tokens", "512"]),

@@ -19,6 +19,8 @@ Vulkan1.1/Linux x86_64 only initially; unsupported targets/capabilities fail exp
   Raised in block 17b to 192 kernels and 64 command objects: speculative verification
   compiles one multi-row module per row count (5 kernels per rows pipeline), and the MTP
   draft path records a draft command per (first-pass rows, drafts), 20 at 5 rows. A
+  Raised to 256 kernels in block 18e part 4 (2026-09-26): the batched decode's `gemm_rows`
+  modules, one per row count 1..8 per weight bank.
   command may retain 64 distinct kernels (was 32): with the KV cache split over several
   buffers, the attention kernels exist once per KV buffer.) Subgroup properties
   (`vkGetPhysicalDeviceProperties2` + `VkPhysicalDeviceSubgroupProperties`, Vulkan 1.1

@@ -1,0 +1,923 @@
+{
+ "retrieved": "2026-09-26",
+ "url": "https://inferencex.semianalysis.com/api/v1/views/profit-estimator?model={model}&priceSource=openrouter&costProvider=costr&sequence=agentic-traces&utilization=60",
+ "views": {
+  "Qwen3.8-Flash-Next": {
+   "apiVersion": "v1",
+   "view": "profit-estimator",
+   "params": {
+    "model": "Qwen3.8-Flash-Next",
+    "sequence": "agentic-traces",
+    "percentile": "p90",
+    "tcoBasis": "internal",
+    "precisions": [
+     "fp4",
+     "fp8"
+    ],
+    "gpus": [],
+    "target": 45,
+    "costProvider": "costr",
+    "customCosts": {},
+    "priceSource": "openrouter",
+    "utilization": 60,
+    "labCut": 30,
+    "powerBasis": "provisioned",
+    "basis": "chip-hour",
+    "dates": []
+   },
+   "pricing": {
+    "source": "openrouter",
+    "inputPerMillion": 0.15,
+    "cachedInputPerMillion": 0.016,
+    "outputPerMillion": 0.47,
+    "openRouterModelId": "qwen/qwen3.8-flash"
+   },
+   "data": {
+    "rows": [
+     {
+      "hwKey": "h100_sglang",
+      "resultKey": "h100_sglang__fp8",
+      "precision": "fp8",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 0.5410673120077968,
+      "revenue": 0.3246403872046781,
+      "tco": 2,
+      "grossMargin": -1.6753596127953219,
+      "labCut": 0.09739211616140342,
+      "profit": -1.7727517289567252
+     },
+     {
+      "hwKey": "h200_sglang",
+      "resultKey": "h200_sglang__fp8",
+      "precision": "fp8",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 1.6681178437795596,
+      "revenue": 1.0008707062677358,
+      "tco": 2.9,
+      "grossMargin": -1.8991292937322641,
+      "labCut": 0.30026121188032073,
+      "profit": -2.199390505612585
+     }
+    ],
+    "skipped": [
+     {
+      "hwKey": "b300_sglang",
+      "resultKey": "b300_sglang__fp4",
+      "precision": "fp4",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "b200_sglang",
+      "resultKey": "b200_sglang__fp4",
+      "precision": "fp4",
+      "reason": "outside-measured-range"
+     }
+    ]
+   },
+   "overlays": {
+    "rows": [],
+    "skipped": []
+   },
+   "comparisons": []
+  },
+  "Qwen-3.5-397B-A17B": {
+   "apiVersion": "v1",
+   "view": "profit-estimator",
+   "params": {
+    "model": "Qwen-3.5-397B-A17B",
+    "sequence": "agentic-traces",
+    "percentile": "p90",
+    "tcoBasis": "internal",
+    "precisions": [
+     "fp8"
+    ],
+    "gpus": [],
+    "target": 45,
+    "costProvider": "costr",
+    "customCosts": {},
+    "priceSource": "openrouter",
+    "utilization": 60,
+    "labCut": 30,
+    "powerBasis": "provisioned",
+    "basis": "chip-hour",
+    "dates": []
+   },
+   "pricing": {
+    "source": "openrouter",
+    "inputPerMillion": 0.55,
+    "cachedInputPerMillion": 0.22499999999999998,
+    "outputPerMillion": 3.5,
+    "openRouterModelId": "qwen/qwen3.5-397b-a17b"
+   },
+   "data": {
+    "rows": [
+     {
+      "hwKey": "mi325x_sglang",
+      "resultKey": "mi325x_sglang",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 4.501041870001377,
+      "revenue": 2.700625122000826,
+      "tco": 1.6,
+      "grossMargin": 1.1006251220008259,
+      "labCut": 0.8101875366002478,
+      "profit": 0.29043758540057807
+     }
+    ],
+    "skipped": [
+     {
+      "hwKey": "b200_sglang",
+      "resultKey": "b200_sglang",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "b300_sglang",
+      "resultKey": "b300_sglang",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "mi300x_sglang",
+      "resultKey": "mi300x_sglang",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "h200_sglang",
+      "resultKey": "h200_sglang",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "h100_sglang",
+      "resultKey": "h100_sglang",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "b200_dynamo-sglang",
+      "resultKey": "b200_dynamo-sglang",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "b300_dynamo-sglang",
+      "resultKey": "b300_dynamo-sglang",
+      "reason": "outside-measured-range"
+     }
+    ]
+   },
+   "overlays": {
+    "rows": [],
+    "skipped": []
+   },
+   "comparisons": []
+  },
+  "GLM-5.2": {
+   "apiVersion": "v1",
+   "view": "profit-estimator",
+   "params": {
+    "model": "GLM-5.2",
+    "sequence": "agentic-traces",
+    "percentile": "p90",
+    "tcoBasis": "internal",
+    "precisions": [
+     "fp4"
+    ],
+    "gpus": [],
+    "target": 100,
+    "costProvider": "costr",
+    "customCosts": {},
+    "priceSource": "openrouter",
+    "utilization": 60,
+    "labCut": 10,
+    "powerBasis": "provisioned",
+    "basis": "chip-hour",
+    "dates": []
+   },
+   "pricing": {
+    "source": "openrouter",
+    "inputPerMillion": 0.3794,
+    "cachedInputPerMillion": 0.07046,
+    "outputPerMillion": 1.1924,
+    "openRouterModelId": "z-ai/glm-5.3"
+   },
+   "data": {
+    "rows": [
+     {
+      "hwKey": "gb300_dynamo-trt",
+      "resultKey": "gb300_dynamo-trt",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 12.72244225118796,
+      "revenue": 7.633465350712775,
+      "tco": 5,
+      "grossMargin": 2.6334653507127754,
+      "labCut": 0.7633465350712776,
+      "profit": 1.8701188156414978
+     },
+     {
+      "hwKey": "mi355x_atom",
+      "resultKey": "mi355x_atom",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 4.915729076480307,
+      "revenue": 2.9494374458881842,
+      "tco": 2.9,
+      "grossMargin": 0.04943744588818433,
+      "labCut": 0.29494374458881845,
+      "profit": -0.24550629870063412
+     },
+     {
+      "hwKey": "b200_dynamo-sglang",
+      "resultKey": "b200_dynamo-sglang",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 6.3860798034117385,
+      "revenue": 3.8316478820470428,
+      "tco": 3.7,
+      "grossMargin": 0.13164788204704259,
+      "labCut": 0.3831647882047043,
+      "profit": -0.2515169061576617
+     },
+     {
+      "hwKey": "gb200_dynamo-sglang",
+      "resultKey": "gb200_dynamo-sglang",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 6.730279658807002,
+      "revenue": 4.038167795284201,
+      "tco": 4,
+      "grossMargin": 0.03816779528420078,
+      "labCut": 0.4038167795284201,
+      "profit": -0.3656489842442193
+     },
+     {
+      "hwKey": "mi355x_sglang",
+      "resultKey": "mi355x_sglang",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 3.597316882145904,
+      "revenue": 2.1583901292875423,
+      "tco": 2.9,
+      "grossMargin": -0.7416098707124577,
+      "labCut": 0.21583901292875424,
+      "profit": -0.9574488836412118
+     },
+     {
+      "hwKey": "b300_sglang",
+      "resultKey": "b300_sglang",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 5.955754228099925,
+      "revenue": 3.5734525368599552,
+      "tco": 4.25,
+      "grossMargin": -0.6765474631400448,
+      "labCut": 0.35734525368599557,
+      "profit": -1.0338927168260403
+     },
+     {
+      "hwKey": "gb300_dynamo-sglang",
+      "resultKey": "gb300_dynamo-sglang",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 7.341405970147777,
+      "revenue": 4.404843582088666,
+      "tco": 5,
+      "grossMargin": -0.5951564179113342,
+      "labCut": 0.4404843582088666,
+      "profit": -1.035640776120201
+     },
+     {
+      "hwKey": "b200_sglang",
+      "resultKey": "b200_sglang",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 4.149384413830792,
+      "revenue": 2.4896306482984754,
+      "tco": 3.7,
+      "grossMargin": -1.2103693517015248,
+      "labCut": 0.24896306482984754,
+      "profit": -1.4593324165313724
+     }
+    ],
+    "skipped": []
+   },
+   "overlays": {
+    "rows": [],
+    "skipped": []
+   },
+   "comparisons": []
+  },
+  "MiniMax-M3": {
+   "apiVersion": "v1",
+   "view": "profit-estimator",
+   "params": {
+    "model": "MiniMax-M3",
+    "sequence": "agentic-traces",
+    "percentile": "p90",
+    "tcoBasis": "internal",
+    "precisions": [
+     "fp4"
+    ],
+    "gpus": [],
+    "target": 83,
+    "costProvider": "costr",
+    "customCosts": {},
+    "priceSource": "openrouter",
+    "utilization": 60,
+    "labCut": 20,
+    "powerBasis": "provisioned",
+    "basis": "chip-hour",
+    "dates": []
+   },
+   "pricing": {
+    "source": "openrouter",
+    "inputPerMillion": 0.3,
+    "cachedInputPerMillion": 0.06,
+    "outputPerMillion": 1.2,
+    "openRouterModelId": "minimax/minimax-m3"
+   },
+   "data": {
+    "rows": [
+     {
+      "hwKey": "gb200_dynamo-trt",
+      "resultKey": "gb200_dynamo-trt",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 51.57096208855931,
+      "revenue": 30.942577253135585,
+      "tco": 4,
+      "grossMargin": 26.942577253135585,
+      "labCut": 6.188515450627118,
+      "profit": 20.754061802508467
+     },
+     {
+      "hwKey": "b300_trt",
+      "resultKey": "b300_trt",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 22.436097887851947,
+      "revenue": 13.461658732711168,
+      "tco": 4.25,
+      "grossMargin": 9.211658732711168,
+      "labCut": 2.6923317465422336,
+      "profit": 6.5193269861689345
+     },
+     {
+      "hwKey": "b300_vllm",
+      "resultKey": "b300_vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 18.880711075752163,
+      "revenue": 11.328426645451298,
+      "tco": 4.25,
+      "grossMargin": 7.078426645451298,
+      "labCut": 2.26568532909026,
+      "profit": 4.812741316361038
+     },
+     {
+      "hwKey": "mi355x_atom",
+      "resultKey": "mi355x_atom",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 13.426537698792954,
+      "revenue": 8.055922619275773,
+      "tco": 2.9,
+      "grossMargin": 5.155922619275772,
+      "labCut": 1.6111845238551545,
+      "profit": 3.544738095420618
+     },
+     {
+      "hwKey": "b200_trt",
+      "resultKey": "b200_trt",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 14.892912804095994,
+      "revenue": 8.935747682457595,
+      "tco": 3.7,
+      "grossMargin": 5.235747682457595,
+      "labCut": 1.787149536491519,
+      "profit": 3.448598145966076
+     },
+     {
+      "hwKey": "b200_vllm",
+      "resultKey": "b200_vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 13.882437792267961,
+      "revenue": 8.329462675360777,
+      "tco": 3.7,
+      "grossMargin": 4.629462675360776,
+      "labCut": 1.6658925350721554,
+      "profit": 2.963570140288621
+     },
+     {
+      "hwKey": "mi355x_vllm",
+      "resultKey": "mi355x_vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 10.387240561647346,
+      "revenue": 6.232344336988407,
+      "tco": 2.9,
+      "grossMargin": 3.3323443369884074,
+      "labCut": 1.2464688673976816,
+      "profit": 2.085875469590726
+     },
+     {
+      "hwKey": "gb200_dynamo-vllm",
+      "resultKey": "gb200_dynamo-vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 11.8661248238711,
+      "revenue": 7.11967489432266,
+      "tco": 4,
+      "grossMargin": 3.11967489432266,
+      "labCut": 1.4239349788645321,
+      "profit": 1.695739915458128
+     }
+    ],
+    "skipped": [
+     {
+      "hwKey": "gb300_dynamo-vllm",
+      "resultKey": "gb300_dynamo-vllm",
+      "reason": "outside-measured-range"
+     }
+    ]
+   },
+   "overlays": {
+    "rows": [],
+    "skipped": []
+   },
+   "comparisons": []
+  },
+  "Kimi-K3": {
+   "apiVersion": "v1",
+   "view": "profit-estimator",
+   "params": {
+    "model": "Kimi-K3",
+    "sequence": "agentic-traces",
+    "percentile": "p90",
+    "tcoBasis": "internal",
+    "precisions": [
+     "fp4"
+    ],
+    "gpus": [],
+    "target": 45,
+    "costProvider": "costr",
+    "customCosts": {},
+    "priceSource": "openrouter",
+    "utilization": 60,
+    "labCut": 30,
+    "powerBasis": "provisioned",
+    "basis": "chip-hour",
+    "dates": []
+   },
+   "pricing": {
+    "source": "openrouter",
+    "inputPerMillion": 3,
+    "cachedInputPerMillion": 0.3,
+    "outputPerMillion": 15,
+    "openRouterModelId": "moonshotai/kimi-k3"
+   },
+   "data": {
+    "rows": [
+     {
+      "hwKey": "gb300_dynamo-vllm",
+      "resultKey": "gb300_dynamo-vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 31.78507448625946,
+      "revenue": 19.071044691755677,
+      "tco": 5,
+      "grossMargin": 14.071044691755677,
+      "labCut": 5.721313407526703,
+      "profit": 8.349731284228973
+     },
+     {
+      "hwKey": "mi355x_atom",
+      "resultKey": "mi355x_atom",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 15.78351505386481,
+      "revenue": 9.470109032318886,
+      "tco": 2.9,
+      "grossMargin": 6.570109032318886,
+      "labCut": 2.8410327096956656,
+      "profit": 3.72907632262322
+     },
+     {
+      "hwKey": "mi355x_vllm",
+      "resultKey": "mi355x_vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 15.724807468334062,
+      "revenue": 9.434884481000436,
+      "tco": 2.9,
+      "grossMargin": 6.534884481000436,
+      "labCut": 2.830465344300131,
+      "profit": 3.704419136700305
+     },
+     {
+      "hwKey": "b300_vllm",
+      "resultKey": "b300_vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 17.364863062812017,
+      "revenue": 10.418917837687209,
+      "tco": 4.25,
+      "grossMargin": 6.168917837687209,
+      "labCut": 3.1256753513061626,
+      "profit": 3.0432424863810463
+     },
+     {
+      "hwKey": "b200_dynamo-vllm",
+      "resultKey": "b200_dynamo-vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 11.832095849674227,
+      "revenue": 7.099257509804536,
+      "tco": 3.7,
+      "grossMargin": 3.399257509804536,
+      "labCut": 2.1297772529413606,
+      "profit": 1.2694802568631753
+     },
+     {
+      "hwKey": "gb200_dynamo-vllm",
+      "resultKey": "gb200_dynamo-vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 10.978941793297968,
+      "revenue": 6.587365075978781,
+      "tco": 4,
+      "grossMargin": 2.5873650759787807,
+      "labCut": 1.976209522793634,
+      "profit": 0.6111555531851467
+     }
+    ],
+    "skipped": [
+     {
+      "hwKey": "h200_vllm",
+      "resultKey": "h200_vllm",
+      "reason": "outside-measured-range"
+     }
+    ]
+   },
+   "overlays": {
+    "rows": [],
+    "skipped": []
+   },
+   "comparisons": []
+  },
+  "DeepSeek-V4.1-Flash": {
+   "apiVersion": "v1",
+   "view": "profit-estimator",
+   "params": {
+    "model": "DeepSeek-V4.1-Flash",
+    "sequence": "agentic-traces",
+    "percentile": "p90",
+    "tcoBasis": "internal",
+    "precisions": [
+     "fp4"
+    ],
+    "gpus": [],
+    "target": 125,
+    "costProvider": "costr",
+    "customCosts": {},
+    "priceSource": "openrouter",
+    "utilization": 60,
+    "labCut": 0,
+    "powerBasis": "provisioned",
+    "basis": "chip-hour",
+    "dates": []
+   },
+   "pricing": {
+    "source": "openrouter",
+    "inputPerMillion": 0.3,
+    "cachedInputPerMillion": 0.006,
+    "outputPerMillion": 1.2,
+    "openRouterModelId": "deepseek/deepseek-v4.1-flash"
+   },
+   "data": {
+    "rows": [
+     {
+      "hwKey": "gb200_sglang",
+      "resultKey": "gb200_sglang",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 7.625738441657745,
+      "revenue": 4.575443064994647,
+      "tco": 4,
+      "grossMargin": 0.5754430649946469,
+      "labCut": 0,
+      "profit": 0.5754430649946469
+     },
+     {
+      "hwKey": "mi355x_atom",
+      "resultKey": "mi355x_atom",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 5.169856975078619,
+      "revenue": 3.101914185047171,
+      "tco": 2.9,
+      "grossMargin": 0.2019141850471713,
+      "labCut": 0,
+      "profit": 0.2019141850471713
+     },
+     {
+      "hwKey": "b200_sglang",
+      "resultKey": "b200_sglang",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 5.2415912420496795,
+      "revenue": 3.1449547452298074,
+      "tco": 3.7,
+      "grossMargin": -0.5550452547701927,
+      "labCut": 0,
+      "profit": -0.5550452547701927
+     },
+     {
+      "hwKey": "b300_sglang",
+      "resultKey": "b300_sglang",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 6.002390473574261,
+      "revenue": 3.601434284144556,
+      "tco": 4.25,
+      "grossMargin": -0.6485657158554439,
+      "labCut": 0,
+      "profit": -0.6485657158554439
+     },
+     {
+      "hwKey": "b200_vllm",
+      "resultKey": "b200_vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 4.941711632803076,
+      "revenue": 2.965026979681846,
+      "tco": 3.7,
+      "grossMargin": -0.7349730203181544,
+      "labCut": 0,
+      "profit": -0.7349730203181544
+     },
+     {
+      "hwKey": "mi355x_vllm",
+      "resultKey": "mi355x_vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 3.460592598598899,
+      "revenue": 2.0763555591593392,
+      "tco": 2.9,
+      "grossMargin": -0.8236444408406607,
+      "labCut": 0,
+      "profit": -0.8236444408406607
+     },
+     {
+      "hwKey": "gb300_sglang",
+      "resultKey": "gb300_sglang",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 6.876154552654091,
+      "revenue": 4.125692731592454,
+      "tco": 5,
+      "grossMargin": -0.8743072684075459,
+      "labCut": 0,
+      "profit": -0.8743072684075459
+     },
+     {
+      "hwKey": "b300_vllm",
+      "resultKey": "b300_vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 5.427879540197785,
+      "revenue": 3.256727724118671,
+      "tco": 4.25,
+      "grossMargin": -0.993272275881329,
+      "labCut": 0,
+      "profit": -0.993272275881329
+     },
+     {
+      "hwKey": "gb200_vllm",
+      "resultKey": "gb200_vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 5.0081701730433155,
+      "revenue": 3.004902103825989,
+      "tco": 4,
+      "grossMargin": -0.9950978961740109,
+      "labCut": 0,
+      "profit": -0.9950978961740109
+     },
+     {
+      "hwKey": "mi300x_vllm",
+      "resultKey": "mi300x_vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 0.4598667318675562,
+      "revenue": 0.2759200391205337,
+      "tco": 1.3,
+      "grossMargin": -1.0240799608794664,
+      "labCut": 0,
+      "profit": -1.0240799608794664
+     },
+     {
+      "hwKey": "mi325x_vllm",
+      "resultKey": "mi325x_vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 0.7235418467316762,
+      "revenue": 0.4341251080390057,
+      "tco": 1.6,
+      "grossMargin": -1.1658748919609945,
+      "labCut": 0,
+      "profit": -1.1658748919609945
+     },
+     {
+      "hwKey": "h100_vllm",
+      "resultKey": "h100_vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 0.7869768956080511,
+      "revenue": 0.4721861373648306,
+      "tco": 2,
+      "grossMargin": -1.5278138626351694,
+      "labCut": 0,
+      "profit": -1.5278138626351694
+     },
+     {
+      "hwKey": "gb300_vllm",
+      "resultKey": "gb300_vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 5.027984579884422,
+      "revenue": 3.0167907479306533,
+      "tco": 5,
+      "grossMargin": -1.9832092520693467,
+      "labCut": 0,
+      "profit": -1.9832092520693467
+     },
+     {
+      "hwKey": "h200_vllm",
+      "resultKey": "h200_vllm",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 1.3216346252757012,
+      "revenue": 0.7929807751654206,
+      "tco": 2.9,
+      "grossMargin": -2.107019224834579,
+      "labCut": 0,
+      "profit": -2.107019224834579
+     },
+     {
+      "hwKey": "h200_sglang",
+      "resultKey": "h200_sglang",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 0.2814005092446991,
+      "revenue": 0.16884030554681947,
+      "tco": 2.9,
+      "grossMargin": -2.7311596944531806,
+      "labCut": 0,
+      "profit": -2.7311596944531806
+     }
+    ],
+    "skipped": [
+     {
+      "hwKey": "h100_sglang",
+      "resultKey": "h100_sglang",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "mi355x_sglang",
+      "resultKey": "mi355x_sglang",
+      "reason": "outside-measured-range"
+     }
+    ]
+   },
+   "overlays": {
+    "rows": [],
+    "skipped": []
+   },
+   "comparisons": []
+  },
+  "DeepSeek-V4-Pro": {
+   "apiVersion": "v1",
+   "view": "profit-estimator",
+   "params": {
+    "model": "DeepSeek-V4-Pro",
+    "sequence": "agentic-traces",
+    "percentile": "p90",
+    "tcoBasis": "internal",
+    "precisions": [
+     "fp4",
+     "fp8"
+    ],
+    "gpus": [],
+    "target": 24,
+    "costProvider": "costr",
+    "customCosts": {},
+    "priceSource": "openrouter",
+    "utilization": 60,
+    "labCut": 0,
+    "powerBasis": "provisioned",
+    "basis": "chip-hour",
+    "dates": []
+   },
+   "pricing": {
+    "source": "openrouter",
+    "inputPerMillion": 0.26399999999999996,
+    "cachedInputPerMillion": 0.008799999999999999,
+    "outputPerMillion": 0.792,
+    "openRouterModelId": "deepseek/deepseek-v4-pro-0813"
+   },
+   "data": {
+    "rows": [
+     {
+      "hwKey": "b300_vllm",
+      "resultKey": "b300_vllm__fp4",
+      "precision": "fp4",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 9.910229268525605,
+      "revenue": 5.946137561115362,
+      "tco": 4.25,
+      "grossMargin": 1.6961375611153624,
+      "labCut": 0,
+      "profit": 1.6961375611153624
+     },
+     {
+      "hwKey": "mi355x_sglang",
+      "resultKey": "mi355x_sglang__fp4",
+      "precision": "fp4",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 4.737759421810313,
+      "revenue": 2.842655653086188,
+      "tco": 2.9,
+      "grossMargin": -0.05734434691381196,
+      "labCut": 0,
+      "profit": -0.05734434691381196
+     },
+     {
+      "hwKey": "mi355x_atom",
+      "resultKey": "mi355x_atom__fp4",
+      "precision": "fp4",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 3.896444466323966,
+      "revenue": 2.3378666797943795,
+      "tco": 2.9,
+      "grossMargin": -0.5621333202056205,
+      "labCut": 0,
+      "profit": -0.5621333202056205
+     },
+     {
+      "hwKey": "mi355x_vllm",
+      "resultKey": "mi355x_vllm__fp4",
+      "precision": "fp4",
+      "gpuHours": 1,
+      "revenuePerGpuHour": 2.1165892153123105,
+      "revenue": 1.2699535291873862,
+      "tco": 2.9,
+      "grossMargin": -1.6300464708126137,
+      "labCut": 0,
+      "profit": -1.6300464708126137
+     }
+    ],
+    "skipped": [
+     {
+      "hwKey": "gb200_dynamo-vllm",
+      "resultKey": "gb200_dynamo-vllm__fp4",
+      "precision": "fp4",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "gb300_dynamo-trt",
+      "resultKey": "gb300_dynamo-trt__fp4",
+      "precision": "fp4",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "gb300_dynamo-vllm",
+      "resultKey": "gb300_dynamo-vllm__fp4",
+      "precision": "fp4",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "b200_dynamo-sglang",
+      "resultKey": "b200_dynamo-sglang__fp4",
+      "precision": "fp4",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "b200_sglang",
+      "resultKey": "b200_sglang__fp4",
+      "precision": "fp4",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "gb300_dynamo-sglang",
+      "resultKey": "gb300_dynamo-sglang__fp4",
+      "precision": "fp4",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "vr200_trt",
+      "resultKey": "vr200_trt__fp4",
+      "precision": "fp4",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "b300_sglang",
+      "resultKey": "b300_sglang__fp4",
+      "precision": "fp4",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "h200_dynamo-sglang",
+      "resultKey": "h200_dynamo-sglang__fp8",
+      "precision": "fp8",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "mi355x_mori-sglang",
+      "resultKey": "mi355x_mori-sglang__fp4",
+      "precision": "fp4",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "b200_vllm",
+      "resultKey": "b200_vllm__fp4",
+      "precision": "fp4",
+      "reason": "outside-measured-range"
+     },
+     {
+      "hwKey": "mi355x_mooncake-atom",
+      "resultKey": "mi355x_mooncake-atom__fp4",
+      "precision": "fp4",
+      "reason": "outside-measured-range"
+     }
+    ]
+   },
+   "overlays": {
+    "rows": [],
+    "skipped": []
+   },
+   "comparisons": []
+  }
+ }
+}

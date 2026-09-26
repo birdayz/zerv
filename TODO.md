@@ -546,6 +546,17 @@ Proposed order (by impact on bruh use); the user chooses what comes next.
     to document it or pick another default.
   - The startup free-VRAM check is a snapshot: two servers starting at the same moment
     can both pass it.
+- **AMD Instinct backend and big-model serving** (user direction 2026-09-26: AMD-first).
+  Research only until the user makes it the active block.
+  - Research note and dependency-boundary proposal (awaiting approval):
+    [Instinct backend](docs/research/2026-09-26-instinct-backend.md). The runtime would
+    use KFD ioctls with no ROCm userspace; LLVM's assembler only as a development tool.
+    The KFD runtime can be built on the local RX 7900 XTX first.
+  - Research TODOs, in order: platform → Qwen3.8-27B on MI300X → Qwen3.5 MoE up to 397B →
+    GLM-5.3-Flash → Qwen3.8-2.4T
+    ([big-model TODOs](docs/research/2026-09-26-big-model-serving-todos.md)).
+  - "Qwen 3.9" does not exist officially; `QwennAI/Qwen3.9-*` is a fake repository with a
+    pickle. Do not load it.
 
 ## Verification debt (no block yet)
 

@@ -118,14 +118,14 @@ pub fn main(init: std.process.Init) !void {
     var step_ns: [T]u64 = undefined;
     {
         var m: model.Model = undefined;
-        try m.init(&device, &container, .{ .context = context, .prefill_rows = 512, .kv_type = kv_type, .kv_page_tokens = page, .batch_rows = if (precision == .f16) 1 else 0, .decode_precision = precision, .decode_f16_kernel = dkernel, .decode_f16_formats = dformats });
+        try m.init(&device, &container, .{ .context = context, .prefill_rows = 512, .kv_type = kv_type, .kv_page_tokens = page, .batch_rows = if (precision != .f32) 1 else 0, .decode_precision = precision, .decode_f16_kernel = dkernel, .decode_f16_formats = dformats });
         defer m.deinit();
         for (0..K) |i| {
             try m.reset();
             @memcpy(ref_prefill[i * vocab ..][0..vocab], try m.prefill(prompts[i][0..prompt_lens[i]]));
             for (0..T) |t| {
                 const t0 = std.Io.Clock.awake.now(io).nanoseconds;
-                const logits = if (precision == .f16) try m.decodeBatch(&.{.{ .slot = 0, .token = xs[i][t] }}) else try m.step(xs[i][t]);
+                const logits = if (precision != .f32) try m.decodeBatch(&.{.{ .slot = 0, .token = xs[i][t] }}) else try m.step(xs[i][t]);
                 step_ns[t] = @intCast(std.Io.Clock.awake.now(io).nanoseconds - t0);
                 @memcpy(ref[(i * T + t) * vocab ..][0..vocab], logits);
             }
@@ -151,7 +151,7 @@ pub fn main(init: std.process.Init) !void {
         try m.reset();
         try check(out, &stats, "slot-prefill", i, -1, try m.prefill(prompts[i][0..prompt_lens[i]]), ref_prefill[i * vocab ..][0..vocab]);
         for (0..T) |t| {
-            const logits = if (precision == .f16) try m.decodeBatch(&.{.{ .slot = slot, .token = xs[i][t] }}) else try m.step(xs[i][t]);
+            const logits = if (precision != .f32) try m.decodeBatch(&.{.{ .slot = slot, .token = xs[i][t] }}) else try m.step(xs[i][t]);
             try check(out, &stats, "slot-step", i, @intCast(t), logits, ref[(i * T + t) * vocab ..][0..vocab]);
         }
     }

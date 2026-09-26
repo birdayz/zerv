@@ -257,3 +257,23 @@ finish independent tests and benchmark gates before advancing.
     download verification and malware scan (`tools/fetch_hf.py`, ClamAV), hardened container, bring-up findings
     (a cold compile leaves no KV memory on 24 GB).
 47. [Previous Ollama deployment](research/2026-09-23-previous-deployment.md) — Q4_K_M, KV q4_0, FA, 96–128k context.
+87. [Unit economics of selling tokens](research/2026-09-26-token-economics.md) (research, no new measurements):
+    Qwen3.8-27B OpenRouter prices ($1.80–4.40 output, median $2.55), traffic mix (~23:1 input, 71% cached),
+    power/electricity/hardware costs, break-even 7–14% utilization at median/4-bit-floor prices but no route to
+    market for one int4 8k-context endpoint; no rental market for the card; `tools/token_economics.py`.
+88. [Rented GPUs with a faster engine](research/2026-09-26-rented-gpu-economics.md) (research, no new measurements):
+    rental prices vs owning TCO (2.0–3.9×), InferenceX-fitted efficiency of today's engines, roofline model of
+    the mean OpenRouter request; at today's prices renting is not the constraint (traffic is), at commodity prices
+    a renter must beat owners' engines: MI355X needs ≥ 46% of roofline, MI300X 55%, B200 65% (corrected with Vultr's
+    on-demand prices); AMD Developer Cloud and access programs; `tools/rented_gpu_economics.py`.
+89. [Bigger open models on rented AMD GPUs](research/2026-09-26-bigger-models.md) (research, no new measurements):
+    OpenRouter market per model (Kimi K3 / GLM-5.3 $4.4–4.8M per 30 days vs Qwen3.8-27B $0.28M), InferenceX MI355X
+    economics (Kimi K3 5.4x rent, commodity MoEs ~1.7x), architecture fit (delta-rule hybrids), licenses, gated plan;
+    `tools/model_market_summary.py`.
+90. [AMD Instinct backend](research/2026-09-26-instinct-backend.md) (research + boundary proposal, awaiting approval):
+    KFD ioctls + AQL queues + our own code objects from Zig, no ROCm userspace; LLVM assembler only as a dev tool
+    (precedent: RDNA3 native gemm); MI300X/MI355X hardware facts (FNUZ vs OCP FP8, 64/160 KiB LDS, per-XCD L2);
+    the KFD runtime can be built on the local RX 7900 XTX first. Pinned sources: [ledger](research/2026-09-26-instinct/sources.json).
+91. [Big-model serving TODOs](research/2026-09-26-big-model-serving-todos.md): Qwen3.5-397B-A17B, Qwen3.8-2.4T-A95B and
+    GLM-5.3-Flash on MI3xx (KDA, MLA+DSA, mHC, MoE, 4-bit quality gates, memory fits); no official Qwen 3.9 exists
+    (`QwennAI/Qwen3.9-*` is a fake repository).

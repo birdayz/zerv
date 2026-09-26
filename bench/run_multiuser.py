@@ -237,7 +237,7 @@ def main():
     for rnd, name in [(r, n) for r in range(a.rounds) for n in (names if r % 2 == 0 else names[::-1])]:
         spec = dict(rs.resolve_engine(table, name, zb))
         cmd = list(spec["cmd"])
-        if cmd[0] == str(rs.LLAMA_SERVER):
+        if cmd[0] == str(rs.LLAMA_SERVER) or "/llama/bin/llama-server" in cmd:
             cmd[cmd.index("-np") + 1] = str(a.parallel)
         elif "--max-num-seqs" in cmd:  # vLLM: shared paged KV pool, per-request context
             cmd[cmd.index("--max-num-seqs") + 1] = str(a.parallel)

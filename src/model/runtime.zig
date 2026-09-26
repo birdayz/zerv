@@ -110,7 +110,9 @@ pub const Options = struct {
     /// 2026-09-26).
     f16_split: F16Split = .shape,
 };
-pub const DecodePrecision = enum { f32, f16 };
+/// `.split` (block 18e part 4): FP32 with a shape-fixed summation order (gemm_rows.comp) for
+/// the Q4_0 batched decode projections; the other formats keep the `.f32` kernels.
+pub const DecodePrecision = enum { f32, f16, split };
 pub const DecodeF16Kernel = enum { v1, v2 };
 pub const DecodeF16Formats = enum { q4_0, all };
 pub const F16Split = enum { shape, plan };
@@ -252,7 +254,7 @@ fn kvSlot(id: KernelId) ?usize {
 }
 const kernel_count = @typeInfo(KernelId).@"enum".fields.len;
 const max_pipelines = 24;
-const max_gemm_pipelines = 48; // banks x formats x tiles/kernels; the device caps all kernels at gpu.max_kernels
+const max_gemm_pipelines = 72; // banks x formats x tiles/kernels; the device caps all kernels at gpu.max_kernels
 
 /// A recorded prefill command: the most chunk rows it handles. Plans differ only in
 /// their split-K choices (sized for their row tiles), so a chunk runs on the smallest
@@ -457,7 +459,9 @@ const max_swiglu_pipelines = 8;
 const RProj = struct { pipe: u8 = 0, geo: matvec.RowsGeometry = undefined };
 /// Batched projection: GEMM (optionally split-K into a partial slot + reduction). `x16`:
 /// the kernel reads the f16 copy of its input (gemm_f16x), which its producer must write.
-const GProj = struct { pipe: u8 = 0, push: gemm.Push = undefined, groups: [3]u32 = undefined, reduce: ?gemm.ReducePush = null, x16: bool = false };
+/// `rows`: a gemm_rows projection (`pipe` is the module of 1 row, `pipe + c - 1` of c rows;
+/// dispatched in groups of at most `gemm.rows_max` rows).
+const GProj = struct { pipe: u8 = 0, push: gemm.Push = undefined, groups: [3]u32 = undefined, reduce: ?gemm.ReducePush = null, x16: bool = false, rows: bool = false };
 fn any16(projs: []const *const GProj) bool {
     for (projs) |g| if (g.x16) return true;
     return false;
@@ -755,6 +759,11 @@ pub const Model = struct {
         if (options.slots > 1 and options.mtp) return error.MtpNeedsOneSlot;
         if (options.batch_rows > layout.io.batch_max or options.batch_rows > @max(self.rows, 1)) return error.InvalidBatch;
         if (options.kv_pages > max_pool_pages) return error.InvalidSlots;
+        if (options.decode_precision == .split) {
+            // gemm_rows makes its K-lane subgroup-uniform: subgroups of at most 64 that divide 64.
+            if (options.batch_rows == 0 or std.mem.alignForward(u32, options.batch_rows, gemm.f16n_tile_n) > @max(self.rows, 1)) return error.InvalidBatch;
+            if (!device.subgroup.computeBallotWithin(64) or 64 % device.subgroup.size != 0) return error.UnsupportedDevice;
+        }
         if (options.decode_precision == .f16) {
             if (options.batch_rows == 0 or std.mem.alignForward(u32, options.batch_rows, gemm.f16n_tile_n) > @max(self.rows, 1)) return error.InvalidBatch;
             if (!device.cooperative_matrix or device.subgroup.size != 64) return error.UnsupportedDevice;
@@ -778,7 +787,7 @@ pub const Model = struct {
             slot_words[slot] = @max(slot_words[slot], std.mem.alignForward(u64, words, 64));
         };
         // f16-mode batched decode: split parts of the 16-row WMMA projections.
-        if (options.decode_precision == .f16) for (sized[0..n_sized]) |*s| {
+        if (options.decode_precision != .f32) for (sized[0..n_sized]) |*s| {
             if (s.role != .matrix or std.mem.eql(u8, config.specName(s), "output.weight")) continue;
             const chunk = gemm.f16nChunk(@intCast(s.rows), @intCast(s.k), split_target);
             if (chunk == 0) continue;
@@ -997,7 +1006,7 @@ pub const Model = struct {
             else if (std.mem.eql(u8, field, "ssm_beta.weight")) L.beta = try self.both(s, t, place, A.h, A.beta_raw, &L.g_beta) //
             else if (std.mem.eql(u8, field, "ssm_out.weight")) L.ssm_out = try self.both(s, t, place, A.fo, A.a, &L.g_ssm_out) //
             else unreachable;
-            if (options.batch_rows > 0 and options.decode_precision == .f16) {
+            if (options.batch_rows > 0 and options.decode_precision != .f32) {
                 if (std.mem.eql(u8, field, "attn_q.weight")) L.d_q = try self.dprojection(s, t, place, A.h, A.qf) //
                 else if (std.mem.eql(u8, field, "attn_output.weight")) L.d_out = try self.dprojection(s, t, place, A.gated, A.a) //
                 else if (std.mem.eql(u8, field, "attn_qkv.weight")) L.d_qkv = try self.dprojection(s, t, place, A.h, A.mixed) //
@@ -1738,6 +1747,7 @@ pub const Model = struct {
         const v = gemm.variant(format) catch return null;
         const M: u32 = @intCast(s.rows);
         const K: u32 = @intCast(s.k);
+        if (self.options.decode_precision == .split) return self.sprojection(s, t, place, v, input_word, output_word);
         if (!gemm.f16DecodeEligible(v, M)) return null;
         if (self.options.decode_f16_formats == .q4_0 and v != .q4_0) return null;
         const chunk = gemm.f16nChunk(M, K, split_target);
@@ -1774,6 +1784,49 @@ pub const Model = struct {
         const lim: gemm.Limits = .{ .rows = span, .batches = parts };
         const groups = if (v2) try gemm.validateF16d(v, push, lim, self.banks[place.bank].size, self.act.size) else try gemm.validateF16n(v, push, lim, self.banks[place.bank].size, self.act.size);
         return .{ .pipe = index.?, .push = push, .groups = groups, .reduce = reduce };
+    }
+
+    /// A `.split` batched decode projection (gemm_rows, Q4_0), or null (FP32 `.f32` kernels).
+    /// The split chunk is `gemm.f16nChunk` (shape only).
+    fn sprojection(self: *Model, s: *const config.Spec, t: *const gguf.Tensor, place: layout.Placement, v: gemm.Variant, input_word: u32, output_word: u32) Error!?GProj {
+        const M: u32 = @intCast(s.rows);
+        const K: u32 = @intCast(s.k);
+        if (!gemm.rowsEligible(v, M, K)) return null;
+        const key: u32 = @as(u32, place.bank) | (@as(u32, @intFromEnum(v)) << 8) | (@as(u32, 5) << 24);
+        var index: ?u8 = null;
+        for (self.gemm_keys[0..self.gemm_count], 0..) |k, i| if (k == key) {
+            index = @intCast(i);
+        };
+        if (index == null) {
+            if (self.gemm_count + gemm.rows_max > max_gemm_pipelines) return error.TooManyPipelines;
+            const first = self.gemm_count;
+            const buffers = [_]*gpu.Buffer{ &self.banks[place.bank], &self.act, &self.io, &self.act };
+            for (0..gemm.rows_max) |c| {
+                self.gemm_pipes[first + c] = try gpu.Kernel.init(self.device, try gemm.moduleRows(v, @intCast(c + 1)), &buffers, @sizeOf(gemm.Push));
+                // Only the first carries the key; the others are found by offset.
+                self.gemm_keys[first + c] = if (c == 0) key else 0xffff_ffff;
+                self.gemm_count += 1;
+            }
+            index = first;
+        }
+        var push: gemm.Push = .{ .a_base = @intCast(place.offset), .a_rs = @intCast(t.data.len / M), .x_base = input_word, .x_rs = K, .y_base = output_word, .y_rs = M, .m = M, .k = K };
+        const span = std.mem.alignForward(u32, self.options.batch_rows, gemm.f16n_tile_n);
+        push.k_chunk = gemm.f16nChunk(M, K, split_target);
+        var reduce: ?gemm.ReducePush = null;
+        const parts = gemm.splitCount(K, push.k_chunk);
+        if (push.k_chunk != 0) {
+            const part = self.part_slots[splitSlot(config.specName(s))];
+            push.y_base = part;
+            push.y_bs = span * M;
+            reduce = .{ .part = part, .splits = parts, .part_bs = span * M, .y = output_word, .y_rs = M, .m = M };
+        }
+        // Every row of the batch span, in groups of at most rows_max: validate the extremes.
+        var last_push = push;
+        last_push.x_base += (self.options.batch_rows - 1) * K;
+        last_push.y_base += (self.options.batch_rows - 1) * M;
+        _ = try gemm.validateRows(v, last_push, .{ .rows = 1, .batches = parts }, self.banks[place.bank].size, self.act.size);
+        const groups = try gemm.validateRows(v, push, .{ .rows = @min(gemm.rows_max, self.options.batch_rows), .batches = parts }, self.banks[place.bank].size, self.act.size);
+        return .{ .pipe = index.?, .push = push, .groups = groups, .reduce = reduce, .rows = true };
     }
 
     fn gprojection(self: *Model, s: *const config.Spec, t: *const gguf.Tensor, place: layout.Placement, input_word: u32, output_word: u32, plan: Plan) Error!GProj {
@@ -2226,7 +2279,16 @@ pub const Model = struct {
         /// the span in one dispatch; rows are read up to the io count), else FP32 `bproj`.
         fn dproj(r: Rec, d: ?GProj, p: RProj) Error!void {
             const g = d orelse return r.bproj(p);
-            try r.c.dispatch(&r.model.gemm_pipes[g.pipe], std.mem.asBytes(&g.push), g.groups);
+            if (!g.rows) return r.c.dispatch(&r.model.gemm_pipes[g.pipe], std.mem.asBytes(&g.push), g.groups);
+            // gemm_rows: balanced groups of at most rows_max rows (a row's bits do not depend
+            // on its group).
+            var groups = RowGroups.init(r.rows, gemm.rows_max);
+            while (groups.next()) |grp| {
+                var push = g.push;
+                push.x_base += grp.first * push.x_rs;
+                push.y_base += grp.first * push.y_rs;
+                try r.c.dispatch(&r.model.gemm_pipes[g.pipe + grp.count - 1], std.mem.asBytes(&push), g.groups);
+            }
         }
         /// The split-K reductions of `ds` (after their dispatches; a barrier first).
         fn dreduce(r: Rec, ds: []const ?GProj) Error!void {

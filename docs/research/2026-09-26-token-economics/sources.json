@@ -1,0 +1,268 @@
+{
+ "retrieved": "2026-09-26",
+ "by": "agent, read-only public pages and APIs; no accounts, sign-ups or contact",
+ "sources": [
+  {
+   "id": "or-routing",
+   "url": "https://openrouter.ai/docs/guides/routing/provider-selection.md",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "For the stable providers, look at the lowest-cost candidates and select one weighted by inverse square of the price"
+  },
+  {
+   "id": "or-providers",
+   "url": "https://openrouter.ai/docs/guides/community/for-providers.md",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": [
+    "If you'd like to be a model provider and sell inference on OpenRouter, fill out our form to get started.",
+    "For OpenRouter to use the provider we must be able to pay for inference automatically. This can be done via auto top up or invoicing.",
+    "Normal routing: 95%+ uptime; Degraded status: 80-94% uptime -> receives lower priority; Down status: <80% uptime -> only used as fallback",
+    "Throughput is calculated as: output tokens / generation time, where generation time includes fetch latency (time from request to first server response), TTFT, and streaming time.",
+    "Auto Exacto ... runs by default on every tool-calling request ... Throughput -- providers falling more than 1.5 standard deviations below the median are deprioritized.",
+    "Benchmark accuracy -- ... median of per-endpoint scores over that window minus 2 standard deviations ... An endpoint scoring below the cutoff, or missing benchmark data entirely, is deprioritized.",
+    "Valid quantization values are: int4, int8, fp4, mxfp4, nvfp4, fp6, fp8, mxfp8, fp16, bf16, fp32."
+   ]
+  },
+  {
+   "id": "or-fees",
+   "url": "https://openrouter.ai/docs/faq.md",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": [
+    "OpenRouter charges a 5.5% ($0.80 minimum) fee when you purchase credits.",
+    "We pass through the pricing of the underlying providers; there is no markup on inference pricing"
+   ]
+  },
+  {
+   "id": "or-page",
+   "url": "https://openrouter.ai/qwen/qwen3.8-27b/providers",
+   "retrieved": "2026-09-26T13:10+02:00",
+   "kind": "sourced",
+   "quote": [
+    "Weighted Avg Input Price $0.1268 /M tokens",
+    "Weighted Avg Output Price $3.43 /M tokens",
+    "Throughput 159tok/s P50, best across providers",
+    "Latency 0.30s P50, best provider"
+   ]
+  },
+  {
+   "id": "darkbloom-about",
+   "url": "https://www.darkbloom.dev/about",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": [
+    "Darkbloom routes encrypted requests to verified Apple Silicon hardware",
+    "Estimated monthly earning $204.89 /mo $2,458.64/yr at 60% duty cycle Mac model MacBook Pro Chip family M4 Max (16-core) Unified memory 128 GB",
+    "Qwen3.6 35B A3B ... $204.89/mo"
+   ]
+  },
+  {
+   "id": "darkbloom-home",
+   "url": "https://www.darkbloom.dev/",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "The Darkbloom live Mac grid ... Total Macs: 1231 Units Tokens generated: 287.01 billion Total requests: 71.96 million"
+  },
+  {
+   "id": "darkbloom-earnings",
+   "url": "https://docs.darkbloom.dev/provider/earnings.md",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "Darkbloom charges consumers per million tokens ... and credits the full amount to your account. There is no platform fee deducted from provider earnings."
+  },
+  {
+   "id": "groq",
+   "url": "https://console.groq.com/docs/models",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "Qwen/Qwen3.8-27B qwen/qwen3.8-27b 450 $0.80 input $4.00 output 250K TPM 1K RPM 131,072 16,384"
+  },
+  {
+   "id": "fireworks",
+   "url": "https://docs.fireworks.ai/serverless/pricing.md",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": [
+    "More than 16B parameters $0.90 (size-based price, uniform input and output, for models not listed individually)",
+    "Kimi K3 $3.00 / $0.30 / $15.00; Kimi K3 Fast $4.50 / $0.45 / $22.50",
+    "GLM 5.3 $1.40 / $0.26 / $4.40; GLM 5.3 Fast $2.10 / $0.39 / $6.60"
+   ]
+  },
+  {
+   "id": "fireworks-ondemand",
+   "url": "https://fireworks.ai/pricing",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "On demand deployments ... H100 80 GB GPU $0.134 $8.00 (per minute, per hour)"
+  },
+  {
+   "id": "together",
+   "url": "https://www.together.ai/pricing",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": [
+    "Serverless list has no Qwen3.8 27B (it appears only under fine-tuning).",
+    "Gemma 4 31B $0.39 $0.97",
+    "Muse Glimmer 30B $0.35 $1.50"
+   ]
+  },
+  {
+   "id": "runpod",
+   "url": "https://www.runpod.io/pricing",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "H100 SXM $3.49/hr; H100 PCIe $2.89/hr; A100 SXM $1.59/hr; A100 PCIe $1.59/hr; L40S $1.09/hr; RTX 4090 $0.74/hr; RTX 3090 $0.50/hr (no RX 7900 XTX or other Radeon consumer card listed)"
+  },
+  {
+   "id": "vast-hosting",
+   "url": "https://docs.vast.ai/host/hosting-overview.md",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "Setup: installing Ubuntu, creating disk partitions, installing NVIDIA drivers, opening network ports on the router and installing the Vast hosting software."
+  },
+  {
+   "id": "vast-7900xtx",
+   "url": "https://vast.ai/pricing/gpu/RX-7900-XTX",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "No current offers"
+  },
+  {
+   "id": "gpustack-q32-h100",
+   "url": "https://docs.gpustack.ai/2.0/performance-lab/qwen3-32b/h100/",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "note": "Qwen3-32B, one H100 SXM; vLLM v0.11.0 (BF16, default flags) vs TensorRT-LLM v1.2.0rc1 (FP8, chunked prefill); vllm bench serve, all requests at once",
+   "rows": [
+    {
+     "engine": "vLLM BF16",
+     "dataset": "ShareGPT 1000 req",
+     "output_tok_s": 1131.55,
+     "total_tok_s": 2352.82
+    },
+    {
+     "engine": "TRT-LLM FP8",
+     "dataset": "ShareGPT 1000 req",
+     "output_tok_s": 2060.4,
+     "total_tok_s": 4284.68
+    },
+    {
+     "engine": "vLLM BF16",
+     "dataset": "random 4000 in / 200 out, 500 req",
+     "output_tok_s": 102.21,
+     "total_tok_s": 2148.69
+    },
+    {
+     "engine": "TRT-LLM FP8",
+     "dataset": "random 4000 in / 200 out, 500 req",
+     "output_tok_s": 234.7,
+     "total_tok_s": 4929.16
+    },
+    {
+     "engine": "vLLM BF16",
+     "dataset": "random 2000 in / 100 out",
+     "output_tok_s": 152.42,
+     "total_tok_s": 3195.3
+    },
+    {
+     "engine": "TRT-LLM FP8",
+     "dataset": "random 2000 in / 100 out",
+     "output_tok_s": 281.53,
+     "total_tok_s": 5901.95
+    }
+   ]
+  },
+  {
+   "id": "hyperqwen",
+   "url": "https://github.com/syv-ai/HyperQwen",
+   "revision": "1cf86656c26b7725743c41a0ad7b9de99f5d7844 (upstream HEAD on 2026-09-26, git ls-remote)",
+   "local": "third_party/research-serving/HyperQwen",
+   "kind": "sourced",
+   "quote": [
+    "RTX 3090 at 250 W ... ~1,035 tok/s aggregate decode at 64 concurrent in batch mode (README.md)",
+    "128/512, 64 concurrent | ~1,094 steady decode | 942 output tok/s e2e (batch/README.md)",
+    "Cohort C8 298.4 tok/s e2e, 321.0 decode (1,024-token answers, realistic prompts) (batch/README.md)",
+    "Raw cells, 7,681-token prompts + 511 out, C8: PP 1,169 / TG-agg 111.5 (W4A16); PP 1,911 / TG-agg 143.7 (int8) (batch/README.md)",
+    "single stream (C1) 127 tok/s in single-user mode (README.md)"
+   ]
+  },
+  {
+   "id": "geizhals",
+   "url": "https://geizhals.de/?fs=rx%207900%20xtx&sort=p&hloc=de&cat=gra16_512",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "Sapphire Nitro+ Radeon RX 7900 XTX Vapor-X ... 1 Angebot um EUR 1799,99; all other RX 7900 XTX listings: keine Angebote"
+  },
+  {
+   "id": "kleinanzeigen",
+   "url": "https://www.kleinanzeigen.de/s-pc-zubehoer-software/grafikkarten/rx-7900-xtx/k0c225+pc_zubehoer_software.art_s:grafikkarten",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "note": "used RX 7900 XTX asking prices (EUR), private sellers, page 1, listed 2026-09-14..26; excludes wanted/swap ads and one dealer (EUR 1,089 x2); asking, not transaction, prices",
+   "asking_eur": [
+    850,
+    1200,
+    600,
+    1000,
+    749,
+    699,
+    1100,
+    900,
+    650,
+    790,
+    990,
+    1050,
+    910,
+    1100,
+    850,
+    1100,
+    1200,
+    849,
+    800
+   ]
+  },
+  {
+   "id": "ecb",
+   "url": "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "time='2026-09-25' currency='USD' rate='1.1403'"
+  },
+  {
+   "id": "eia",
+   "url": "https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_5_06_a",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "Table 5.6.A ... July 2026 ... U.S. Total 18.31 (residential) 14.53 (commercial) 9.77 (industrial) cents/kWh (preliminary)"
+  },
+  {
+   "id": "stripe-de",
+   "url": "https://stripe.com/de/pricing",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "1,5 % + 0,25 EUR fuer Standardkarten aus dem EWR; 3,15 % + 0,25 EUR fuer auslaendische Karten + 2 % sofern eine Waehrungsumrechnung erforderlich ist"
+  },
+  {
+   "id": "ustg19",
+   "url": "https://www.gesetze-im-internet.de/ustg_1980/__19.html",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "steuerfrei, wenn der Gesamtumsatz ... im vorangegangenen Kalenderjahr 25 000 Euro nicht ueberschritten hat und im laufenden Kalenderjahr 100 000 Euro nicht ueberschreitet"
+  },
+  {
+   "id": "ustg12",
+   "url": "https://www.gesetze-im-internet.de/ustg_1980/__12.html",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "Die Steuer betraegt fuer jeden steuerpflichtigen Umsatz 19 Prozent"
+  },
+  {
+   "id": "gewstg11",
+   "url": "https://www.gesetze-im-internet.de/gewstg/__11.html",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "bei natuerlichen Personen sowie bei Personengesellschaften um einen Freibetrag in Hoehe von 24 500 Euro"
+  }
+ ]
+}

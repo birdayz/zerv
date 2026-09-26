@@ -1,0 +1,179 @@
+{
+  "about": "Inputs of tools/rented_gpu_economics.py for docs/research/2026-09-26-rented-gpu-economics.md. kind: sourced (URL/date in the report), derived (from the model config or the other inputs), assumed.",
+  "models": {
+    "qwen3.8-27b": {
+      "kind": "derived",
+      "src": "docs/research/2026-09-22/model-config.json: 64 layers (48 Gated DeltaNet + 16 full attention), hidden 5,120, FFN 17,408, 24 q / 4 kv heads x 256, vocab 248,320 untied; text weights ~26.9e9 incl. both embedding tables",
+      "decode_linear_flops": 51300000000.0,
+      "prefill_linear_flops": 48700000000.0,
+      "attn_flops_per_position": 393216,
+      "decode_weight_params": 25630000000.0,
+      "kv_elements_per_token": 32768,
+      "state_bytes_per_seq": 78446592,
+      "state_note": "48 x 48 x 128 x 128 recurrent state in 16-bit (72 MiB) + 3-step conv history in 16-bit (2.8 MiB); read and written every decode step. FP32 state (the reference dtype) doubles it"
+    },
+    "llama-3.3-70b": {
+      "kind": "derived",
+      "src": "public config: 80 layers, hidden 8,192, FFN 28,672, 64 q / 8 kv heads x 128, vocab 128,256 untied, 70.55e9 params",
+      "decode_linear_flops": 139000000000.0,
+      "prefill_linear_flops": 136900000000.0,
+      "attn_flops_per_position": 2621440,
+      "decode_weight_params": 69500000000.0,
+      "kv_elements_per_token": 163840,
+      "state_bytes_per_seq": 0,
+      "state_note": "no recurrent state"
+    }
+  },
+  "bytes_per_weight": {
+    "fp8": 1.03,
+    "fp4": 0.56,
+    "kind": "assumed",
+    "src": "8-bit / 4-bit weights plus block scales"
+  },
+  "bytes_per_kv_element": {
+    "value": 1,
+    "kind": "assumed",
+    "src": "FP8 KV cache in every engine"
+  },
+  "memory_usable_fraction": {
+    "value": 0.9,
+    "kind": "assumed"
+  },
+  "gpus": {
+    "h100": {
+      "label": "H100 SXM",
+      "mem_gb": 80,
+      "bw_tbs": 3.35,
+      "fp8_tflops": 1979,
+      "fp4_tflops": null,
+      "own": 1.17,
+      "rent_ix": 2.0,
+      "rent_public": 2.3,
+      "rent_public_src": "Vultr on-demand, hourly, 8-GPU VM only (read 2026-09-26); single GPU: Vast median 3.14, RunPod 3.49, Nebius 3.85 (4.50 from 2026-10-01), Crusoe 3.90, Lambda 3.99-4.29, DigitalOcean 4.41 (3.26 reserved 12 months)"
+    },
+    "h200": {
+      "label": "H200 SXM",
+      "mem_gb": 141,
+      "bw_tbs": 4.8,
+      "fp8_tflops": 1979,
+      "fp4_tflops": null,
+      "own": 1.22,
+      "rent_ix": 2.9,
+      "rent_public": 3.4,
+      "rent_public_src": "DigitalOcean 12-month reserved (Vultr lists no H200); on-demand: Crusoe 4.29, DigitalOcean 4.47, Nebius 4.50 (5.40 from 2026-10-01), Vast median 4.74"
+    },
+    "b200": {
+      "label": "B200",
+      "mem_gb": 180,
+      "bw_tbs": 8.0,
+      "fp8_tflops": 4500,
+      "fp4_tflops": 9000,
+      "own": 1.73,
+      "rent_ix": 3.7,
+      "rent_public": 3.5,
+      "rent_public_src": "Vultr on-demand, hourly, 8-GPU VM only; Lambda 6.79-6.99; Nebius 7.15 (8.50 from 2026-10-01); Vast median 9.38"
+    },
+    "mi300x": {
+      "label": "MI300X",
+      "mem_gb": 192,
+      "bw_tbs": 5.3,
+      "fp8_tflops": 2615,
+      "fp4_tflops": null,
+      "own": 0.95,
+      "rent_ix": 1.3,
+      "rent_public": 1.85,
+      "rent_public_src": "Vultr on-demand, hourly, 8-GPU VM only; single GPU: DigitalOcean 1.91 reserved 12 months, 2.59 on-demand (also the AMD Developer Cloud pay-as-you-go path); Hot Aisle 2.99 VM; Crusoe 3.45"
+    },
+    "mi325x": {
+      "label": "MI325X",
+      "mem_gb": 256,
+      "bw_tbs": 6.0,
+      "fp8_tflops": 2615,
+      "fp4_tflops": null,
+      "own": 1.1,
+      "rent_ix": 1.6,
+      "rent_public": 2.0,
+      "rent_public_src": "Vultr on-demand, hourly, 8-GPU VM only; DigitalOcean 2.88 reserved 12 months, 3.80 on-demand (1 or 8 GPUs)"
+    },
+    "mi355x": {
+      "label": "MI355X",
+      "mem_gb": 288,
+      "bw_tbs": 8.0,
+      "fp8_tflops": 5033,
+      "fp4_tflops": 10066,
+      "own": 1.5,
+      "rent_ix": 2.9,
+      "rent_public": 2.59,
+      "rent_public_src": "Vultr on-demand, hourly, 8-GPU VM only; DigitalOcean spot 2.97 (interruptible); Crusoe: contact sales"
+    }
+  },
+  "gpu_src": "specs and own/rent_ix: InferenceX views/gpu-specs and views/options (SemiAnalysis AI Cloud TCO model; own = owning at large hyperscaler volume), read 2026-09-26; rent_public: public price pages read 2026-09-26; corrected 2026-09-26 (later the same day): Vultr's on-demand Cloud GPU prices added (www.vultr.com/pricing, 'Pricing shown is on-demand and billed hourly')",
+  "sota_fit": {
+    "kind": "sourced",
+    "src": "InferenceX official Llama-3.3-70B FP8 rows, 8k/1k, snapshot 2025-10-29 (inferencex-llama70b.json): best total tok/s/GPU of any framework at median interactivity >= target",
+    "isl": 8192,
+    "osl": 1024,
+    "precision": "fp8"
+  },
+  "request": {
+    "kind": "sourced",
+    "src": "OpenRouter qwen/qwen3.8-27b activity 2026-09-25: 46.82e9 prompt (32.67e9 cached), 2.47e9 completion tokens over 2,534,379 requests",
+    "uncached_input": 5584,
+    "cached_input": 12891,
+    "output": 976
+  },
+  "interactivity_targets": [
+    30,
+    50
+  ],
+  "prices": [
+    {
+      "key": "paid-today",
+      "kind": "sourced",
+      "per_request_usd": 0.0053,
+      "src": "OpenRouter total_usage 13,431 USD / 2,534,379 requests, 2026-09-25 (what buyers actually paid for this model, all providers)"
+    },
+    {
+      "key": "median-list",
+      "kind": "sourced",
+      "input": 0.22,
+      "cached": 0.085,
+      "output": 2.55,
+      "src": "median list price of the 16 Qwen3.8-27B endpoints (cache read: median of the 13 that price it)"
+    },
+    {
+      "key": "commodity",
+      "kind": "sourced",
+      "input": 0.08,
+      "cached": 0.008,
+      "output": 0.28,
+      "src": "qwen/qwen3-32b on OpenRouter (DeepInfra fp8), a ~30B dense model 17 months after release; cached = 10% of input [assumed, not listed]"
+    }
+  ],
+  "utilizations": [
+    0.3,
+    0.6,
+    0.9
+  ],
+  "our_engine_efficiency": {
+    "values": [
+      0.5,
+      0.7,
+      0.85
+    ],
+    "kind": "assumed",
+    "src": "fraction of the roofline below (compute and bandwidth efficiency alike); zerv today: decode matvec 75-95% of measured bandwidth, prefill GEMM ~35% of WMMA peak on the RX 7900 XTX"
+  },
+  "market": {
+    "kind": "sourced",
+    "src": "OpenRouter qwen/qwen3.8-27b activity: requests on 2026-09-25 (30-day range 0.83-3.44 M/day)",
+    "requests_per_day": 2534379
+  },
+  "fast_tier_targets": [
+    30,
+    50,
+    100,
+    150,
+    250
+  ]
+}

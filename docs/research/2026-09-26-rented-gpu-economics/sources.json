@@ -1,0 +1,156 @@
+{
+ "retrieved": "2026-09-26",
+ "by": "agent, read-only public pages and APIs; no accounts, sign-ups or contact",
+ "sources": [
+  {
+   "id": "inferencex-options",
+   "url": "https://inferencex.semianalysis.com/api/v1/views/options",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "costPerHour {h: owning, r: renting} per chip: H100 1.17/2.00, H200 1.22/2.90, B200 1.73/3.70, B300 2.26/4.25, MI300X 0.95/1.30, MI325X 1.10/1.60, MI355X 1.50/2.90",
+   "note": "h = 'Hourly rate (owning at large hyperscaler volume)' from the SemiAnalysis AI Cloud TCO model (inferencex.semianalysis.com/chips/mi355x-vs-b200); raw: inferencex-options.json"
+  },
+  {
+   "id": "inferencex-specs",
+   "url": "https://inferencex.semianalysis.com/api/v1/views/gpu-specs",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "note": "memory, bandwidth, dense FP8/FP4 TFLOP/s; raw: inferencex-gpu-specs.json"
+  },
+  {
+   "id": "inferencex-llama70b",
+   "url": "https://inferencex.semianalysis.com/api/v1/benchmarks?model=Llama-3.3-70B-Instruct-FP8",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "note": "official rows, snapshot 2025-10-29 (model since deprecated); raw: inferencex-llama70b.json"
+  },
+  {
+   "id": "inferencex-qwen27b",
+   "url": "https://inferencex.semianalysis.com/api/v1/benchmarks?model=Qwen3.8-27B",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "[] (model registered as 'experimental', releaseDate 2026-08-05, no official rows; no config in github.com/SemiAnalysisAI/InferenceX main at 2026-09-26)"
+  },
+  {
+   "id": "inferencex-dsr1-history",
+   "url": "https://inferencex.semianalysis.com/api/v1/benchmarks/history?model=DeepSeek-R1-0528&isl=8192&osl=1024",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "note": "best single-node, non-disaggregated tok/s/GPU at median interactivity >= 50, per month; raw: inferencex-dsr1-history-best.json"
+  },
+  {
+   "id": "digitalocean",
+   "url": "https://www.digitalocean.com/pricing/gpu-droplets",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "New pricing is effective as of August 1, 2026. 12 Month Reserved: B300 $7.94, H200 $3.40, H100 $3.26, MI350X $4.76, MI325X $2.88, MI300X $1.91 /GPU/hour. Spot: B300 $8.00, MI355X $2.97, MI350X $2.46. On-Demand: MI325X $3.80, MI300X $2.59, H200 $4.47, H100 $4.41 (1 or 8 GPUs per droplet)"
+  },
+  {
+   "id": "hotaisle",
+   "url": "https://hotaisle.xyz/pricing/",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "Virtual machines $2.99/GPU/hr New customer rate. 1, 2, and 4x MI300X VMs ... 8x bare metal $3.39/GPU/hr ... Existing customers ... grandfathered at $1.99/GPU/hr"
+  },
+  {
+   "id": "hotaisle-blog",
+   "url": "https://hotaisle.xyz/blog/why-we-raised-our-mi300x-price",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "July 14, 2026 ... We raised the price of newly allocated MI300X VM compute because we are at full capacity ... Hot Aisle is at 100% capacity."
+  },
+  {
+   "id": "crusoe",
+   "url": "https://www.crusoe.ai/cloud/pricing",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "On-demand: H200 $4.29/GPU-hr, H100 $3.90, A100 80GB SXM $2.30, L40S $1.50, AMD MI300X $3.45, AMD MI355X Contact sales; Self-Serve Deployments (managed inference): H100 $5.50, H200 $6.00, B200 $9.65, AMD MI355x $7.40 per hour"
+  },
+  {
+   "id": "lambda",
+   "url": "https://lambda.ai/pricing",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "On-demand per GPU/hr: B200 SXM6 $6.79-6.99, H100 SXM $3.99-4.29; 1-Click Clusters B200 $8.87-9.86, H100 $5.54-6.16"
+  },
+  {
+   "id": "nebius",
+   "url": "https://nebius.com/prices",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "On-demand GPU-hour (Effective October 1, 2026): B300 $7.85 ($9.50), B200 $7.15 ($8.50), H200 $4.50 ($5.40), H100 $3.85 ($4.50), RTX PRO 6000 $1.80; spot from $0.79-0.99"
+  },
+  {
+   "id": "runpod",
+   "url": "https://www.runpod.io/pricing",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "H100 SXM $3.49/hr; H100 PCIe $2.89/hr; A100 SXM $1.59/hr"
+  },
+  {
+   "id": "vast",
+   "url": "https://console.vast.ai/api/v0/search/asks/",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "on-demand medians per GPU: H100 SXM $3.14 (16 offers), H200 $4.74 (17), H200 NVL $4.00 (27), B200 $9.38 (8), B300 $8.75 (13), RTX PRO 6000 S $1.51 (44); no MI300X/MI355X offers"
+  },
+  {
+   "id": "openrouter-activity",
+   "url": "https://openrouter.ai/api/frontend/v1/stats/model-activity?permaslug=qwen%2Fqwen3.8-27b-20260814&variant=standard",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "note": "see ../2026-09-26-token-economics/openrouter-qwen3.8-27b-activity.json"
+  },
+  {
+   "id": "vultr",
+   "url": "https://www.vultr.com/pricing/#cloud-gpu",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "Pricing shown is on-demand and billed hourly. Cloud GPU, price starting at, per GPU/hr: AMD MI455X (72 GPUs per rack over UALink) contact sales; AMD MI355X 8 GPUs 2304 GB $2.590; AMD MI325X 8 GPUs 2048 GB $2.000; AMD MI300X 8 GPUs 1536 GB $1.850; NVIDIA GB300 NVL72 contact sales; HGX B300 contact sales; HGX B200 8 GPUs $3.500; HGX H100 8 GPUs $2.300; L40S $1.671; GH200 $1.990; HGX A100 $2.800. Bare Metal 'Starting from' pricing is ... for pre-paid contract terms (MI355X, B200 from $3.500)."
+  },
+  {
+   "id": "amd-developer-cloud",
+   "url": "https://www.amd.com/en/developer/resources/cloud-access/amd-developer-cloud.html",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": [
+    "AMD AI Developer Program members receive a complimentary $100 in AMD Developer Cloud credits",
+    "Pay-As-You-Go Digital Ocean ... Vultr",
+    "Small Configuration: 1x GPU GPU Memory: 192GB vCPUs: 20 vCPUs System Memory: 240GB Boot Disk: 720 GB NVMe Scratch Disk: 5TB NVMe Large Configuration: 8x GPU ...",
+    "Complimentary credit hours expire thirty (30) days from the date of deposit",
+    "you may not: rent, lease, copy, provide access to or sublicense AMD Developer Cloud to a third party or use AMD Developer Cloud to provide a service to a third-party"
+   ]
+  },
+  {
+   "id": "amd-cloud-access",
+   "url": "https://www.amd.com/en/developer/resources/cloud-access.html",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": [
+    "Developer Cloud | Instinct Evaluation Program | AI & HPC Cluster | Radeon Test Drive; Hardware: MI300X | MI325X, MI300X | MI325, MI300X, MI250, MI210 | Radeon AI PRO R9700, PRO W7900, PRO W7800; Cost: Free (with approval), Pay-as-you-go | Free (with approval) | ...; Duration: ... Up to 1 year | Up to 14 days",
+    "AMD may provide an initial 25 hours or approximately $50 US worth of cloud credit ... expire ten (10) days from the date of deposit"
+   ]
+  },
+  {
+   "id": "amd-adc-getting-started",
+   "url": "https://www.amd.com/en/developer/resources/technical-articles/2025/how-to-get-started-on-the-amd-developer-cloud-.html",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "choose whether you need a full AMD Instinct MI300X node that consists of 8 MI300X GPUs, or you can pick a single MI300X GPU ... Bare OS ... Quick Start (ROCm-Ready Images) ... vLLM SGLang PyTorch Megatron JAX"
+  },
+  {
+   "id": "amd-ai-developer-program",
+   "url": "https://developer.amd.com/ai-developer-program/",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "The program is free to join ... Free Cloud Credit Receive $100 in AMD Developer Cloud credits ... private Discord channel with AMD engineers"
+  },
+  {
+   "id": "digitalocean-billing",
+   "url": "https://www.digitalocean.com/pricing/gpu-droplets",
+   "retrieved": "2026-09-26",
+   "kind": "sourced",
+   "quote": "GPU Droplets are billed per second with a 5-minute minimum billing period."
+  }
+ ]
+}

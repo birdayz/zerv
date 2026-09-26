@@ -354,6 +354,55 @@ pub fn validateF16d(v: Variant, p: Push, lim: Limits, a_bytes: u64, act_bytes: u
     return .{ p.m / f16d_tile_m, grid[1], grid[2] };
 }
 
+/// Batched decode, FP32 shape-fixed order (gemm_rows.comp, block 18e part 4): Q4_0, a
+/// workgroup of 64 weight rows, one module per row count 1..`rows_max`.
+pub const rows_max = 8;
+pub const rows_tile_m = 64;
+
+pub fn moduleRows(v: Variant, rows: u32) Error![]align(4) const u8 {
+    const M = struct {
+        const r1 align(4) = @embedFile("shaders/gemm_rows_q4_0_r1.spv").*;
+        const r2 align(4) = @embedFile("shaders/gemm_rows_q4_0_r2.spv").*;
+        const r3 align(4) = @embedFile("shaders/gemm_rows_q4_0_r3.spv").*;
+        const r4 align(4) = @embedFile("shaders/gemm_rows_q4_0_r4.spv").*;
+        const r5 align(4) = @embedFile("shaders/gemm_rows_q4_0_r5.spv").*;
+        const r6 align(4) = @embedFile("shaders/gemm_rows_q4_0_r6.spv").*;
+        const r7 align(4) = @embedFile("shaders/gemm_rows_q4_0_r7.spv").*;
+        const r8 align(4) = @embedFile("shaders/gemm_rows_q4_0_r8.spv").*;
+    };
+    if (v != .q4_0) return error.InvalidShape;
+    return switch (rows) {
+        1 => &M.r1,
+        2 => &M.r2,
+        3 => &M.r3,
+        4 => &M.r4,
+        5 => &M.r5,
+        6 => &M.r6,
+        7 => &M.r7,
+        8 => &M.r8,
+        else => error.InvalidShape,
+    };
+}
+
+/// Whether a batched decode projection runs on gemm_rows.
+pub fn rowsEligible(v: Variant, M: u32, K: u32) bool {
+    return v == .q4_0 and M % rows_tile_m == 0 and K % 32 == 0 and M > 0 and K > 0;
+}
+
+/// Checks a gemm_rows dispatch of `lim.rows` rows (every row read and written) over
+/// `lim.batches` split parts. Returns the grid.
+pub fn validateRows(v: Variant, p: Push, lim: Limits, a_bytes: u64, act_bytes: u64) Error![3]u32 {
+    if (!rowsEligible(v, p.m, p.k) or lim.rows == 0 or lim.rows > rows_max) return error.InvalidShape;
+    if (p.flags != 0 or p.a_group != 1 or p.k_chunk % 32 != 0 or p.x_base % 4 != 0 or p.x_rs % 4 != 0 or p.x_rs < p.k or p.y_rs < p.m) return error.InvalidShape;
+    const parts = splitCount(p.k, p.k_chunk);
+    if (lim.batches != parts) return error.InvalidShape;
+    try checkA(v, p, 1, p.m, p.k, a_bytes);
+    const x_end = last(p.x_base, lim.rows, p.x_rs) + p.k;
+    const y_end = last(@as(u64, p.y_base) + @as(u64, parts - 1) * p.y_bs, lim.rows, p.y_rs) + p.m;
+    if (x_end * 4 > act_bytes or y_end * 4 > act_bytes) return error.InvalidRange;
+    return .{ p.m / rows_tile_m, 1, parts };
+}
+
 /// Worst-case extents for validation before recording. Sizes are in elements (M, K,
 /// rows); `max_keys` bounds M/K when taken from the io block at run time.
 pub const Limits = struct { rows: u32, batches: u32 = 1, max_keys: u32 = 0 };

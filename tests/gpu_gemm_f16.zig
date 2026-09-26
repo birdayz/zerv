@@ -441,6 +441,108 @@ test "f16 decode v2: every row and split part bitwise equal to gemm_f16n (Q4_0, 
     std.debug.print("gemm_f16d: {d} (shape, rows) cases bitwise equal to gemm_f16n\n", .{cases});
 }
 
+// ---- gemm_rows (block 18e part 4, decode_precision = .split): FP32, shape-fixed order ----
+// Spec gate (docs/specs/concurrent.md, "18e.4 design"): the result for an X row does not
+// depend on the row count or the row's position: every row of every split part equals the
+// 1-row module's result on that X row, bit for bit (rows 1..8, the model's split chunks);
+// plus an FP64 bound on a sample.
+fn checkRows(device: *gpu.Device, M_: u32, K: u32, chunk: u32, seed: u64) !void {
+    const row_bytes: u32 = K / 32 * 18;
+    const parts: u32 = gemm.splitCount(K, chunk);
+    const R = gemm.rows_max;
+    const x_base: u32 = 16;
+    const y_one: u32 = x_base + R * K + 64; // 1-row results: row r at y_one + r * parts * M
+    const y_many: u32 = y_one + R * parts * M_ + 64; // count c: at y_many + (c-1) * R * parts * M
+    const total: u32 = y_many + R * R * parts * M_ + 64;
+    var a = try gpu.Buffer.init(device, @as(u64, M_) * row_bytes + 64, .host);
+    defer a.deinit() catch @panic("a");
+    var act = try gpu.Buffer.init(device, @as(u64, total) * 4, .host);
+    defer act.deinit() catch @panic("act");
+    var io = try gpu.Buffer.init(device, 1024, .host);
+    defer io.deinit() catch @panic("io");
+    var kernels: [gemm.rows_max]gpu.Kernel = undefined;
+    for (&kernels, 1..) |*k, c| k.* = try gpu.Kernel.init(device, try gemm.moduleRows(.q4_0, @intCast(c)), &.{ &a, &act, &io, &act }, @sizeOf(gemm.Push));
+    defer for (&kernels) |*k| k.deinit() catch @panic("k");
+    var cmd = try gpu.Commands.init(device);
+    defer cmd.deinit() catch @panic("cmd");
+    var prng = std.Random.DefaultPrng.init(seed);
+    const random = prng.random();
+    const wa = try a.mapped();
+    @memset(wa, 0);
+    q4Blocks(wa[0 .. M_ * row_bytes], random);
+    const words = std.mem.bytesAsSlice(f32, try act.mapped());
+    @memset(words, 12345.0);
+    for (0..R * K) |i| words[x_base + i] = random.floatNorm(f32);
+    const base: gemm.Push = .{ .a_base = 0, .a_rs = row_bytes, .x_base = x_base, .x_rs = K, .y_base = 0, .y_rs = M_, .y_bs = R * M_, .m = M_, .k = K, .k_chunk = chunk };
+    try cmd.begin();
+    try cmd.barrier(.host, .compute);
+    for (0..R) |r| { // each row alone (1-row module)
+        var p1 = base;
+        p1.x_base = x_base + @as(u32, @intCast(r)) * K;
+        p1.y_base = y_one + @as(u32, @intCast(r)) * parts * M_;
+        p1.y_bs = M_;
+        try cmd.dispatch(&kernels[0], std.mem.asBytes(&p1), try gemm.validateRows(.q4_0, p1, .{ .rows = 1, .batches = parts }, a.size, act.size));
+    }
+    for (1..R + 1) |c| { // rows 0..c-1 together
+        var pc = base;
+        pc.y_base = y_many + @as(u32, @intCast(c - 1)) * R * parts * M_;
+        try cmd.dispatch(&kernels[c - 1], std.mem.asBytes(&pc), try gemm.validateRows(.q4_0, pc, .{ .rows = @intCast(c), .batches = parts }, a.size, act.size));
+    }
+    try cmd.barrier(.compute, .host);
+    try cmd.end();
+    try cmd.run(timeout_ns);
+    const bits = std.mem.bytesAsSlice(u32, std.mem.sliceAsBytes(words));
+    for (1..R + 1) |c| for (0..c) |r| for (0..parts) |z| {
+        const got = bits[y_many + (c - 1) * R * parts * M_ + z * R * M_ + r * M_ ..][0..M_];
+        const want = bits[y_one + r * parts * M_ + z * M_ ..][0..M_];
+        for (got, want, 0..) |g, w_, m| if (g != w_) {
+            std.debug.print("gemm_rows M={d} K={d} chunk={d}: count {d} row {d} part {d} m {d}: 0x{x} != 1-row 0x{x}\n", .{ M_, K, chunk, c, r, z, m, g, w_ });
+            return error.NotBitwiseEqual;
+        };
+    };
+    for (words[total - 64 .. total]) |value| try t.expectEqual(@as(f32, 12345.0), value);
+    // FP64 bound (sum of parts vs exact dot product) on a sample of rows/columns.
+    const wdec = try t.allocator.alloc(f32, K);
+    defer t.allocator.free(wdec);
+    var m: usize = 0;
+    while (m < M_) : (m += 97) {
+        try quant.decode(.q4_0, wa[m * row_bytes ..][0..row_bytes], wdec);
+        for ([_]usize{ 0, R - 1 }) |r| {
+            var sum: f64 = 0;
+            var sumabs: f64 = 0;
+            for (0..K) |k| {
+                const prod = @as(f64, wdec[k]) * @as(f64, words[x_base + r * K + k]);
+                sum += prod;
+                sumabs += @abs(prod);
+            }
+            var got: f64 = 0;
+            for (0..parts) |z| got += @as(f32, @bitCast(bits[y_one + r * parts * M_ + z * M_ + m]));
+            if (!(@abs(got - sum) <= std.math.ldexp(sumabs, -20) + 1e-6)) {
+                std.debug.print("gemm_rows bound: m={d} r={d} got {e} want {e}\n", .{ m, r, got, sum });
+                return error.BoundExceeded;
+            }
+        }
+    }
+}
+
+test "gemm_rows: every row bitwise independent of the row count (Q4_0, 1..8 rows, split parts)" {
+    var device = (try openDevice()) orelse return error.SkipZigTest;
+    defer device.deinit() catch @panic("device");
+    try checkRows(&device, 5120, 17408, gemm.f16nChunk(5120, 17408, 384), 0x18f0); // ffn_down
+    try checkRows(&device, 17408, 5120, gemm.f16nChunk(17408, 5120, 384), 0x18f1); // ffn_gate/up
+    try checkRows(&device, 10240, 5120, gemm.f16nChunk(10240, 5120, 384), 0x18f2); // attn_qkv
+    try checkRows(&device, 6144, 512, 0, 0x18f3); // unsplit
+    // Selection and validation.
+    try t.expect(gemm.rowsEligible(.q4_0, 5120, 5120));
+    try t.expect(!gemm.rowsEligible(.q4_1, 5120, 5120));
+    try t.expect(!gemm.rowsEligible(.q4_0, 5120 + 32, 5120));
+    const ok: gemm.Push = .{ .a_base = 0, .a_rs = 18 * 16, .x_base = 0, .x_rs = 512, .y_base = 1 << 20, .y_rs = M, .m = M, .k = 512 };
+    _ = try gemm.validateRows(.q4_0, ok, .{ .rows = 8 }, 1 << 30, 1 << 30);
+    try t.expectError(error.InvalidShape, gemm.validateRows(.q4_0, ok, .{ .rows = 9 }, 1 << 30, 1 << 30));
+    try t.expectError(error.InvalidShape, gemm.validateRows(.q4_0, ok, .{ .rows = 1, .batches = 2 }, 1 << 30, 1 << 30));
+    try t.expectError(error.InvalidRange, gemm.validateRows(.q4_0, ok, .{ .rows = 8 }, 1 << 30, (1 << 20) * 4));
+}
+
 // ---- gemm_f16m (block 18c.2, --f16-small-tile): 32 x 128 tile ---------------------------
 // Spec gate (docs/specs/concurrent.md, "18c.2 design"): every valid row equals gemm_f16's
 // result bit for bit (Q4_0, Q4_1, Q5_K; one and two 128-row tiles, row tails, K 512..5120);

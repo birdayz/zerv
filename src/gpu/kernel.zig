@@ -6,7 +6,7 @@ const Error = driver.Error;
 const Buffer = @import("buffer.zig").Buffer;
 
 /// Kernels a device may hold at once (bounded child count; docs/specs/gpu-driver.md).
-pub const max_kernels = 192;
+pub const max_kernels = 256;
 
 pub const Kernel = struct {
     device: *Device,
