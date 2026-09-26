@@ -120,7 +120,9 @@ must be 100% hermetic", merge to main only once it all is): Bazel builds and tes
 (ggml, llama.cpp), GPU test runtime (Mesa RADV, Vulkan loader), fixtures regenerated with
 them, harnesses without host programs, llama-server built in the graph, the HIP competitor's
 recipe (byte-identical rebuild), the GPU tests in the container (`tools/hermetic_check.sh
---gpu`, 70/70). Open: merge to main; a matched cold-build comparison.
+--gpu`, 70/70), host-driver GPU tests gating production benchmarks. Merged to main 2026-09-26.
+Open (not a building block): the cold-build comparison (`bench/cold_build.py`), a recheck of
+the llama-server A/B on an idle machine, the Zig caches outside the output base.
 
 - [ ] **18 · concurrent sequences: batched decode for several requests** — parked 2026-09-26
   for block 19.

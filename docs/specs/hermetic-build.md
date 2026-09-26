@@ -1,11 +1,22 @@
 # Hermetic build — specification
 
-Status: **in progress** (branch `bazel`). Done: phases 1–2 (build graph, container proof),
-3a (scripts under the pinned Python), 3b (oracle libraries and reference programs from
-source), 4 (GPU tests on the source-built runtime, also in the container with only `/dev/dri`),
-3 (fixtures regenerated, harnesses without host programs), 5 in part (llama-server built in the
-graph, the HIP competitor built by its recipe byte-identically). Open: merge to main. User requirement 2026-09-26: "everything must be 100%
-hermetic. go hardcore all in on this"; merge to main only once it all is.
+Status: **implemented, merged to main 2026-09-26** (developed on branch `bazel`). Done: phases
+1–2 (build graph, container proof), 3 (scripts under the pinned Python, oracle libraries and
+reference programs from source, fixtures regenerated, harnesses without host programs), 4 (GPU
+tests on the source-built runtime, also in the container with only `/dev/dri`; host-driver GPU
+tests as the production gate), 5 (llama-server built in the graph, the HIP competitor built by
+its recipe byte-identically, vLLM by image digest). Open: the cold-build comparison
+(`bench/cold_build.py`), a recheck of the llama-server A/B on an idle machine (see the report),
+and the Zig compiler caches outside Bazel's control (below). User requirement 2026-09-26:
+"everything must be 100% hermetic. go hardcore all in on this"; merge to main only once it all is.
+
+**Known limitation: Zig compiler caches outside the output base.** rules_zig (`/tmp/zig-cache`,
+`RULES_ZIG_CACHE_PREFIX`) and hermetic_cc_toolchain (`~/.cache/zig`,
+`HERMETIC_CC_TOOLCHAIN_CACHE_PREFIX`) let every Zig and C/C++ compile read and write a shared
+compiler cache that Bazel does not know about (`.bazelrc` mounts `/tmp` into the sandbox for it).
+It is content-addressed memoization of compiler work, not an input (the container proof starts
+with none), but it is state that outlives output bases; a corrupted entry would affect builds
+until removed. Not changed yet.
 
 ## Definition
 

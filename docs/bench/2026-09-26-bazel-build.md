@@ -203,3 +203,9 @@ Median decode tok/s and TTFT per case; ratio = in-graph / host, means of the war
 - Verdict: `//bench:llama-server` replaces the host package as the competitor. A residual
   decode difference below ~1% is not resolved at this sample size; serving claims within 1%
   of llama-server remain undecidable either way.
+- **Caveat (found afterwards):** a game launcher (Battle.net, from 19:55 local) was running
+  throughout these runs, and the game itself may have run during some of them; OBS and a
+  second Bazel build were running later the same evening. The runs alternated between the
+  builds, so a load bias largely cancels, and the final ABBA group was tight (spread < 1.5%),
+  but the machine was not verified idle. The A/B is to be repeated on an idle machine before
+  a speed claim depends on the sub-1% comparison.
