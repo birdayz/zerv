@@ -1,0 +1,16 @@
+load("@rules_python//python:py_binary.bzl", "py_binary")
+
+# The native gemm_f16x kernel's generator and assembler/splicer (docs/specs/prefill.md,
+# "Native gemm_f16x machine code"); //src/model:native_code runs them.
+
+py_binary(
+    name = "gen_f16x",
+    srcs = ["gen_f16x.py"],
+    visibility = ["//src/model:__pkg__"],
+)
+
+py_binary(
+    name = "isa_tool",
+    srcs = ["isa_tool.py"],
+    visibility = ["//src/model:__pkg__"],
+)

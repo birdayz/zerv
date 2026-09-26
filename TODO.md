@@ -115,8 +115,8 @@ uncommitted 18d.2 shared-pool work of a concurrent session (fixed in place, unco
 Process note (2026-09-26, user: all tooling to Bazel only, branch `bazel`): Bazel builds and
 tests everything; `build.zig` is removed and the required checks are `bazel test //...`
 ([report](docs/bench/2026-09-26-bazel-build.md), [commands](docs/development.md)). Open on
-the branch, not a building block: run the GPU targets under Bazel; GLSL shaders and native
-kernels as Bazel actions with pinned compilers; a matched cold-build comparison.
+the branch, not a building block: run the GPU targets under Bazel; hermetic shader tools
+(LunarG SDK) instead of the declared host packages; a matched cold-build comparison.
 
 - [ ] **18 · concurrent sequences: batched decode for several requests** — parked 2026-09-26
   for block 19.

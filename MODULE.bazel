@@ -46,6 +46,26 @@ new_local_repository(
     path = "/usr/share/vulkan/icd.d",
 )
 
+# Shader compiler and validator (development tools, not linked): the host's glslc (shaderc
+# 2026.3) and spirv-val (SPIRV-Tools 1.4.357.0) and the libraries they load, declared as inputs
+# of the SPIR-V actions (bazel/shaders.bzl), so a tool update reruns them;
+# tools/compile_matvec.py also checks the executables' sha256 pins.
+new_local_repository(
+    name = "shader_tools",
+    build_file_content = 'exports_files(["glslc", "spirv-val"], visibility = ["//visibility:public"])',
+    path = "/usr/bin",
+)
+
+new_local_repository(
+    name = "shader_tool_libs",
+    build_file_content = """filegroup(
+    name = "libs",
+    srcs = ["libSPIRV-Tools-opt.so", "libSPIRV-Tools.so", "libglslang.so.16"],
+    visibility = ["//visibility:public"],
+)""",
+    path = "/usr/lib",
+)
+
 # Python: a hermetic interpreter and hash-locked packages (requirements_lock.txt) for the
 # Python tests and tools.
 bazel_dep(name = "rules_python", version = "2.3.4")

@@ -3,12 +3,10 @@
 import argparse
 import json
 from pathlib import Path
-import shutil
-import subprocess
 
-from compile_matvec import PINS, sha
+from compile_matvec import PINS, Batch, sha, tool_args
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel runs it from its runfiles
 KERNELS = {"embed": 1, "norm": 2, "qkprep": 3, "conv": 5, "delta": 6, "swiglu": 7, "zero": 8, "reduce": 9,
            "embed_b": 10, "qk_b": 11, "gate": 13, "conv_b": 14, "delta_b": 15,
            "attn_scores": 16, "attn_pv": 17, "attn_combine": 18, "gnorm_b": 19,
@@ -48,13 +46,9 @@ FLASH_PACKED = {"attn_flash_p": [], "attn_flash_p_kv16": ["-DKV16"]}
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--output-dir", type=Path, required=True)
+    tool_args(p)
     a = p.parse_args()
-    if a.output_dir.exists(): p.error("fresh directory required")
-    for tool, digest in PINS.items():
-        path = shutil.which(tool)
-        if not path or sha(path) != digest: raise ValueError("tool pin mismatch: "+tool)
-    a.output_dir.mkdir(parents=True)
+    batch = Batch(p, a)
     source = ROOT/"src/model/model.comp"
     gemm = ROOT/"src/model/gemm.comp"
     gemm_f16 = ROOT/"src/model/gemm_f16.comp"
@@ -67,69 +61,48 @@ def main():
     # Fused causal prefill attention (block 16a).
     for name, kv16 in (("attn_flash", []), ("attn_flash_kv16", ["-DKV16"])):
         output = a.output_dir/(name+".spv")
-        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute"] + FLASH_DEFINES + kv16 + [str(flash), "-o", str(output)], check=True)
-        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
-        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+        batch.add(name, output, ["--target-env=vulkan1.1", "-O", "-fshader-stage=compute"] + FLASH_DEFINES + kv16 + [str(flash)], dict())
     for name, (fmt, width, payload, mcontig) in list(GEMM.items()) + list(GEMM_WIDE.items()):
         output = a.output_dir/(name+".spv")
         wide = ["-DXW=16"] if name in GEMM_WIDE else []
-        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}",
-                        f"-DPAYLOAD_OFFSET={payload}", f"-DA_MCONTIG={mcontig}"] + wide + [str(gemm), "-o", str(output)], check=True)
-        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
-        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+        batch.add(name, output, ["--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}",
+                        f"-DPAYLOAD_OFFSET={payload}", f"-DA_MCONTIG={mcontig}"] + wide + [str(gemm)], dict())
     for name, (fmt, width) in GEMM_F16.items():
         output = a.output_dir/(name+".spv")
-        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}",
-                        str(gemm_f16), "-o", str(output)], check=True)
-        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
-        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+        batch.add(name, output, ["--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}",
+                        str(gemm_f16)], dict())
     for name, (fmt, width) in GEMM_F16M.items():
         output = a.output_dir/(name+".spv")
-        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}", "-DSMALLM=1",
-                        str(gemm_f16), "-o", str(output)], check=True)
-        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
-        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+        batch.add(name, output, ["--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}", "-DSMALLM=1",
+                        str(gemm_f16)], dict())
     for name, (fmt, width) in GEMM_F16N.items():
         output = a.output_dir/(name+".spv")
-        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}", "-DSMALLN=1",
-                        str(gemm_f16), "-o", str(output)], check=True)
-        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
-        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+        batch.add(name, output, ["--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}", "-DSMALLN=1",
+                        str(gemm_f16)], dict())
     for name, rows in GEMM_ROWS.items():
         output = a.output_dir/(name+".spv")
-        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DROWS={rows}", str(gemm_rows), "-o", str(output)], check=True)
-        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
-        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+        batch.add(name, output, ["--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DROWS={rows}", str(gemm_rows)], dict())
     for name, (fmt, width) in GEMM_F16D.items():
         output = a.output_dir/(name+".spv")
-        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}",
-                        str(gemm_f16d), "-o", str(output)], check=True)
-        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
-        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+        batch.add(name, output, ["--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}",
+                        str(gemm_f16d)], dict())
     for name, (fmt, width) in GEMM_F16X.items():
         output = a.output_dir/(name+".spv")
-        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}",
-                        str(gemm_f16x), "-o", str(output)], check=True)
-        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
-        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+        batch.add(name, output, ["--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}",
+                        str(gemm_f16x)], dict())
     for name, kernel in list(KERNELS.items()) + list(KERNELS_H.items()) + list(KERNELS_KV16.items()) + list(KERNELS_LEGACY.items()):
         output = a.output_dir/(name+".spv")
         f16out = ["-DF16OUT"] if name in KERNELS_H else ["-DKV16"] if name in KERNELS_KV16 else ["-DSTATE_OUT=1"] if name in STATE_OUT else []
-        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DKERNEL={kernel}"] + f16out + [str(source), "-o", str(output)], check=True)
-        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
-        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+        batch.add(name, output, ["--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DKERNEL={kernel}"] + f16out + [str(source)], dict())
     for name, (kernel, extra) in KERNELS_PACKED.items():
         output = a.output_dir/(name+".spv")
-        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DKERNEL={kernel}", "-DPACKED=1"] + extra + [str(source), "-o", str(output)], check=True)
-        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
-        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+        batch.add(name, output, ["--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DKERNEL={kernel}", "-DPACKED=1"] + extra + [str(source)], dict())
     for name, extra in FLASH_PACKED.items():
         output = a.output_dir/(name+".spv")
-        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", "-DPACKED=1"] + FLASH_DEFINES + extra + [str(flash), "-o", str(output)], check=True)
-        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
-        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+        batch.add(name, output, ["--target-env=vulkan1.1", "-O", "-fshader-stage=compute", "-DPACKED=1"] + FLASH_DEFINES + extra + [str(flash)], dict())
+    batch.run(manifest)
     (a.output_dir/"manifest.json").write_text(json.dumps(manifest, indent=2)+"\n")
-    print(json.dumps(manifest, indent=2))
+    if not a.quiet: print(json.dumps(manifest, indent=2))
 
 
 if __name__ == "__main__": main()

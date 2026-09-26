@@ -4,11 +4,12 @@
 (user decision 2026-09-26: "rework ALL tooling to Bazel only", exact caching, conventions of
 `../fdb-go`), with the same checks, and at what cost in check latency?
 
-**Answer.** Yes for the Zig code, the tests and every harness; `build.zig` and `.zig-version`
-are gone (branch `bazel`). Not yet Bazel actions: GLSL shaders and the native RDNA3 kernels
-(still checked-in artifacts with manifests). Latency: the no-change and edit cases are about
-the same as `zig build`; the fully cold build was slower, but that comparison is not matched
-(below).
+**Answer.** Yes: the Zig code, the tests, every harness, the SPIR-V modules and the native
+kernel's code; `build.zig` and `.zig-version` are gone (branch `bazel`). Generated files stay
+committed and Bazel tests that they are exactly what the sources and pinned tools produce
+(section "Generated files"). Only the driver capture of the native kernel (GPU) stays a manual
+tool. Latency: the no-change and edit cases are about the same as `zig build`; the fully cold
+build was slower, but that comparison is not matched (below).
 
 | `bazel test //...` (59 tests: 19 Zig files × Debug/ReleaseFast, 20 Python, `zig fmt`) | time |
 |---|---:|
@@ -80,6 +81,28 @@ for c in "-c fastbuild" "--config=release" "-c fastbuild" "--config=release" "--
    the tree would become packages of `//...`; `.bazelignore` excludes them (and `third_party/`,
    `models/`).
 
+## Generated files
+
+| | before | Bazel |
+|---|---|---|
+| SPIR-V, `src/matvec/shaders` (100 modules) | `tools/compile_matvec.py` by hand, serial, 33.1 s | action `//src/matvec:generated_shaders` (the script, 8 parallel compiles; 3.2 s standalone), test `generated_shaders_test` |
+| SPIR-V, `src/model/shaders` (72 modules) | `tools/compile_model.py` by hand, 16.2 s | `//src/model:generated_shaders` (1.9 s standalone), test |
+| native `gemm_f16x_q4_0` code | `tools/build_native_gemm.py` (GPU, system clang) | `//src/model:native_code`: generator → `zig clang` → splice into the committed binary, test `native_code_test`; the GPU capture stays manual |
+
+- Both compile scripts, run in parallel, reproduce the committed modules and manifests byte
+  for byte (`diff -r`), and so do the Bazel actions (the tests pass). The first Bazel build of
+  both packages took 6.1 s critical path (`--jobs=4`, nice'd).
+- `zig clang -target amdgcn-mesa-mesa3d -mcpu=gfx1100 -c -x assembler` (Zig 0.16.0) produces
+  an object byte-identical to the host's clang 22.1.8 for the committed kernel assembly, so
+  the machine-code step needs no system compiler.
+- Negative controls: a flipped byte in a committed `.spv`, a comment appended to
+  `src/model/gemm.comp` (changes the manifest's source hash) and an edited committed `.s` each
+  fail their test with the file named; `bazel run //src/matvec:update_shaders` restored the
+  flipped module.
+- The shader tools are the host's packages, declared as inputs and sha256-pinned, not
+  hermetic downloads (the LunarG SDK 1.4.357.0 tarball, 330 MB, is the hermetic option; its
+  output identity is untested).
+
 ## Not done / limitations
 
 - The GPU targets (`//tests:gpu`, `//tests:gpu_release_fast`, `//tests:gpu_spills`) build but
@@ -87,5 +110,5 @@ for c in "-c fastbuild" "--config=release" "-c fastbuild" "--config=release" "--
 - No harness was re-run end to end after the migration (each needs the GPU or a reference
   library and minutes to hours); their Bazel build paths and provenance were exercised
   (`tools/zerv_build.py`, `tools/test_profile.py`).
-- Shaders (`tools/compile_*.py`, glslc) and native kernels (`tools/build_native_gemm.py`,
-  clang/LLVM) are not Bazel actions yet.
+- The native kernel's driver capture and bitwise sweep (`tools/build_native_gemm.py`, the C
+  lab against research Vulkan headers in `third_party/`) need the GPU and stay manual.

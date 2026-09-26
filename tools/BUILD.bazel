@@ -1,3 +1,5 @@
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_library.bzl", "py_library")
 load("@rules_zig//zig:defs.bzl", "zig_binary")
 load("//bazel:defs.bzl", "zerv_vk_binary")
 
@@ -13,7 +15,33 @@ zig_binary(
     deps = ["//src:zerv_lib"],
 )
 
-exports_files(glob(["*.py"]), visibility = ["//tests:__pkg__"])
+exports_files(glob(["*.py"], exclude = ["check_generated.py"]), visibility = ["//tests:__pkg__"])
+
+# The generated-files check (bazel/shaders.bzl), used by every package with generated files.
+exports_files(["check_generated.py"], visibility = ["//visibility:public"])
+
+# The SPIR-V compile scripts (bazel/shaders.bzl runs them), each with its GLSL sources.
+py_library(
+    name = "compile_matvec_lib",
+    srcs = ["compile_matvec.py"],
+    imports = ["."],
+    data = ["//src/matvec:glsl"],
+)
+
+py_binary(
+    name = "compile_matvec",
+    srcs = ["compile_matvec.py"],
+    deps = [":compile_matvec_lib"],
+    visibility = ["//src:__subpackages__"],
+)
+
+py_binary(
+    name = "compile_model",
+    srcs = ["compile_model.py"],
+    data = ["//src/model:glsl"],
+    deps = [":compile_matvec_lib"],
+    visibility = ["//src:__subpackages__"],
+)
 
 # Every Python script (//tests:test_build_lists checks how they build).
 filegroup(
