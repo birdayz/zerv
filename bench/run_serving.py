@@ -294,6 +294,9 @@ def main():
     if a.rdna3_build: RDNA3_BUILD = a.rdna3_build.resolve(strict=True)
     out = a.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     if sha(a.model) != MODEL_SHA: raise SystemExit("model mismatch")
+    # The competitors' chat template: the official template, pinned by the chat fixture.
+    if sha(TEMPLATE) != json.loads((ROOT/"tests/fixtures/chat-template.json").read_text())["official_template_sha256"]:
+        raise SystemExit(f"{TEMPLATE}: not the pinned official template")
     workload = json.loads(a.workload.read_text())
     if a.zerv_binary:
         build = ["reused", str(a.zerv_binary.resolve()), sha(a.zerv_binary)]
