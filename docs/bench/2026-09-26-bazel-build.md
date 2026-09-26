@@ -103,10 +103,21 @@ for c in "-c fastbuild" "--config=release" "-c fastbuild" "--config=release" "--
   hermetic downloads (the LunarG SDK 1.4.357.0 tarball, 330 MB, is the hermetic option; its
   output identity is untested).
 
+## GPU targets
+
+Run once the GPU was idle (VRAM 0.9 GB used, no other GPU process), in Bazel's linux-sandbox
+(the device nodes are reachable; no sandbox flag needed):
+
+| target | result | wall |
+|---|---|---:|
+| `//tests:gpu` (Debug) | 41/41 passed | 169 s incl. build |
+| `//tests:gpu_release_fast` | 41/41 passed | 716 s for both rows (serial: `exclusive`) |
+| `//tests:gpu_spills` | exit 0; 3040 pipelines; 0 FAIL (VGPR spills in LDS), 0 WARN (scratch), 45 SGPR-spilling | (above) |
+
+The spill gate compiles every pipeline with the shader cache disabled, most of the 716 s.
+
 ## Not done / limitations
 
-- The GPU targets (`//tests:gpu`, `//tests:gpu_release_fast`, `//tests:gpu_spills`) build but
-  were not run under Bazel yet: the GPU was busy with another session's benchmarks.
 - No harness was re-run end to end after the migration (each needs the GPU or a reference
   library and minutes to hours); their Bazel build paths and provenance were exercised
   (`tools/zerv_build.py`, `tools/test_profile.py`).
