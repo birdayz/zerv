@@ -17,7 +17,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/"tests/reference"), str(ROOT/"tools"), str(ROOT/"bench")]
 import zerv_build  # noqa: E402
 from generate_gpu_matvec import metrics, sha
-from compile_matvec import PINS
 from run_gpu_driver import gpu_snapshot
 
 
@@ -52,11 +51,10 @@ def main():
         with (out/"commands.log").open("a") as f: f.write(json.dumps(cmd)+"\n"+r.stdout+r.stderr)
         r.check_returncode(); return r
     try:
-        for name, digest in PINS.items():
-            if sha(Path(shutil.which(name))) != digest: raise ValueError("tool changed")
+        glslc, spirv_val = zerv_build.shader_tools()
         stream = artifact/"stream.spv"
-        run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", ROOT/"bench/matvec_stream.comp", "-o", stream])
-        run(["spirv-val", "--target-env", "vulkan1.1", stream])
+        run([glslc, "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", ROOT/"bench/matvec_stream.comp", "-o", stream])
+        run([spirv_val, "--target-env", "vulkan1.1", stream])
         run(zerv_build.build_command("zerv-gpu-matvec-bench"))
         native = artifact/"native"; shutil.copy2(zerv_build.path("zerv-gpu-matvec-bench"), native)
         m.update(native_sha256=sha(native), stream_sha256=sha(stream), stream_source_sha256=sha(ROOT/"bench/matvec_stream.comp"),

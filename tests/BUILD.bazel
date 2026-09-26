@@ -171,17 +171,17 @@ zig_test(
         "fixtures/gpu/dispatch.json",
         "fixtures/gpu/matvec.json",
         "fixtures/gpu/timing-abi.json",
-        "@vulkan_loader//:libvulkan.so",
+        "//src/gpu:vulkan",
     ],
-    # Opened at run time by matvec_gpu.zig; the loader is named on the link line.
+    # Opened at run time by matvec_gpu.zig; the Vulkan stub is named on the link line.
     data = [
         "//src/matvec:shaders/f32_small.spv",
-        "@vulkan_loader//:libvulkan.so",
+        "//src/gpu:vulkan",
         # Not opened by path: declared so that a driver change invalidates the results.
         "@vulkan_driver//:libvulkan_radeon.so",
         "@vulkan_icd//:radeon_icd.json",
     ],
-    linkopts = ["$(location @vulkan_loader//:libvulkan.so)"],
+    linkopts = ["$(location //src/gpu:vulkan)"],
     zigopts = ["-lc"],
     deps = ["//src:zerv_lib", "//src/gpu", "//src/matvec"],
     size = "large",
@@ -470,6 +470,24 @@ py_test(
     name = "test_build_lists",
     srcs = ["test_build_lists.py"],
     data = ["BUILD.bazel", ":zig_srcs", "//bench:py_srcs", "//tools:py_srcs"] + [
+        "//:.bazelrc",
+        "//:BUILD.bazel",
+        "//:MODULE.bazel",
+        "//bazel:BUILD.bazel",
+        "//bazel:defs.bzl",
+        "//bazel:native.bzl",
+        "//bazel:shaders.bzl",
+        "//bazel/third_party:BUILD.bazel",
+        "//bazel/third_party:glslang.BUILD",
+        "//bazel/third_party:shaderc.BUILD",
+        "//bazel/third_party:vulkan_headers.BUILD",
+        "//bench:BUILD.bazel",
+        "//bench/isa_lab:BUILD.bazel",
+        "//docs:BUILD.bazel",
+        "//src:BUILD.bazel",
+        "//tests/support:BUILD.bazel",
+        "//tools:BUILD.bazel",
+    ] + [
         "//src/artifact:BUILD.bazel",
         "//src/artifact:zig_srcs",
         "//src/chat:BUILD.bazel",
@@ -491,4 +509,40 @@ py_test(
         "//src/tokenizer:BUILD.bazel",
         "//src/tokenizer:zig_srcs",
     ],
+)
+
+# Run-time linkage of every executable: system interfaces only, no run path (hermetic-build.md).
+EXECUTABLES = [
+        "//src:zerv",
+        "//tools:zerv-model-capture",
+        "//tools:zerv-inspect",
+        ":gpu",
+        "//bench:zerv-gpu-driver-bench",
+        "//bench:zerv-gpu-matvec-bench",
+        "//bench:zerv-gemm-bench",
+        "//bench:zerv-decode-f16-bench",
+        "//bench:zerv-matvec-rows-bench",
+        "//bench:zerv-model-profile",
+        "//bench:zerv-prefix-check",
+        "//bench:zerv-kv-quality",
+        "//bench:zerv-spec-check",
+        "//bench:zerv-batch-check",
+        "//bench:zerv-mtp-check",
+        "//bench:zerv-kernel-chain",
+        "//bench:zerv-coopmat-probe",
+        "//bench:zerv-quant-bench",
+        "//bench:zerv-tokenizer-bench",
+        "//bench:zerv-split-bench",
+        "//bench:zerv-nfc-bench",
+        "//bench:zerv-sampler-bench",
+        "//bench:zerv-chat-bench",
+        "//bench:zerv-gguf-bench",
+        "//bench:zerv-model-quant-bench",
+]
+
+py_test(
+    name = "test_linkage",
+    srcs = ["test_linkage.py"],
+    args = ["$(rootpaths %s)" % label for label in EXECUTABLES],
+    data = EXECUTABLES,
 )

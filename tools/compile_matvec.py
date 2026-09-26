@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Rebuild owned Vulkan1.1 matvec modules with pinned offline tools; never runtime code."""
+"""Rebuild owned Vulkan1.1 matvec modules with pinned offline tools; never runtime code.
+
+The tools are glslc and spirv-val built from source by Bazel (MODULE.bazel):
+`bazel run //tools:compile_matvec -- --output-dir DIR` (the build itself runs this script as
+//src/matvec:generated_shaders)."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 
 ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel runs it from its runfiles
-PINS = {"glslc": "4a4743cde357af0949cdbc07668802297327e993e548f80f4e2ee67ba9b6c74d",
-        "spirv-val": "02fae2475ba0f3cb4987aca3c9eb938e8543cf269244bfcb856d8e0c252c753b"}
 MAX_ROWS = 5  # matvec.max_rows
 # Per exact row count: (GROUP weight rows per workgroup = matvec.rows_groups, CB blocks per
 # chunk); re-tuned for FMA accumulation in docs/bench/2026-09-24-fma-matvec.md (interleaved
@@ -38,25 +39,33 @@ def sha(path): return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def tool_args(p):
-    """The shader tool options shared with compile_model.py (Bazel passes its declared tools)."""
+    """The shader tool options shared with compile_model.py. The tools are always given (Bazel
+    passes its source-built ones): a host glslc is never picked up from PATH."""
     p.add_argument("--output-dir", type=Path, required=True, help="fresh or empty directory")
-    p.add_argument("--glslc", default="glslc", help="glslc executable (default: from PATH)")
-    p.add_argument("--spirv-val", default="spirv-val", help="spirv-val executable (default: from PATH)")
+    p.add_argument("--glslc", type=Path, required=True, help="glslc executable (@shaderc//:glslc)")
+    p.add_argument("--spirv-val", type=Path, required=True, help="spirv-val executable (@spirv_tools//:spirv-val)")
     p.add_argument("--jobs", type=int, default=os.cpu_count(), help="parallel compiles")
     p.add_argument("--quiet", action="store_true", help="do not print the manifest")
 
 
 class Batch:
-    """Pinned glslc + spirv-val runs, executed in parallel; manifest entries in the order added
-    (the output is independent of --jobs)."""
+    """glslc + spirv-val runs, executed in parallel; manifest entries in the order added (the
+    output is independent of --jobs)."""
 
     def __init__(self, p, a):
+        # `bazel run` starts in the runfiles; a relative output directory means the caller's.
+        a.output_dir = Path(os.environ.get("BUILD_WORKING_DIRECTORY", ".")) / a.output_dir
         if a.output_dir.exists() and any(a.output_dir.iterdir()): p.error("fresh or empty directory required")
-        self.tools = {"glslc": shutil.which(a.glslc), "spirv-val": shutil.which(a.spirv_val)}
-        for tool, digest in PINS.items():
-            if not self.tools[tool] or sha(self.tools[tool]) != digest: raise ValueError("tool pin mismatch: "+tool)
+        self.tools = {"glslc": str(a.glslc.absolute()), "spirv-val": str(a.spirv_val.absolute())}
         a.output_dir.mkdir(parents=True, exist_ok=True)
         self.jobs, self.items = a.jobs, []
+
+    def identity(self):
+        """The tools' version lines (their pinned source revisions; see MODULE.bazel)."""
+        def version(tool):
+            out = subprocess.run([self.tools[tool], "--version"], check=True, capture_output=True, text=True).stdout
+            return [line for line in out.splitlines() if line and not line.startswith(("Target", "Targets", " "))]
+        return {tool: version(tool) for tool in self.tools}
 
     def add(self, module, output, args, meta):
         """glslc ARGS -o OUTPUT, validated; manifest entry MODULE with its hash, size and META."""
@@ -79,7 +88,7 @@ def main():
     tool_args(p)
     a = p.parse_args()
     batch = Batch(p, a)
-    manifest = dict(source_sha256=sha(ROOT/"src/matvec/matvec.comp"), tools=PINS, modules={})
+    manifest = dict(source_sha256=sha(ROOT/"src/matvec/matvec.comp"), tools=batch.identity(), modules={})
     manifest["rows_source_sha256"] = sha(ROOT/"src/matvec/matvec_rows.comp")
     # Two accumulation modes (docs/specs/matvec-push.md): fma (default, top directory) and
     # separate (`separate/`, the pre-FMA arithmetic with its own verify table).

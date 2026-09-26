@@ -14,12 +14,11 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from compile_matvec import PINS, ROWS_CONFIG, sha  # noqa: E402
+from compile_matvec import ROWS_CONFIG, sha  # noqa: E402
 from check_shader_spills import stats as shader_stats  # noqa: E402
 import zerv_build  # noqa: E402
 
@@ -30,14 +29,14 @@ FORMATS = (("f32", 0, 4, 0, 256), ("q4_0", 2, 18, 2, 64), ("q4_1", 3, 20, 4, 64)
 GRID = "1:4,2:2,2:3,2:4,3:2,3:3,4:2"
 
 
-def compile_variant(directory, rows, group, chunk):
+def compile_variant(directory, rows, group, chunk, glslc, spirv_val):
     directory.mkdir(parents=True)
     for name, fmt, width, payload, lanes in FORMATS:
         out = directory/(name+".spv")
-        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}",
+        subprocess.run([glslc, "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={fmt}", f"-DBLOCK_BYTES={width}",
                         f"-DPAYLOAD_OFFSET={payload}", f"-DLANES={lanes}", "-DALIGNED_WORDS=0", f"-DROWS={rows}", f"-DGROUP={group}", f"-DCB={chunk}",
                         str(ROOT/"src/matvec/matvec_rows.comp"), "-o", str(out)], check=True)
-        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(out)], check=True)
+        subprocess.run([spirv_val, "--target-env", "vulkan1.1", str(out)], check=True)
 
 
 def main():
@@ -50,14 +49,12 @@ def main():
     a = p.parse_args()
     out = a.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     work = ROOT/"third_party/matvec-rows-tune"/out.name; work.mkdir(parents=True, exist_ok=False)
-    for tool, digest in PINS.items():
-        path = shutil.which(tool)
-        if not path or sha(path) != digest: raise SystemExit("tool pin mismatch: "+tool)
+    glslc, spirv_val = zerv_build.shader_tools()
     bench = work/"zerv-matvec-rows-bench"; bench.write_bytes(zerv_build.binary("zerv-matvec-rows-bench").read_bytes()); bench.chmod(0o755)
     counts = [int(c) for c in a.counts.split(",")]
     grid = [tuple(int(v) for v in item.split(":")) for item in a.grid.split(",")]
     variants = [(r, g, c) for r in counts for g, c in grid]
-    for r, g, c in variants: compile_variant(work/f"r{r}g{g}c{c}", r, g, c)
+    for r, g, c in variants: compile_variant(work/f"r{r}g{g}c{c}", r, g, c, glslc, spirv_val)
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, bench_sha256=sha(bench), model=str(MODEL),
                     rows_source_sha256=sha(ROOT/"src/matvec/matvec_rows.comp"), shipped_rows_config=ROWS_CONFIG, runs=[])
     raw = (out/"raw.jsonl").open("w")

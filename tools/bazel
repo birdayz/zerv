@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Bazelisk runs this instead of Bazel (BAZEL_REAL = the Bazel of .bazelversion). Hermetic
+# configuration (docs/specs/hermetic-build.md): only this workspace's .bazelrc and its
+# user.bazelrc apply, never ~/.bazelrc or /etc/bazel.bazelrc, whose flags (e.g. -I and -L of
+# host libraries for other projects) would leak into zerv's actions.
+exec "$BAZEL_REAL" --nohome_rc --nosystem_rc "$@"

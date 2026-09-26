@@ -23,6 +23,8 @@ BAZEL = "bazelisk"
 TARGETS = {
     "zerv": "//src:zerv",
     "zig": "//bazel:zig",
+    "glslc": "@shaderc//:glslc",
+    "spirv-val": "@spirv_tools//:spirv-val",
     "zerv-model-capture": "//tools:zerv-model-capture",
     "zerv-inspect": "//tools:zerv-inspect",
     **{name: f"//bench:{name}" for name in [
@@ -77,6 +79,13 @@ def build(*names, config="release"):
 def binary(name, config="release"):
     """One executable, built; its absolute path."""
     return build(name, config=config)[name]
+
+
+def shader_tools():
+    """(glslc, spirv-val): the shader tools built from source (MODULE.bazel), for harnesses
+    that compile experimental variants; never the host's."""
+    tools = build("glslc", "spirv-val", config=None)
+    return str(tools["glslc"]), str(tools["spirv-val"])
 
 
 def test(*labels):

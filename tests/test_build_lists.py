@@ -9,6 +9,9 @@
 - No harness builds with anything but Bazel (tools/zerv_build.py): no `zig build`, zig-out/
   or a Zig outside the toolchain. Exception: bench/rebuild_*_baseline.py rebuild archived
   trees, which carry their own build.zig.
+- The build definitions name no host path (docs/specs/hermetic-build.md): every tool,
+  library and header is an external archive pinned by sha256 or built in the graph. Until
+  phase 4 (Mesa built from source), the GPU tests declare the host's RADV driver.
 """
 import re
 import unittest
@@ -68,6 +71,20 @@ class BuildLists(unittest.TestCase):
                     self.assertNotIn('@import("zerv")', text, f"{path.relative_to(ROOT)}: a package cannot import the umbrella")
                     used = set(re.findall(r'@import\("([a-z_]+)"\)', text)) & set(dirs)
                     self.assertLessEqual(used, deps, f"{path.relative_to(ROOT)} imports undeclared packages {sorted(used - deps)}")
+
+    def test_build_definitions_name_no_host_path(self):
+        files = [ROOT / name for name in ("MODULE.bazel", ".bazelrc")]
+        files += sorted((ROOT / "bazel").rglob("*.bzl")) + sorted((ROOT / "bazel").rglob("*.BUILD"))
+        files += sorted(p for p in ROOT.rglob("BUILD.bazel") if not p.relative_to(ROOT).parts[0].startswith("bazel-"))
+        self.assertGreater(len(files), 25)
+        allowed = {'path = "/usr/lib",': 1, 'path = "/usr/share/vulkan/icd.d",': 1}  # phase 4: vulkan_driver, vulkan_icd
+        for path in files:
+            with self.subTest(file=str(path.relative_to(ROOT))):
+                for line in path.read_text().splitlines():
+                    code = line.split("#", 1)[0].strip()
+                    if path.name == "MODULE.bazel" and code in allowed: continue
+                    if code.startswith("common --disk_cache="): continue  # where results are cached, not an input
+                    self.assertNotRegex(code, r'"/(usr|opt|home|etc|lib|lib64|bin|sbin)\b|~/', f"host path: {line.strip()}")
 
     def test_harnesses_build_with_bazel(self):
         scripts = sorted([*(ROOT / "bench").glob("*.py"), *(ROOT / "tools").glob("*.py")])

@@ -14,3 +14,6 @@ py_binary(
     srcs = ["isa_tool.py"],
     visibility = ["//src/model:__pkg__"],
 )
+
+# Read by //tests:test_build_lists.
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])

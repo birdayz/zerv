@@ -3,6 +3,9 @@ load("@rules_python//python:py_library.bzl", "py_library")
 load("@rules_zig//zig:defs.bzl", "zig_binary")
 load("//bazel:defs.bzl", "zerv_vk_binary")
 
+# Executables are visible to the tests (//tests:test_linkage checks how they link).
+package(default_visibility = ["//tests:__pkg__"])
+
 zerv_vk_binary(
     name = "zerv-model-capture",
     main = "model_capture.zig",
@@ -29,8 +32,29 @@ py_library(
 )
 
 py_binary(
+    name = "vulkan_stub",
+    srcs = ["vulkan_stub.py"],
+    visibility = ["//src/gpu:__pkg__"],
+)
+
+# `bazel run //tools:compile_matvec -- --output-dir DIR` compiles with the source-built tools.
+SHADER_TOOL_ARGS = [
+    "--glslc",
+    "$(rootpath @shaderc//:glslc)",
+    "--spirv-val",
+    "$(rootpath @spirv_tools//:spirv-val)",
+]
+
+SHADER_TOOLS = [
+    "@shaderc//:glslc",
+    "@spirv_tools//:spirv-val",
+]
+
+py_binary(
     name = "compile_matvec",
     srcs = ["compile_matvec.py"],
+    args = SHADER_TOOL_ARGS,
+    data = SHADER_TOOLS,
     deps = [":compile_matvec_lib"],
     visibility = ["//src:__subpackages__"],
 )
@@ -38,7 +62,8 @@ py_binary(
 py_binary(
     name = "compile_model",
     srcs = ["compile_model.py"],
-    data = ["//src/model:glsl"],
+    args = SHADER_TOOL_ARGS,
+    data = ["//src/model:glsl"] + SHADER_TOOLS,
     deps = [":compile_matvec_lib"],
     visibility = ["//src:__subpackages__"],
 )
@@ -56,3 +81,6 @@ filegroup(
     srcs = glob(["*.zig"]),
     visibility = ["//:__pkg__"],
 )
+
+# Read by //tests:test_build_lists.
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])

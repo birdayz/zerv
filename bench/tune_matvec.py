@@ -15,7 +15,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/"tests/reference"), str(ROOT/"tools"), str(ROOT/"bench")]
 import zerv_build  # noqa: E402
 from generate_gpu_matvec import TYPES, metrics, sha
-from compile_matvec import PINS
 from run_gpu_matvec import timings
 from run_gpu_driver import gpu_snapshot
 
@@ -48,13 +47,12 @@ def main():
             rows[fmt] = int(value)
         m["format_rows"] = rows
         if not all(1 <= r <= 32 for r in rows.values()) or a.cpu not in os.sched_getaffinity(0): raise ValueError("bad configuration")
-        for name, digest in PINS.items():
-            if sha(Path(shutil.which(name))) != digest: raise ValueError("compiler/validator changed")
+        glslc, spirv_val = zerv_build.shader_tools()
         source = out/"candidate.comp"; shutil.copyfile(a.source, source)
         for fmt, (code, _, width) in TYPES.items():
             spv = artifact/(fmt+".spv")
-            run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={code}", f"-DBLOCK_BYTES={width}", f"-DPAYLOAD_OFFSET={4 if fmt == 'q4_1' else 2}", *["-D"+d for d in a.define], source, "-o", spv])
-            run(["spirv-val", "--target-env", "vulkan1.1", spv])
+            run([glslc, "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={code}", f"-DBLOCK_BYTES={width}", f"-DPAYLOAD_OFFSET={4 if fmt == 'q4_1' else 2}", *["-D"+d for d in a.define], source, "-o", spv])
+            run([spirv_val, "--target-env", "vulkan1.1", spv])
             m["modules"][fmt] = dict(path=str(spv), sha256=sha(spv))
         run(zerv_build.build_command("zerv-gpu-matvec-bench"))
         native = artifact/"native"; shutil.copy2(zerv_build.path("zerv-gpu-matvec-bench"), native)

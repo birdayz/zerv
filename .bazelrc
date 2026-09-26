@@ -5,6 +5,10 @@ common --enable_platform_specific_config
 # Don't inherit the shell environment into actions: Bazel's fixed defaults.
 build --incompatible_strict_action_env
 
+# Hermetic (docs/specs/hermetic-build.md): never configure the host's C/C++ toolchain; C/C++
+# comes from hermetic_cc_toolchain (MODULE.bazel).
+common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+
 # rules_zig keeps Zig's own compiler cache under /tmp/zig-cache across actions; the sandbox
 # must let it persist (rules_zig README, "Zig Cache").
 build:linux --sandbox_add_mount_pair=/tmp

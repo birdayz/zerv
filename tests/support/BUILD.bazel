@@ -21,3 +21,6 @@ filegroup(
     srcs = glob(["*.zig"]),
     visibility = ["//:__pkg__"],
 )
+
+# Read by //tests:test_build_lists.
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])

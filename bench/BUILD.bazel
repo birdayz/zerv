@@ -1,6 +1,9 @@
 load("@rules_zig//zig:defs.bzl", "zig_binary")
 load("//bazel:defs.bzl", "zerv_vk_binary")
 
+# Executables are visible to the tests (//tests:test_linkage checks how they link).
+package(default_visibility = ["//tests:__pkg__"])
+
 # Component benchmarks and model checks. Measure with `bazel build -c opt` (ReleaseFast).
 
 zerv_vk_binary(
@@ -145,3 +148,6 @@ filegroup(
     srcs = glob(["*.zig"]),
     visibility = ["//:__pkg__"],
 )
+
+# Read by //tests:test_build_lists.
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])

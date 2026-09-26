@@ -18,14 +18,14 @@ def _spirv_tree_impl(ctx):
     out = ctx.actions.declare_directory(ctx.label.name)
     args = ctx.actions.args()
     args.add("--output-dir", out.path)
-    args.add("--glslc", ctx.file._glslc)
-    args.add("--spirv-val", ctx.file._spirv_val)
+    args.add("--glslc", ctx.executable._glslc)
+    args.add("--spirv-val", ctx.executable._spirv_val)
     args.add("--jobs", str(_JOBS))
     args.add("--quiet")
     ctx.actions.run(
         executable = ctx.executable.compiler,
         arguments = [args],
-        inputs = [ctx.file._glslc, ctx.file._spirv_val] + ctx.files._tool_libs,
+        tools = [ctx.executable._glslc, ctx.executable._spirv_val],
         outputs = [out],
         mnemonic = "SpirvCompile",
         progress_message = "Compiling the SPIR-V modules of %{label}",
@@ -36,12 +36,12 @@ def _spirv_tree_impl(ctx):
 spirv_tree = rule(
     implementation = _spirv_tree_impl,
     doc = """All modules (and manifest.json) a compile script (tools/compile_*.py) produces, as a
-    directory. The script carries its GLSL sources as data and checks the tools' sha256 pins.""",
+    directory, with glslc and spirv-val built from source (MODULE.bazel). The script carries
+    its GLSL sources as data.""",
     attrs = {
         "compiler": attr.label(executable = True, cfg = "exec", mandatory = True, doc = "The compile script (py_binary)."),
-        "_glslc": attr.label(default = "@shader_tools//:glslc", allow_single_file = True),
-        "_spirv_val": attr.label(default = "@shader_tools//:spirv-val", allow_single_file = True),
-        "_tool_libs": attr.label(default = "@shader_tool_libs//:libs"),
+        "_glslc": attr.label(default = "@shaderc//:glslc", executable = True, cfg = "exec"),
+        "_spirv_val": attr.label(default = "@spirv_tools//:spirv-val", executable = True, cfg = "exec"),
     },
 )
 

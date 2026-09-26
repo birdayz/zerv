@@ -2,6 +2,16 @@ load("//bazel:defs.bzl", "zig_fmt_test")
 
 exports_files(["requirements_lock.txt"])
 
+# The build definitions, read by //tests:test_build_lists.
+exports_files(
+    [
+        ".bazelrc",
+        "BUILD.bazel",
+        "MODULE.bazel",
+    ],
+    visibility = ["//tests:__pkg__"],
+)
+
 # `zig fmt --check` over every Zig source (one of the required checks).
 zig_fmt_test(
     name = "zig_fmt",

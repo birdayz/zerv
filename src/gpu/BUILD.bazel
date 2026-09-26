@@ -1,9 +1,32 @@
-load("@rules_zig//zig:defs.bzl", "zig_library")
+load("@rules_zig//zig:defs.bzl", "zig_library", "zig_shared_library")
 
 zig_library(
     name = "gpu",
     main = "root.zig",
     srcs = glob(["*.zig"], exclude = ["root.zig"]),
+    visibility = ["//visibility:public"],
+)
+
+# Link-time stand-in for the Vulkan loader: every core Vulkan command of the registry, in a
+# shared library named libvulkan.so.1 (tools/vulkan_stub.py). Executables link it instead of
+# the host's loader; at run time the dynamic linker loads the real libvulkan.so.1.
+genrule(
+    name = "vulkan_stub_zig",
+    srcs = ["@vulkan_headers//:registry/vk.xml"],
+    outs = ["vulkan_stub.zig"],
+    cmd = "$(location //tools:vulkan_stub) $< $@",
+    tools = ["//tools:vulkan_stub"],
+)
+
+zig_shared_library(
+    name = "vulkan",
+    main = ":vulkan_stub_zig",
+    # Output file and SONAME libvulkan.so.1; only the stub symbols (no sanitizer runtime).
+    shared_lib_name = "libvulkan.so.1",
+    zigopts = [
+        "-fno-ubsan-rt",
+        "-fstrip",
+    ],
     visibility = ["//visibility:public"],
 )
 

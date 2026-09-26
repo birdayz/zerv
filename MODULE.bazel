@@ -19,16 +19,7 @@ register_toolchains("@rules_zig//zig/target:all")
 
 register_toolchains("@zig_toolchains//:all")
 
-# The Vulkan loader is a system interface (docs/development.md: "OS/GPU driver interfaces are
-# the infrastructure boundary"): taken from the host, declared as an input so a loader change
-# invalidates what links it.
 new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
-
-new_local_repository(
-    name = "vulkan_loader",
-    build_file_content = 'exports_files(["libvulkan.so"], visibility = ["//visibility:public"])',
-    path = "/usr/lib",
-)
 
 # The Vulkan driver the GPU tests run on: RADV, which compiles our SPIR-V (ACO), and the ICD
 # manifest that selects it. Inputs of the GPU tests, so a driver update re-runs them instead of
@@ -46,24 +37,64 @@ new_local_repository(
     path = "/usr/share/vulkan/icd.d",
 )
 
-# Shader compiler and validator (development tools, not linked): the host's glslc (shaderc
-# 2026.3) and spirv-val (SPIRV-Tools 1.4.357.0) and the libraries they load, declared as inputs
-# of the SPIR-V actions (bazel/shaders.bzl), so a tool update reruns them;
-# tools/compile_matvec.py also checks the executables' sha256 pins.
-new_local_repository(
-    name = "shader_tools",
-    build_file_content = 'exports_files(["glslc", "spirv-val"], visibility = ["//visibility:public"])',
-    path = "/usr/bin",
+# C/C++, for development tools only (docs/specs/hermetic-build.md): clang from a pinned Zig
+# SDK with its bundled libc/libc++ headers. The host's C/C++ toolchain is never configured
+# (.bazelrc: BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN). Nothing zerv ships links C/C++.
+bazel_dep(name = "rules_cc", version = "0.2.25")
+bazel_dep(name = "hermetic_cc_toolchain", version = "4.3.0")
+
+cc_toolchains = use_extension("@hermetic_cc_toolchain//toolchain:ext.bzl", "toolchains")
+use_repo(cc_toolchains, "zig_sdk")
+
+register_toolchains("@zig_sdk//toolchain:linux_amd64_gnu.2.28")
+
+bazel_dep(name = "bazel_skylib", version = "1.9.2")
+
+# Vulkan API registry and headers (the link stub //src/gpu:vulkan, reference programs), and the
+# shader compiler and validator, built from source at the revisions of the host packages
+# that produced the committed SPIR-V (shaderc 2026.3 with glslang and SPIRV-Tools of
+# vulkan-sdk-1.4.357.0); bazel/shaders.bzl runs them. SPIRV-Headers and SPIRV-Tools carry
+# upstream BUILD files; glslang and shaderc use bazel/third_party/*.BUILD.
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "vulkan_headers",
+    build_file = "//bazel/third_party:vulkan_headers.BUILD",
+    sha256 = "e87dce08116151f6b6d7de6b6faf41498e87e6cf848ff16fa3bd5402190ad4a3",
+    strip_prefix = "Vulkan-Headers-vulkan-sdk-1.4.357.0",
+    urls = ["https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/vulkan-sdk-1.4.357.0.tar.gz"],
 )
 
-new_local_repository(
-    name = "shader_tool_libs",
-    build_file_content = """filegroup(
-    name = "libs",
-    srcs = ["libSPIRV-Tools-opt.so", "libSPIRV-Tools.so", "libglslang.so.16"],
-    visibility = ["//visibility:public"],
-)""",
-    path = "/usr/lib",
+http_archive(
+    name = "spirv_headers",
+    sha256 = "232899f1ad4104fb5bc377b94596c7621575eee62ad9a9e8f929b63a7dd8a7ad",
+    strip_prefix = "SPIRV-Headers-29981f65241605e08b0ede4cfeb999fe3b723c6a",
+    urls = ["https://github.com/KhronosGroup/SPIRV-Headers/archive/29981f65241605e08b0ede4cfeb999fe3b723c6a.tar.gz"],
+)
+
+http_archive(
+    name = "spirv_tools",
+    sha256 = "5cd1a935296c324e7bfa8f0e4c223742ac490d45d6af0577fa3c2cf7e1a7dd22",
+    # Its BUILD.bazel uses the C/C++ rules without load() (removed from Bazel 9's globals).
+    patch_cmds = ["sed -i '1i load(\"@rules_cc//cc:defs.bzl\", \"cc_binary\", \"cc_library\", \"cc_test\")' BUILD.bazel"],
+    strip_prefix = "SPIRV-Tools-9a49b0883b9b635689a85b5647dbfcb223268151",
+    urls = ["https://github.com/KhronosGroup/SPIRV-Tools/archive/9a49b0883b9b635689a85b5647dbfcb223268151.tar.gz"],
+)
+
+http_archive(
+    name = "glslang",
+    build_file = "//bazel/third_party:glslang.BUILD",
+    sha256 = "c167b2474af06cbab93abae8249efaf88fb79a09f30488e2a24d399e4258ce7a",
+    strip_prefix = "glslang-168d452a4f460d24b588fed08477a81c44ee27a1",
+    urls = ["https://github.com/KhronosGroup/glslang/archive/168d452a4f460d24b588fed08477a81c44ee27a1.tar.gz"],
+)
+
+http_archive(
+    name = "shaderc",
+    build_file = "//bazel/third_party:shaderc.BUILD",
+    sha256 = "ee493ccf1b3038b4ef2fe024664c5eb2dc4bcc1f6b05b33e3909de0e19c81024",
+    strip_prefix = "shaderc-2026.3",
+    urls = ["https://github.com/google/shaderc/archive/v2026.3.tar.gz"],
 )
 
 # Python: a hermetic interpreter and hash-locked packages (requirements_lock.txt) for the

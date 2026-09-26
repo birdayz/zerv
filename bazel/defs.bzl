@@ -42,10 +42,13 @@ def zerv_test(name, deps = [], srcs = [], embeds = [], data = [], sha = False, *
         **release_kwargs
     )
 
-_LOADER = "@vulkan_loader//:libvulkan.so"
+VULKAN = "//src/gpu:vulkan"
 
 def zerv_vk_binary(name, main, deps = [], **kwargs):
-    """An executable that links the system Vulkan loader (and libc: Zig's bundled glibc).
+    """An executable that uses Vulkan (and libc: Zig's bundled glibc).
+
+    It links the stub libvulkan.so.1 (//src/gpu:vulkan, hermetic); at run time the dynamic
+    linker loads the real loader by that name.
 
     Args:
       name: target name (the executable's name).
@@ -57,11 +60,12 @@ def zerv_vk_binary(name, main, deps = [], **kwargs):
         name = name,
         main = main,
         deps = deps,
-        # The loader is a link input (extra_srcs) and named on the link line (data enables
-        # $(location)).
-        extra_srcs = [_LOADER],
-        data = [_LOADER],
-        linkopts = ["$(location %s)" % _LOADER],
+        # The stub is a link input (extra_srcs) named on the link line (data enables
+        # $(location)). No run path points at it: tests/test_build_lists.py checks the linked
+        # executables for RPATH/RUNPATH.
+        extra_srcs = [VULKAN],
+        data = [VULKAN],
+        linkopts = ["$(location %s)" % VULKAN],
         zigopts = ["-lc"],
         **kwargs
     )
@@ -105,4 +109,40 @@ zig_exe = rule(
     `bazel run //bazel:zig -- version`.""",
     toolchains = ["@rules_zig//zig:toolchain_type"],
     executable = True,
+)
+
+CcRulesInfo = provider(doc = "C/C++ rule targets in the transitive dependencies.", fields = ["labels"])
+
+def _cc_rules_aspect_impl(target, ctx):
+    own = [str(target.label)] if ctx.rule.kind.startswith("cc_") else []
+    deps = []
+    for attr in ("deps", "srcs", "extra_srcs", "data", "main", "cdeps", "actual"):
+        value = getattr(ctx.rule.attr, attr, None)
+        if value == None:
+            continue
+        for dep in (value if type(value) == "list" else [value]):
+            if type(dep) == "Target" and CcRulesInfo in dep:
+                deps.append(dep[CcRulesInfo].labels)
+    return [CcRulesInfo(labels = depset(own, transitive = deps))]
+
+_cc_rules_aspect = aspect(
+    implementation = _cc_rules_aspect_impl,
+    attr_aspects = ["deps", "srcs", "extra_srcs", "data", "main", "cdeps", "actual"],
+)
+
+def _no_cc_test_impl(ctx):
+    found = sorted(depset(transitive = [t[CcRulesInfo].labels for t in ctx.attr.targets]).to_list())
+    script = ctx.actions.declare_file(ctx.label.name + ".sh")
+    if found:
+        content = "#!/bin/sh\necho 'C/C++ in what zerv ships (AGENTS.md: no C++ dependencies):'\n" + "".join(["echo '  {}'\n".format(l) for l in found]) + "exit 1\n"
+    else:
+        content = "#!/bin/sh\necho 'no C/C++ rule in the dependencies of {}'\n".format(", ".join([str(t.label) for t in ctx.attr.targets]))
+    ctx.actions.write(script, content, is_executable = True)
+    return [DefaultInfo(executable = script)]
+
+no_cc_test = rule(
+    implementation = _no_cc_test_impl,
+    doc = "Fails if a C/C++ rule (cc_*) is among the targets' transitive dependencies.",
+    attrs = {"targets": attr.label_list(aspects = [_cc_rules_aspect], mandatory = True)},
+    test = True,
 )

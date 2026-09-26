@@ -2,6 +2,12 @@
 load("@rules_zig//zig:toolchain.bzl", "zig_target_toolchain")
 load(":defs.bzl", "zig_exe")
 
+# The build definitions, read by //tests:test_build_lists.
+exports_files(
+    glob(["*.bzl"]) + ["BUILD.bazel"],
+    visibility = ["//tests:__pkg__"],
+)
+
 # The hermetic Zig every target compiles with.
 zig_exe(
     name = "zig",

@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from compile_matvec import PINS, Batch, sha, tool_args
+from compile_matvec import Batch, sha, tool_args
 
 ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel runs it from its runfiles
 KERNELS = {"embed": 1, "norm": 2, "qkprep": 3, "conv": 5, "delta": 6, "swiglu": 7, "zero": 8, "reduce": 9,
@@ -57,7 +57,7 @@ def main():
     gemm_rows = ROOT/"src/model/gemm_rows.comp"
     flash = ROOT/"src/model/flash.comp"
     manifest = dict(source_sha256=sha(source), gemm_source_sha256=sha(gemm), gemm_f16_source_sha256=sha(gemm_f16),
-                    gemm_f16x_source_sha256=sha(gemm_f16x), gemm_f16d_source_sha256=sha(gemm_f16d), gemm_rows_source_sha256=sha(gemm_rows), flash_source_sha256=sha(flash), tools=PINS, modules={})
+                    gemm_f16x_source_sha256=sha(gemm_f16x), gemm_f16d_source_sha256=sha(gemm_f16d), gemm_rows_source_sha256=sha(gemm_rows), flash_source_sha256=sha(flash), tools=batch.identity(), modules={})
     # Fused causal prefill attention (block 16a).
     for name, kv16 in (("attn_flash", []), ("attn_flash_kv16", ["-DKV16"])):
         output = a.output_dir/(name+".spv")
