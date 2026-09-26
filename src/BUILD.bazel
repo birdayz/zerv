@@ -1,0 +1,38 @@
+load("@rules_zig//zig:defs.bzl", "zig_library")
+load("//bazel:defs.bzl", "zerv_vk_binary")
+
+# The `zerv` umbrella: every package, for executables that use several (the server,
+# benchmarks, tools, GPU tests). Packages never import it.
+zig_library(
+    name = "zerv",
+    main = "root.zig",
+    deps = [
+        "//src/quant",
+        "//src/gpu",
+        "//src/artifact",
+        "//src/text",
+        "//src/chat",
+        "//src/matvec",
+        "//src/tokenizer",
+        "//src/model",
+        "//src/session",
+        "//src/serve",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+
+# The OpenAI Chat Completions v1 server.
+zerv_vk_binary(
+    name = "server",
+    main = "main.zig",
+    deps = [":zerv"],
+    visibility = ["//visibility:public"],
+)
+
+# Every Zig source of this package (the format check, //:zig_fmt).
+filegroup(
+    name = "zig_srcs",
+    srcs = glob(["*.zig"]),
+    visibility = ["//:__pkg__"],
+)

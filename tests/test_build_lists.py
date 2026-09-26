@@ -1,58 +1,70 @@
-"""Every Zig test file runs: it is a unit test binary in build.zig (`unit_tests`), part of
-the GPU aggregate (imported by tests/gpu.zig), or a helper imported by one of those.
-Since the per-file test binaries (docs/development.md, "Tests in parallel") a file missing
-from the list would silently not run."""
+"""The Bazel build declares what the code uses (docs/development.md, "Bazel").
+
+- Every Zig file under tests/ belongs to a target in tests/BUILD.bazel (a test's main or
+  srcs, a helper library), so no test file silently goes unbuilt.
+- Every src/ package is `src/NAME/root.zig` with a `zig_library` named NAME in
+  src/NAME/BUILD.bazel, and a package imports other packages only if its BUILD lists them in
+  `deps`. Zig resolves imports lazily, so an unreferenced import of an undeclared package
+  compiles; this check does not depend on that.
+"""
 import re
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-TESTS = ROOT / "tests"
+ROOT = Path(__file__).parents[1]
 
 
-def imports(path):
-    return set(re.findall(r'@import\("([a-z0-9_]+)\.zig"\)', path.read_text()))
+def calls(build_text, rule):
+    """(name, body) of every `rule(...)` call in a BUILD file (top-level, balanced parens)."""
+    out = []
+    for m in re.finditer(rf"^{rule}\(", build_text, re.M):
+        depth, i = 0, m.end() - 1
+        while True:
+            depth += {"(": 1, ")": -1}.get(build_text[i], 0)
+            if depth == 0: break
+            i += 1
+        body = build_text[m.end():i]
+        name = re.search(r'name = "([^"]+)"', body)
+        out.append((name.group(1) if name else "", body))
+    return out
+
+
+def strings(body, attr):
+    m = re.search(rf"\b{attr} = \[(.*?)\]", body, re.S)
+    return re.findall(r'"([^"]+)"', m.group(1)) if m else []
 
 
 class BuildLists(unittest.TestCase):
-    def test_every_test_file_runs(self):
-        build = (ROOT / "build.zig").read_text()
-        block = re.search(r"const unit_tests = \[_\]UnitTest\{(.*?)\n\};", build, re.S)
-        self.assertIsNotNone(block, "unit_tests list not found in build.zig")
-        unit = set(re.findall(r'\.name = "([a-z0-9_]+)"', block.group(1)))
-        for name in unit:
-            self.assertTrue((TESTS / f"{name}.zig").is_file(), f"build.zig lists missing tests/{name}.zig")
-        # Reachable: the unit roots, the GPU root, and everything they import (transitively).
-        reached, todo = set(), list(unit | {"gpu"})
-        while todo:
-            name = todo.pop()
-            if name in reached: continue
-            reached.add(name)
-            todo.extend(imports(TESTS / f"{name}.zig"))
-        for path in sorted(TESTS.glob("*.zig")):
+    def test_every_test_zig_file_is_built(self):
+        build = (ROOT / "tests/BUILD.bazel").read_text()
+        used = set()
+        for rule in ("zerv_test", "zig_test", "zig_library"):
+            for name, body in calls(build, rule):
+                main = re.search(r'main = "([^"]+)"', body)
+                used.add(main.group(1) if main else f"{name}.zig")
+                used.update(strings(body, "srcs"))
+                if rule == "zerv_test" and re.search(r"sha = True", body):
+                    used.add("fast_sha256.zig")
+        for path in sorted((ROOT / "tests").glob("*.zig")):
             with self.subTest(file=path.name):
-                self.assertIn(path.stem, reached, f"{path.name} is neither a unit test in build.zig nor imported by one or by tests/gpu.zig")
-        # GPU files stay out of the CPU unit list (they need the device, and run serially).
-        self.assertFalse(unit & (imports(TESTS / "gpu.zig") | {"gpu"}), "a GPU test file is in the CPU unit list")
+                self.assertIn(path.name, used, f"tests/{path.name} is not built by any target in tests/BUILD.bazel")
 
-    def test_packages_are_directories_with_declared_imports(self):
-        """Every src/ package is `src/NAME/root.zig`, listed in build.zig `packages`; a package
-        imports other packages only by module name, and only those it declares."""
-        build = (ROOT / "build.zig").read_text()
-        block = re.search(r"const packages = \[_\]Package\{(.*?)\n\};", build, re.S)
-        self.assertIsNotNone(block)
-        declared = {m.group(1): set(re.findall(r'"([a-z0-9_]+)"', m.group(2)))
-                    for m in re.finditer(r'\.name = "([a-z0-9_]+)", \.deps = &\.\{([^}]*)\}', block.group(1))}
-        dirs = {p.parent.name for p in (ROOT / "src").glob("*/root.zig")}
-        self.assertEqual(dirs, set(declared), "src/ package directories and build.zig `packages` differ")
-        for name, deps in declared.items():
-            for path in (ROOT / "src" / name).rglob("*.zig"):
-                text = path.read_text()
-                with self.subTest(file=str(path.relative_to(ROOT))):
-                    self.assertNotIn('@import("../', text, "cross-package relative import: import the package module")
-                    self.assertNotIn('@import("zerv")', text, "a package cannot import the umbrella")
-                    used = set(re.findall(r'@import\("([a-z_]+)"\)', text)) & set(declared)
-                    self.assertLessEqual(used, deps, f"imports undeclared packages {sorted(used - deps)}")
+    def test_packages_import_only_declared_packages(self):
+        dirs = sorted(p.parent.name for p in (ROOT / "src").glob("*/root.zig"))
+        self.assertTrue(dirs)
+        for name in dirs:
+            build = ROOT / "src" / name / "BUILD.bazel"
+            with self.subTest(package=name):
+                self.assertTrue(build.is_file(), f"src/{name} has no BUILD.bazel")
+                libs = {n: b for n, b in calls(build.read_text(), "zig_library")}
+                self.assertIn(name, libs, f"src/{name}/BUILD.bazel has no zig_library named {name}")
+                deps = {d.removeprefix("//src/") for d in strings(libs[name], "deps")}
+                for path in (ROOT / "src" / name).rglob("*.zig"):
+                    text = path.read_text()
+                    self.assertNotIn('@import("../', text, f"{path.relative_to(ROOT)}: cross-package relative import")
+                    self.assertNotIn('@import("zerv")', text, f"{path.relative_to(ROOT)}: a package cannot import the umbrella")
+                    used = set(re.findall(r'@import\("([a-z_]+)"\)', text)) & set(dirs)
+                    self.assertLessEqual(used, deps, f"{path.relative_to(ROOT)} imports undeclared packages {sorted(used - deps)}")
 
 
 if __name__ == "__main__":

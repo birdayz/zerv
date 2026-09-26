@@ -1,0 +1,29 @@
+load("@rules_zig//zig:defs.bzl", "zig_library")
+
+zig_library(
+    name = "matvec",
+    main = "root.zig",
+    extra_srcs = glob(["shaders/**/*.spv"]),
+    deps = ["//src/gpu"],
+    visibility = ["//visibility:public"],
+)
+
+# Read at run time by the GPU tests (tests/matvec_gpu.zig).
+exports_files(["shaders/f32_small.spv"], visibility = ["//tests:__pkg__"])
+
+exports_files(glob(["*.comp"]), visibility = ["//tests:__pkg__"])
+
+filegroup(
+    name = "shaders",
+    srcs = glob(["shaders/**"]),
+    visibility = ["//tests:__pkg__"],
+)
+
+# Every Zig source of this package (the format check, //:zig_fmt).
+filegroup(
+    name = "zig_srcs",
+    srcs = glob(["*.zig"]),
+    visibility = ["//:__pkg__", "//tests:__pkg__"],
+)
+
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])

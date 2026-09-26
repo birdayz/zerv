@@ -1,0 +1,28 @@
+load("@rules_zig//zig:defs.bzl", "zig_library")
+
+zig_library(
+    name = "model",
+    main = "root.zig",
+    srcs = glob(["*.zig"], exclude = ["root.zig"]),
+    extra_srcs = glob(["shaders/*.spv", "native/*.bin", "native/*.global", "native/*.key"]),
+    deps = ["//src/artifact", "//src/gpu", "//src/matvec"],
+    visibility = ["//visibility:public"],
+)
+
+# Shader sources and the compiled-module manifest (tests/test_model.py checks their hashes).
+exports_files(glob(["*.comp", "shaders/manifest.json"]), visibility = ["//tests:__pkg__"])
+
+filegroup(
+    name = "shaders",
+    srcs = glob(["shaders/*"]),
+    visibility = ["//tests:__pkg__"],
+)
+
+# Every Zig source of this package (the format check, //:zig_fmt).
+filegroup(
+    name = "zig_srcs",
+    srcs = glob(["*.zig"]),
+    visibility = ["//:__pkg__", "//tests:__pkg__"],
+)
+
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])

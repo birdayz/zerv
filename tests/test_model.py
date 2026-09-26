@@ -4,7 +4,7 @@ from pathlib import Path
 import struct
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).parents[1]
 
 
 def sha(data): return hashlib.sha256(data).hexdigest()

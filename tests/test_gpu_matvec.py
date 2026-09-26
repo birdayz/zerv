@@ -6,7 +6,7 @@ import struct
 import sys
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT/"tests/reference"))
 sys.path.insert(0, str(ROOT/"bench"))
 from generate_gpu_matvec import TYPES, canonical, encode_case, metrics

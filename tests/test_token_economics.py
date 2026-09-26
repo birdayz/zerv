@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).parents[1]
 spec = importlib.util.spec_from_file_location("token_economics", ROOT / "tools/token_economics.py")
 econ = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(econ)

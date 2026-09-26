@@ -60,6 +60,52 @@ All four at once, in one parallel build graph (the same checks; 2026-09-26):
 zig build check        # fmt, Debug and ReleaseFast unit tests, Python tests
 ```
 
+### Bazel (branch `bazel`, 2026-09-26; migration in progress)
+
+User decision 2026-09-26: **all tooling moves to Bazel only**, for exact caching of Zig, the
+tests, shaders, kernels and the Python tools; conventions follow `../fdb-go`. Pins:
+Bazel 9.2.0 (`.bazelversion`, latest stable), rules_zig 0.16.0 with Zig 0.16.0 (sha256
+`70e49664…`, the same SDK as `.tools/`), rules_python 2.3.4 with a hermetic Python 3.14,
+numpy 2.5.3 hash-locked (`requirements_lock.txt`).
+
+```sh
+just test        # bazelisk test //...: zig fmt, Zig unit tests Debug + ReleaseFast, Python tests
+just quick       # Debug unit tests and Python tests only (--config=quick)
+just gpu         # bazelisk test //tests:gpu (real device; tagged manual, exclusive)
+just release     # ReleaseFast, native-CPU server, benchmarks and tools (--config=release)
+```
+
+- **One Bazel package per directory, explicit deps.** `src/NAME/BUILD.bazel` is the
+  package's `zig_library` (module `NAME`) with its dependencies and embedded data; `//src:zerv`
+  the umbrella; `//src:server` the server. Tests: `tests/BUILD.bazel`, macro `zerv_test`
+  (`bazel/defs.bzl`) = the test in Debug plus `NAME_release_fast` (a `zig_configure_test`,
+  stripped, tag `release_fast`), each declaring the packages it imports, the files it embeds
+  and the files it opens at run time (`data`). The golden SHA-256 is a ReleaseFast
+  `zig_static_library` (`//tests/support:fast_sha256`). Python tests are `py_test`s declaring
+  every script and file they read (runfiles; the tests no longer `resolve()` their path, which
+  led out of the runfiles into the source tree).
+- **The sandbox found undeclared inputs** the Zig build had missed silently: `matvec` embeds
+  `shaders/separate/*.spv`; `tests/gguf.zig` and `tests/model.zig` open
+  `tests/fixtures/gguf/default.gguf` at run time; `matvec_gpu.zig` opens
+  `src/matvec/shaders/f32_small.spv`. Correction to the `zig build` result caching below: "the
+  CPU unit tests read no files at run time" was wrong for `gguf` and `model`; a change to that
+  fixture would not have invalidated their cached results.
+- **System interface:** the Vulkan loader (`/usr/lib/libvulkan.so`) is a declared input via a
+  `new_local_repository` (`@vulkan_loader`); libc is Zig's bundled glibc (target
+  `x86_64-linux-gnu.2.17`). Every Zig compile uses `-mcpu=native` (as `zig build` did; a cache
+  shared across machines would need an explicit CPU model).
+- **Caching:** action results in a disk cache shared by all worktrees
+  (`~/.cache/bazel/zerv-disk`, 20 GB bound); test results are cached per test binary and its
+  declared inputs. `zig fmt --check` is a test (`//:zig_fmt`) over every package's `zig_srcs`.
+- **Measured** (59 tests: 19 Zig files × 2 modes, 20 Python, fmt; nice'd, another session's GPU
+  benchmark running): after `bazel clean` without disk cache 42.9 s; no-op 0.2 s; an edit in
+  `session` 21.5 s (the ReleaseFast LLVM compiles of its dependents); reverting it 1.0 s (disk
+  cache); `--config=quick` no-op 0.24 s.
+- **Not migrated yet:** the ~30 bench/tools harnesses that run `zig build …` and read
+  `zig-out/bin` (then `build.zig` goes); shaders and native kernels as Bazel actions with
+  hermetic glslc / LLVM (today checked-in `.spv` and code objects with manifests);
+  `tools/test_profile.py` (→ Bazel's own test timing and `--profile`).
+
 ### Tests in parallel (2026-09-26)
 
 Zig 0.16 runs the tests of one binary one at a time ([ziglang/zig#15953](https://github.com/ziglang/zig/issues/15953),

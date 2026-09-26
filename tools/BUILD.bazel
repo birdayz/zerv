@@ -1,0 +1,23 @@
+load("@rules_zig//zig:defs.bzl", "zig_binary")
+load("//bazel:defs.bzl", "zerv_vk_binary")
+
+zerv_vk_binary(
+    name = "zerv-model-capture",
+    main = "model_capture.zig",
+    deps = ["//src:zerv"],
+)
+
+zig_binary(
+    name = "zerv-inspect",
+    main = "inspect.zig",
+    deps = ["//src:zerv"],
+)
+
+exports_files(glob(["*.py"]), visibility = ["//tests:__pkg__"])
+
+# Every Zig source of this package (the format check, //:zig_fmt).
+filegroup(
+    name = "zig_srcs",
+    srcs = glob(["*.zig"]),
+    visibility = ["//:__pkg__"],
+)

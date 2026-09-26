@@ -2,7 +2,7 @@ import importlib.util
 from pathlib import Path
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).parents[1]
 spec = importlib.util.spec_from_file_location("market", ROOT / "tools/model_market_summary.py")
 market = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(market)

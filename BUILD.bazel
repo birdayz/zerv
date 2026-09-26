@@ -1,0 +1,25 @@
+load("//bazel:defs.bzl", "zig_fmt_test")
+
+exports_files(["requirements_lock.txt"])
+
+# `zig fmt --check` over every Zig source (one of the required checks).
+zig_fmt_test(
+    name = "zig_fmt",
+    srcs = ["build.zig"] + [
+        "//bench:zig_srcs",
+        "//src:zig_srcs",
+        "//src/artifact:zig_srcs",
+        "//src/chat:zig_srcs",
+        "//src/gpu:zig_srcs",
+        "//src/matvec:zig_srcs",
+        "//src/model:zig_srcs",
+        "//src/quant:zig_srcs",
+        "//src/serve:zig_srcs",
+        "//src/session:zig_srcs",
+        "//src/text:zig_srcs",
+        "//src/tokenizer:zig_srcs",
+        "//tests:zig_srcs",
+        "//tests/support:zig_srcs",
+        "//tools:zig_srcs",
+    ],
+)

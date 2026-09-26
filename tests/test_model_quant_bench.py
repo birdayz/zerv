@@ -50,7 +50,7 @@ class ModelQuantBenchTests(unittest.TestCase):
             bench.validate(rows, checks, "q5_k")
 
     def test_independent_q6_k_fixture_and_helper_provenance(self):
-        root = Path(__file__).resolve().parents[1]
+        root = Path(__file__).parents[1]
         data = json.loads((root / "tests/fixtures/q6_k.json").read_text())
         for key, name in [("generator_sha256", "generate_q6_k_goldens.py"), ("helper_sha256", "generate_q4_1_goldens.py")]:
             self.assertEqual(data[key], hashlib.sha256((root / "tests/reference" / name).read_bytes()).hexdigest())
@@ -62,7 +62,7 @@ class ModelQuantBenchTests(unittest.TestCase):
         self.assertEqual(len(actual[0]["block_indices"]), 70)
 
     def test_independent_q5_k_fixture_and_helper_provenance(self):
-        root = Path(__file__).resolve().parents[1]
+        root = Path(__file__).parents[1]
         data = json.loads((root / "tests/fixtures/q5_k.json").read_text())
         for key, name in [("generator_sha256", "generate_q5_k_goldens.py"), ("helper_sha256", "generate_q4_1_goldens.py")]:
             self.assertEqual(data[key], hashlib.sha256((root / "tests/reference" / name).read_bytes()).hexdigest())
@@ -70,7 +70,7 @@ class ModelQuantBenchTests(unittest.TestCase):
         self.assertEqual(len([c for c in data["examples"] if "tensor" in c]), 48)
 
     def test_independent_q4_1_fixture_provenance_and_real_shapes(self):
-        root = Path(__file__).resolve().parents[1]
+        root = Path(__file__).parents[1]
         data = json.loads((root / "tests/fixtures/q4_1.json").read_text())
         self.assertEqual(data["generator_sha256"], hashlib.sha256((root / "tests/reference/generate_q4_1_goldens.py").read_bytes()).hexdigest())
         self.assertEqual(data["fingerprint"]["values"], 44695552)

@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).parents[1]
 spec = importlib.util.spec_from_file_location("tokenizer_bench", ROOT / "bench/run_tokenizer.py")
 bench = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bench)

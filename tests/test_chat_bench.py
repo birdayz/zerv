@@ -3,7 +3,7 @@ import importlib.util
 from pathlib import Path
 import unittest
 
-spec = importlib.util.spec_from_file_location("chat_bench", Path(__file__).resolve().parents[1] / "bench/run_chat.py")
+spec = importlib.util.spec_from_file_location("chat_bench", Path(__file__).parents[1] / "bench/run_chat.py")
 bench = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bench)
 

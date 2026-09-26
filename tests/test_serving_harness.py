@@ -7,7 +7,7 @@ import threading
 import time
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]/"bench"))
+sys.path.insert(0, str(Path(__file__).parents[1]/"bench"))
 import run_serving  # noqa: E402
 
 

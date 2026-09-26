@@ -1,0 +1,41 @@
+"""zerv: every build and test step runs through Bazel (docs/development.md, "Bazel")."""
+
+module(name = "zerv", version = "0.0.0")
+
+# Zig: rules_zig fetches the pinned SDK (0.16.0, sha256 70e49664..., the same tarball
+# .tools/ held) and compiles each binary at its use site from the declared modules.
+bazel_dep(name = "rules_zig", version = "0.16.0")
+
+zig = use_extension("@rules_zig//zig:extensions.bzl", "zig")
+zig.toolchain(default = True, zig_version = "0.16.0")
+use_repo(zig, "zig_toolchains")
+
+register_toolchains("@rules_zig//zig/target:all")
+
+register_toolchains("@zig_toolchains//:all")
+
+# The Vulkan loader is a system interface (docs/development.md: "OS/GPU driver interfaces are
+# the infrastructure boundary"): taken from the host, declared as an input so a loader change
+# invalidates what links it.
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+
+new_local_repository(
+    name = "vulkan_loader",
+    build_file_content = 'exports_files(["libvulkan.so"], visibility = ["//visibility:public"])',
+    path = "/usr/lib",
+)
+
+# Python: a hermetic interpreter and hash-locked packages (requirements_lock.txt) for the
+# Python tests and tools.
+bazel_dep(name = "rules_python", version = "2.3.4")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(is_default = True, python_version = "3.14")
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    hub_name = "zerv_pypi",
+    python_version = "3.14",
+    requirements_lock = "//:requirements_lock.txt",
+)
+use_repo(pip, "zerv_pypi")

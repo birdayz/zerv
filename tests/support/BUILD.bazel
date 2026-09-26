@@ -1,0 +1,23 @@
+load("@rules_zig//zig:defs.bzl", "zig_configure", "zig_static_library")
+
+# The golden fingerprints' SHA-256, always ReleaseFast (Debug std SHA-256 is ~13x slower),
+# linked into the tests of either mode as a static library (tests/fast_sha256.zig).
+zig_static_library(
+    name = "fast_sha256_lib",
+    main = "fast_sha256.zig",
+    tags = ["manual"],
+)
+
+zig_configure(
+    name = "fast_sha256",
+    actual = ":fast_sha256_lib",
+    mode = "release_fast",
+    visibility = ["//tests:__pkg__"],
+)
+
+# Every Zig source of this package (the format check, //:zig_fmt).
+filegroup(
+    name = "zig_srcs",
+    srcs = glob(["*.zig"]),
+    visibility = ["//:__pkg__"],
+)

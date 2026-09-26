@@ -256,8 +256,12 @@ pub const ModelBackend = struct {
         try self.m.checkRow(.{ .slot = row.slot, .token = row.token });
     }
     fn check(self: *ModelBackend, e: anyerror) anyerror {
-        if (self.m.device.lost or self.m.device.pending != 0) self.fatal.store(true, .release);
+        self.noteFailure();
         return e;
+    }
+    /// After a failed call: a pending command or a lost device makes the engine unusable.
+    fn noteFailure(self: *ModelBackend) void {
+        if (self.m.device.lost or self.m.device.pending != 0) self.fatal.store(true, .release);
     }
     pub fn reset(self: *ModelBackend, slot: u32) !void {
         self.m.select(slot) catch |e| return self.check(e);
@@ -271,16 +275,14 @@ pub const ModelBackend = struct {
         if (!self.m.options.kv_share) return true;
         const want: u32 = @intCast(@min(tokens, self.m.state_layout.context));
         self.m.ensurePages(slot, want) catch |e| {
-            if (e != error.PoolExhausted) _ = self.check(e);
+            if (e != error.PoolExhausted) self.noteFailure();
             return false;
         };
         return true;
     }
     pub fn release(self: *ModelBackend, slot: u32) void {
         if (!self.m.options.kv_share) return;
-        self.m.releasePages(slot) catch |e| {
-            _ = self.check(e);
-        };
+        self.m.releasePages(slot) catch self.noteFailure();
     }
     /// Whether these prompts' next chunks fit one packed chunk (docs/specs/concurrent.md,
     /// "18d.1 design"): always for one; several need the model's packed commands.
