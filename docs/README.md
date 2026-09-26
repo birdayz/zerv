@@ -292,3 +292,7 @@ finish independent tests and benchmark gates before advancing.
     Hermetic phases 3–5 ([spec](specs/hermetic-build.md)): GPU tests on a source-built Mesa RADV + Vulkan loader;
     fixtures regenerated with source-built oracles (llama.cpp captures byte-identical to the host package's); harnesses
     run no host program; llama-server built in the graph at the host package's speed within noise (A/B).
+95. [KV admission and preemption in other engines](research/2026-09-27-kv-admission-preemption.md) (research, no new
+    measurements): vLLM reserves the prompt and preempts the youngest by recompute; SGLang reserves prompt + a decaying
+    0.7→0.1 share of the output and retracts by recompute; llama.cpp -kvu has no admission and fails every slot (observed
+    exit at 93k). Nobody is bitwise exact across preemption; host swap is the exact option for zerv.
