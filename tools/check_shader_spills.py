@@ -13,7 +13,8 @@ pipeline's statistics:
   which ACO can emit for a single-wave workgroup; check such a pipeline's workgroup size.
 SGPR spills are reported only (ACO keeps them in VGPR lanes, not in LDS).
 Usage: tools/check_shader_spills.py --log FILE -- COMMAND [ARGS...]
-       tools/check_shader_spills.py --from-log FILE"""
+       tools/check_shader_spills.py --from-log FILE
+As a Bazel test (//tests:gpu_spills) the log defaults to the test's undeclared outputs."""
 import argparse
 import os
 from pathlib import Path
@@ -33,7 +34,9 @@ def stats(text):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--log", type=Path, help="where the raw statistics output is written")
+    outputs = os.environ.get("TEST_UNDECLARED_OUTPUTS_DIR")
+    p.add_argument("--log", type=Path, default=Path(outputs)/"shaderstats.txt" if outputs else None,
+                   help="where the raw statistics output is written")
     p.add_argument("--from-log", type=Path, help="parse an existing log instead of running")
     p.add_argument("command", nargs=argparse.REMAINDER)
     a = p.parse_args()

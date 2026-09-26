@@ -1,4 +1,4 @@
-//! Cooperative-matrix device path (explicit hardware test; part of `zig build gpu-test`).
+//! Cooperative-matrix device path (explicit hardware test; part of `bazel test //tests:gpu`).
 //! Checks that the extension and features are enabled, that f16 x f16 -> f32
 //! multiply-add uses the expected layouts, and that a stride-0 column-major load
 //! broadcasts a per-row scale. The inputs make every result exact in f32 and are

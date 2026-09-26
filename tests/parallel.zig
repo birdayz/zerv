@@ -1,6 +1,6 @@
 //! Independent rounds of one test, run concurrently on `std.testing.io` (a threaded Io
 //! with one thread per CPU). The Zig 0.16 test runner runs the tests of a binary one at a
-//! time (ziglang/zig#15953); `zig build test` runs the binaries in parallel
+//! time (ziglang/zig#15953); `bazel test` runs the binaries in parallel
 //! (docs/development.md, "Tests in parallel").
 const std = @import("std");
 const t = std.testing;

@@ -14,7 +14,9 @@ import statistics
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
+sys.path.insert(0, str(ROOT / "tools"))
+import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
 sys.path.insert(0, str(ROOT / "tests/reference"))
 from gguf_oracle import Oracle
 
@@ -58,7 +60,6 @@ def main():
     p.add_argument("--model", type=Path, required=True)
     p.add_argument("--format", choices=PROFILES, default="q4_1")
     p.add_argument("--library", type=Path, default=Path("/usr/lib/libggml-base.so.0.24.0"))
-    p.add_argument("--zig", type=Path, default=ROOT / ".tools/zig-x86_64-linux-0.16.0/zig")
     p.add_argument("--cpu", type=int, default=10)
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()
@@ -85,7 +86,7 @@ def main():
         return result.stdout
 
     try:
-        model, library, zig = [p.resolve(strict=True) for p in (a.model, a.library, a.zig)]
+        model, library = [p.resolve(strict=True) for p in (a.model, a.library)]
         if sys.byteorder != "little" or C.sizeof(C.c_float) != 4:
             raise ValueError("unsupported oracle host")
         manifest["model_sha256"], manifest["library_sha256"] = sha(model), sha(library)
@@ -95,16 +96,13 @@ def main():
         if header.read_bytes() != (ROOT / "third_party/research/2026-09-22/oracle-ggml.h").read_bytes():
             raise ValueError("ggml header differs from pinned source")
         manifest["header_sha256"] = sha(header)
-        manifest["zig_sha256"] = sha(zig)
-        manifest["zig_version"] = run([zig, "version"]).strip()
-        if manifest["zig_version"] != (ROOT / ".zig-version").read_text().strip():
-            raise ValueError("Zig version mismatch")
-        run([zig, "build", "test", "--summary", "all"])
-        run([zig, "build", "test", "model-quant-bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native", "--summary", "all"])
+        manifest.update(zerv_build.provenance())
+        run(zerv_build.test_command())
+        run(zerv_build.build_command("zerv-model-quant-bench"))
         artifacts = ROOT / "third_party/model-quant-bench" / dest.name
         artifacts.mkdir(parents=True, exist_ok=False)
         native = artifacts / "native"
-        shutil.copy2(ROOT / "zig-out/bin/zerv-model-quant-bench", native)
+        shutil.copy2(zerv_build.path("zerv-model-quant-bench"), native)
         manifest["native_sha256"] = sha(native)
         manifest["native_elf"] = run(["readelf", "-d", native])
         if "NEEDED" in manifest["native_elf"]:
@@ -146,7 +144,7 @@ def main():
                 checks[rows] = dict(input_sha256=hashlib.sha256(encoded).hexdigest(), output_sha256=hashlib.sha256(output).hexdigest())
                 del source, output, encoded
         manifest["independent_hashes"] = checks
-        paths = [ROOT / "build.zig", ROOT / ".zig-version"]
+        paths = zerv_build.build_files()
         for directory in ("src", "bench", "tools", "tests"):
             paths += sorted(p for p in (ROOT / directory).rglob("*") if p.is_file() and p.suffix in (".zig", ".py", ".c", ".json", ".bin", ".gguf", ".txt"))
         manifest["sources"] = {str(p.relative_to(ROOT)): sha(p) for p in paths}

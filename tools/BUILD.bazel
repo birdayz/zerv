@@ -15,6 +15,13 @@ zig_binary(
 
 exports_files(glob(["*.py"]), visibility = ["//tests:__pkg__"])
 
+# Every Python script (//tests:test_build_lists checks how they build).
+filegroup(
+    name = "py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tests:__pkg__"],
+)
+
 # Every Zig source of this package (the format check, //:zig_fmt).
 filegroup(
     name = "zig_srcs",

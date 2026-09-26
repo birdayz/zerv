@@ -86,3 +86,23 @@ zig_fmt_test = rule(
     toolchains = ["@rules_zig//zig:toolchain_type"],
     test = True,
 )
+
+def _zig_exe_impl(ctx):
+    info = ctx.toolchains["@rules_zig//zig:toolchain_type"].zigtoolchaininfo
+    out = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.symlink(output = out, target_file = info.zig_exe.file, is_executable = True)
+    return [DefaultInfo(
+        executable = out,
+        files = depset([out]),
+        runfiles = ctx.runfiles(files = [info.zig_exe.file, info.zig_lib.file]),
+    )]
+
+zig_exe = rule(
+    implementation = _zig_exe_impl,
+    doc = """The registered Zig executable itself (a symlink to the toolchain's).
+
+    For benchmark provenance (its version and hash, tools/zerv_build.py) and ad-hoc use:
+    `bazel run //bazel:zig -- version`.""",
+    toolchains = ["@rules_zig//zig:toolchain_type"],
+    executable = True,
+)

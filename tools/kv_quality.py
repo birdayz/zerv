@@ -22,7 +22,7 @@ import sys
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
 MODEL = ROOT/"models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf"
 WORKLOAD = ROOT/"bench/workloads/long-v1.json"
 CAPTURE_SRC = ROOT/"tests/reference/llama_batch_capture.c"

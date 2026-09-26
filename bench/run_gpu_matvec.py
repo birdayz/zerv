@@ -14,7 +14,9 @@ import struct
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
+sys.path.insert(0, str(ROOT / "tools"))
+import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
 sys.path.insert(0, str(ROOT/"tests/reference"))
 from generate_gpu_matvec import TYPES, PINS, MODEL_SHA, Oracle, build_oracle, encode_case, metrics, run_oracle, sha
 from run_gpu_driver import gpu_snapshot
@@ -69,18 +71,16 @@ def main():
         run([sys.executable, ROOT/"tools/compile_matvec.py", "--output-dir", artifact/"shaders"])
         for path in (artifact/"shaders").iterdir():
             if path.read_bytes() != (ROOT/"src/matvec/shaders"/path.name).read_bytes(): raise ValueError("shader replay mismatch")
-        zig = ROOT/".tools/zig-x86_64-linux-0.16.0/zig"
-        manifest["zig_sha256"] = sha(zig)
-        if run([zig, "version"]).stdout.strip() != "0.16.0": raise ValueError("Zig version mismatch")
-        run([zig, "build", "test", "gpu-test", "--summary", "all"])
-        run([zig, "build", "test", "gpu-test", "gpu-matvec-bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native", "--summary", "all"])
-        native = artifact/"native"; shutil.copy2(ROOT/"zig-out/bin/zerv-gpu-matvec-bench", native)
+        manifest.update(zerv_build.provenance())
+        run(zerv_build.test_command(*zerv_build.GPU_TESTS))
+        run(zerv_build.build_command("zerv-gpu-matvec-bench"))
+        native = artifact/"native"; shutil.copy2(zerv_build.path("zerv-gpu-matvec-bench"), native)
         baseline_native = None
         if a.baseline_run:
             baseline_record = a.baseline_run.resolve()/"manifest.json"
             baseline = json.loads(baseline_record.read_text())
             baseline_native = Path(baseline["native_binary"])
-            if baseline["status"] != "passed" or baseline["zig_sha256"] != sha(zig) or sha(baseline_native) != baseline["native_binary_sha256"]:
+            if baseline["status"] != "passed" or baseline["zig_sha256"] != manifest["zig_sha256"] or sha(baseline_native) != baseline["native_binary_sha256"]:
                 raise ValueError("baseline rebuild changed")
             for relative, digest in baseline["sources"].items():
                 if sha(a.baseline_run/"source"/relative) != digest: raise ValueError("baseline source changed")
@@ -95,7 +95,7 @@ def main():
         if not needed or set(needed)-{"libvulkan.so.1", "libc.so.6", "ld-linux-x86-64.so.2"}: raise ValueError("non-system native dependency")
         manifest["vulkaninfo"] = run(["vulkaninfo", "--summary"]).stdout
         manifest["lscpu"] = run(["lscpu"]).stdout
-        sources = [ROOT/"build.zig", ROOT/".zig-version"]
+        sources = zerv_build.build_files()
         for directory in ("src", "bench", "tools", "tests"):
             sources += sorted(p for p in (ROOT/directory).rglob("*") if p.is_file() and p.suffix in (".zig", ".py", ".c", ".json", ".bin", ".gguf", ".txt", ".comp", ".spv"))
         manifest["sources"] = {str(path.relative_to(ROOT)): sha(path) for path in sources}

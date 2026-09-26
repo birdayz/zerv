@@ -1,4 +1,4 @@
-load("@rules_zig//zig:defs.bzl", "zig_library", "zig_test")
+load("@rules_zig//zig:defs.bzl", "zig_configure_test", "zig_library", "zig_test")
 load("@rules_python//python:py_test.bzl", "py_test")
 load("//bazel:defs.bzl", "zerv_test")
 
@@ -147,8 +147,12 @@ zerv_test(
     embeds = ["fixtures/chat-tools.json", "reference/render_tools.py"],
 )
 
-# Real-device Vulkan tests: one serial binary (the device is shared), run only when asked for:
-#   bazel test //tests:gpu
+# Real-device Vulkan tests: one serial binary (the device is shared), run only when asked for,
+# in both modes, and the shader spill gate (docs/bench/2026-09-24-aco-lds-spill.md) over the
+# ReleaseFast run:
+#   bazel test //tests:gpu //tests:gpu_release_fast //tests:gpu_spills
+GPU_TAGS = ["manual", "exclusive", "gpu"]
+
 zig_test(
     name = "gpu",
     main = "gpu.zig",
@@ -173,12 +177,36 @@ zig_test(
     data = [
         "//src/matvec:shaders/f32_small.spv",
         "@vulkan_loader//:libvulkan.so",
+        # Not opened by path: declared so that a driver change invalidates the results.
+        "@vulkan_driver//:libvulkan_radeon.so",
+        "@vulkan_icd//:radeon_icd.json",
     ],
     linkopts = ["$(location @vulkan_loader//:libvulkan.so)"],
     zigopts = ["-lc"],
     deps = ["//src:zerv_lib", "//src/gpu", "//src/matvec"],
     size = "large",
-    tags = ["manual", "exclusive", "gpu"],
+    tags = GPU_TAGS,
+)
+
+zig_configure_test(
+    name = "gpu_release_fast",
+    actual = ":gpu",
+    mode = "release_fast",
+    zigopt = ["-mcpu=native", "-fstrip"],
+    size = "large",
+    tags = GPU_TAGS + ["release_fast"],
+)
+
+# Fails when a pipeline the ReleaseFast GPU tests create spills VGPRs into LDS; the RADV
+# statistics are an undeclared output (bazel-testlogs/tests/gpu_spills/test.outputs).
+py_test(
+    name = "gpu_spills",
+    srcs = ["//tools:check_shader_spills.py"],
+    main = "//tools:check_shader_spills.py",
+    args = ["--", "$(rootpath :gpu_release_fast)"],
+    data = [":gpu_release_fast"],
+    size = "large",
+    tags = GPU_TAGS,
 )
 
 # GPU workload helpers, also modules of the GPU benchmarks (//bench).
@@ -205,6 +233,7 @@ py_test(
     name = "test_chat_bench",
     srcs = ["test_chat_bench.py"],
     data = [
+        "//tools:zerv_build.py",
         "//bench:run_chat.py",
     ],
 )
@@ -213,7 +242,9 @@ py_test(
     name = "test_gguf_bench",
     srcs = ["test_gguf_bench.py"],
     data = [
+        "//tools:zerv_build.py",
         "//bench:run_gguf.py",
+        "reference/gguf_oracle.py",
     ],
 )
 
@@ -221,8 +252,10 @@ py_test(
     name = "test_gpu_driver_bench",
     srcs = ["test_gpu_driver_bench.py"],
     data = [
+        "//tools:zerv_build.py",
         "//bench:run_gpu_driver.py",
         "fixtures/gpu/dispatch.json",
+        "reference/generate_vulkan_goldens.py",
     ],
 )
 
@@ -230,6 +263,7 @@ py_test(
     name = "test_gpu_matvec",
     srcs = ["test_gpu_matvec.py"],
     data = [
+        "//tools:zerv_build.py",
         "//bench:run_gpu_driver.py",
         "//bench:run_gpu_matvec.py",
         "//src/matvec:matvec.comp",
@@ -253,6 +287,7 @@ py_test(
     srcs = ["test_kv_quality.py"],
     data = [
         "//tools:kv_quality.py",
+        "//bench:workloads/long-v1.json",
     ],
     deps = ["@zerv_pypi//numpy"],
 )
@@ -293,6 +328,7 @@ py_test(
     name = "test_model_quant_bench",
     srcs = ["test_model_quant_bench.py"],
     data = [
+        "//tools:zerv_build.py",
         "//bench:run_model_quant.py",
         "fixtures/q4_1.json",
         "fixtures/q5_k.json",
@@ -308,11 +344,13 @@ py_test(
     name = "test_nfc_bench",
     srcs = ["test_nfc_bench.py"],
     data = [
+        "//tools:zerv_build.py",
         "//bench:run_nfc.py",
         "reference/generate_nfc.py",
         "//src/text:data/nfc9.bin",
         "//src/text:data/UNICODE-LICENSE.txt",
         "fixtures/nfc9/manifest.json",
+        "fixtures/nfc9/cases.bin",
     ],
 )
 
@@ -328,6 +366,7 @@ py_test(
     name = "test_quant_bench",
     srcs = ["test_quant_bench.py"],
     data = [
+        "//tools:zerv_build.py",
         "//bench:run_quant.py",
     ],
 )
@@ -353,11 +392,13 @@ py_test(
     name = "test_split_bench",
     srcs = ["test_split_bench.py"],
     data = [
+        "//tools:zerv_build.py",
         "//bench:run_split.py",
         "reference/generate_split_goldens.py",
         "//src/tokenizer:data/classes16.bin",
         "//src/tokenizer:data/UNICODE-LICENSE.txt",
         "fixtures/tokenizer-split/manifest.json",
+        "fixtures/tokenizer-split/cases.bin",
     ],
 )
 
@@ -374,6 +415,7 @@ py_test(
     name = "test_tokenizer_baseline_rebuild",
     srcs = ["test_tokenizer_baseline_rebuild.py"],
     data = [
+        "//tools:zerv_build.py",
         "//bench:rebuild_tokenizer_baseline.py",
         "//bench:run_tokenizer.py",
     ],
@@ -383,10 +425,12 @@ py_test(
     name = "test_tokenizer_bench",
     srcs = ["test_tokenizer_bench.py"],
     data = [
+        "//tools:zerv_build.py",
         "//bench:run_tokenizer.py",
         "reference/generate_tokenizer_goldens.py",
         "reference/tokenizer_pieces.c",
         "fixtures/tokenizer/manifest.json",
+        "fixtures/tokenizer/model.bin",
     ],
 )
 
@@ -394,6 +438,7 @@ py_test(
     name = "test_tokenizer_matched_bench",
     srcs = ["test_tokenizer_matched_bench.py"],
     data = [
+        "//tools:zerv_build.py",
         "//bench:run_tokenizer.py",
         "//bench:run_tokenizer_matched.py",
     ],
@@ -424,7 +469,7 @@ filegroup(
 py_test(
     name = "test_build_lists",
     srcs = ["test_build_lists.py"],
-    data = ["BUILD.bazel", ":zig_srcs"] + [
+    data = ["BUILD.bazel", ":zig_srcs", "//bench:py_srcs", "//tools:py_srcs"] + [
         "//src/artifact:BUILD.bazel",
         "//src/artifact:zig_srcs",
         "//src/chat:BUILD.bazel",

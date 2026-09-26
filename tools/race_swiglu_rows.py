@@ -20,15 +20,15 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
-import os
 import re
 import shutil
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT/"tools"))
+import zerv_build  # noqa: E402
 MODEL = ROOT/"models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf"
-ZIG = ROOT/".tools/zig-x86_64-linux-0.16.0/zig"
 COMPILE = ROOT/"tools/compile_matvec.py"
 MATVEC = ROOT/"src/matvec/root.zig"
 SHADERS = ROOT/"src/matvec/shaders"
@@ -53,7 +53,7 @@ def set_table(group, chunk):
 def build(lab):
     subprocess.run([sys.executable, str(COMPILE), "--output-dir", str(lab)], check=True, stdout=subprocess.DEVNULL)
     for spv in lab.glob("rows*_swiglu_*.spv"): shutil.copy(spv, SHADERS/spv.name)
-    subprocess.run([str(ZIG), "build", "spec-check-build", "-Doptimize=ReleaseFast", "-Dcpu=native"], cwd=ROOT, check=True)
+    return zerv_build.binary("zerv-spec-check")
 
 
 def main():
@@ -73,19 +73,23 @@ def main():
     try:
         for g, c in built:
             set_table(g, c)
-            build(work/f"spv-g{g}c{c}")
-            gate = subprocess.run([sys.executable, str(ROOT/"tools/check_shader_spills.py"), "--log", str(work/f"gpu-test-g{g}c{c}.txt"), "--",
-                                   str(ZIG), "build", "gpu-test", "-Doptimize=ReleaseFast"], cwd=ROOT, capture_output=True, text=True, env=dict(os.environ))
-            validation[f"g{g}c{c}"] = dict(returncode=gate.returncode, summary=gate.stdout.strip().splitlines()[:1])
+            spec_check = build(work/f"spv-g{g}c{c}")
+            # The spill gate over the ReleaseFast GPU tests (a Bazel test: it reruns because
+            # the shaders changed); its test log holds the gate's summary.
+            gate = subprocess.run([zerv_build.BAZEL, "test", "--test_output=summary", "//tests:gpu_spills"], cwd=ROOT,
+                                  capture_output=True, text=True)
+            testlogs = ROOT/"bazel-testlogs/tests/gpu_spills"
+            shutil.copy(testlogs/"test.outputs/shaderstats.txt", work/f"gpu-test-g{g}c{c}.txt")
+            validation[f"g{g}c{c}"] = dict(returncode=gate.returncode, summary=(testlogs/"test.log").read_text().strip().splitlines()[-1:])
             print(f"g{g}c{c} validation:", validation[f"g{g}c{c}"], flush=True)
             if gate.returncode != 0: continue  # 1: VGPR spills in LDS; 2: a GPU test failed
             binary = work/f"zerv-spec-check-g{g}c{c}"
-            shutil.copy(ROOT/"zig-out/bin/zerv-spec-check", binary)
+            shutil.copy(spec_check, binary)
             binaries[(g, c)] = binary
     finally:
         for path, data in saved.items(): path.write_bytes(data)
         for spv, data in saved_spv.items(): spv.write_bytes(data)
-        subprocess.run([str(ZIG), "build", "spec-check-build", "-Doptimize=ReleaseFast", "-Dcpu=native"], cwd=ROOT, check=True)
+        zerv_build.build("zerv-spec-check")
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, model=str(MODEL), passes=a.passes,
                     binaries={f"g{g}c{c}": sha(b) for (g, c), b in binaries.items()}, validation=validation)
     variants = [v for v in variants if v == "off" or v in binaries]

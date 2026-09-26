@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/"tests/reference"), str(ROOT/"tools"), str(ROOT/"bench")]
+import zerv_build  # noqa: E402
 from generate_gpu_matvec import TYPES, metrics, sha
 from compile_matvec import PINS
 from run_gpu_matvec import timings
@@ -55,9 +56,8 @@ def main():
             run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DFORMAT={code}", f"-DBLOCK_BYTES={width}", f"-DPAYLOAD_OFFSET={4 if fmt == 'q4_1' else 2}", *["-D"+d for d in a.define], source, "-o", spv])
             run(["spirv-val", "--target-env", "vulkan1.1", spv])
             m["modules"][fmt] = dict(path=str(spv), sha256=sha(spv))
-        zig = ROOT/".tools/zig-x86_64-linux-0.16.0/zig"
-        run([zig, "build", "gpu-matvec-bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native"])
-        native = artifact/"native"; shutil.copy2(ROOT/"zig-out/bin/zerv-gpu-matvec-bench", native)
+        run(zerv_build.build_command("zerv-gpu-matvec-bench"))
+        native = artifact/"native"; shutil.copy2(zerv_build.path("zerv-gpu-matvec-bench"), native)
         m["native_sha256"] = sha(native)
         os.sched_setaffinity(0, {a.cpu})
         extra = ["--aligned"] if a.aligned else []

@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
 sys.path.insert(0, str(ROOT))
 from bench.run_tokenizer import sha
 
@@ -33,8 +33,13 @@ def main():
     p.add_argument("--run", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True, help="fresh directory beneath third_party")
     p.add_argument("--model", type=Path, required=True)
-    p.add_argument("--zig", type=Path, default=ROOT / ".tools/zig-x86_64-linux-0.16.0/zig")
+    p.add_argument("--zig", type=Path, help="default: the Zig of this repository's Bazel toolchain (//bazel:zig)")
     a = p.parse_args()
+    if a.zig is None:
+        # The archived tree builds with its own build.zig; the toolchain's Zig is the same
+        # executable (sha256 2317bbb9...) as the archived runs used.
+        sys.path.insert(0, str(ROOT / "tools")); import zerv_build  # noqa: E402
+        a.zig = zerv_build.binary("zig", config=None)
     run, dest, zig, model = [x.resolve() for x in (a.run, a.output, a.zig, a.model)]
     if not dest.is_relative_to(ROOT / "third_party"):
         p.error("rebuild artifacts must be under ignored third_party")

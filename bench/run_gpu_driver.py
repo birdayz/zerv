@@ -13,7 +13,9 @@ import statistics
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
+sys.path.insert(0, str(ROOT / "tools"))
+import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
 sys.path.insert(0, str(ROOT / "tests/reference"))
 from generate_vulkan_goldens import PINS
 
@@ -92,7 +94,6 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--cpu", type=int, default=10)
-    p.add_argument("--zig", type=Path, default=ROOT / ".tools/zig-x86_64-linux-0.16.0/zig")
     a = p.parse_args()
     if a.cpu not in os.sched_getaffinity(0):
         p.error("CPU unavailable")
@@ -126,16 +127,13 @@ def main():
             raise ValueError("shader/reference differs from independently validated fixture")
         manifest["fixture_sha256"] = sha(ROOT / "tests/fixtures/gpu/dispatch.json")
         manifest["shader_sha256"] = goldens["shader_sha256"]
-        zig = a.zig.resolve(strict=True)
-        manifest["zig_sha256"], manifest["zig_version"] = sha(zig), run([zig, "version"]).stdout.strip()
-        if manifest["zig_version"] != "0.16.0":
-            raise ValueError("Zig version mismatch")
-        run([zig, "build", "test", "gpu-test", "--summary", "all"])
-        run([zig, "build", "test", "gpu-test", "gpu-driver-bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native", "--summary", "all"])
+        manifest.update(zerv_build.provenance())
+        run(zerv_build.test_command(*zerv_build.GPU_TESTS))
+        run(zerv_build.build_command("zerv-gpu-driver-bench"))
         artifact = ROOT / "third_party/gpu-driver-bench" / dest.name
         artifact.mkdir(parents=True, exist_ok=False)
         native, reference = artifact / "native", artifact / "reference"
-        shutil.copy2(ROOT / "zig-out/bin/zerv-gpu-driver-bench", native)
+        shutil.copy2(zerv_build.path("zerv-gpu-driver-bench"), native)
         cc = Path(shutil.which("cc")).resolve(strict=True)
         manifest["cc_sha256"], manifest["cc_version"] = sha(cc), run([cc, "--version"]).stdout
         run([cc, "-std=c11", "-O3", "-march=native", "-Wall", "-Wextra", "-Werror",
@@ -152,7 +150,7 @@ def main():
         manifest["vulkaninfo"] = run(["vulkaninfo", "--summary"]).stdout
         (dest / "vulkaninfo.txt").write_text(run(["vulkaninfo"]).stdout)
         manifest["lscpu"] = run(["lscpu"]).stdout
-        sources = [ROOT / "build.zig", ROOT / ".zig-version"]
+        sources = zerv_build.build_files()
         for directory in ("src", "bench", "tools", "tests"):
             sources += sorted(p for p in (ROOT / directory).rglob("*") if p.is_file() and p.suffix in (".zig", ".py", ".c", ".json", ".bin", ".gguf", ".txt", ".comp", ".spv"))
         manifest["sources"] = {str(p.relative_to(ROOT)): sha(p) for p in sources}

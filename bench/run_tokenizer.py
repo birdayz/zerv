@@ -14,7 +14,9 @@ import sys
 import time
 from urllib.parse import urlsplit
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
+sys.path.insert(0, str(ROOT / "tools"))
+import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
 FIXTURE = ROOT / "tests/fixtures/tokenizer/manifest.json"
 ITERATIONS = {"encode": 100, "decode": 1000, "http": 20}
 
@@ -152,7 +154,6 @@ def main():
     p.add_argument("--server-record", type=Path)
     p.add_argument("--output", type=Path)
     p.add_argument("--cpu", type=int, default=2)
-    p.add_argument("--zig", type=Path, default=ROOT / ".tools/zig-x86_64-linux-0.16.0/zig")
     p.add_argument("--reference-worker", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--http-worker", action="store_true", help=argparse.SUPPRESS)
     args = p.parse_args()
@@ -165,7 +166,7 @@ def main():
     if args.cpu not in os.sched_getaffinity(0):
         raise ValueError("unavailable CPU")
     args.output.mkdir(parents=True, exist_ok=False)
-    zig, model, config = [p.resolve(strict=True) for p in (args.zig, args.model, args.tokenizer)]
+    model, config = [p.resolve(strict=True) for p in (args.model, args.tokenizer)]
     if sha(config) != corpus["tokenizer_sha256"]:
         raise ValueError("tokenizer identity mismatch")
     for path, key in [(ROOT / "tests/reference/generate_tokenizer_goldens.py", "generator_sha256"),
@@ -185,9 +186,10 @@ def main():
         result.check_returncode()
         return result.stdout
 
-    run([zig, "build", "test", "--summary", "all"])
-    run([zig, "build", "test", "tokenizer-bench-build", "-Doptimize=ReleaseFast", "--summary", "all"])
-    raw = run([ROOT / "zig-out/bin/zerv-tokenizer-bench", model, FIXTURE])
+    run(zerv_build.test_command())
+    run(zerv_build.build_command("zerv-tokenizer-bench"))
+    native = zerv_build.path("zerv-tokenizer-bench")
+    raw = run([native, model, FIXTURE])
     (args.output / "native-validation.json").write_text(raw)
     native_check = json.loads(raw)
     if native_check != dict(cases=len(corpus["cases"]), decode_cases=len(corpus["decode_cases"]), pieces=corpus["raw_piece_count"], raw_pieces_sha256=corpus["raw_pieces_sha256"]):
@@ -203,7 +205,7 @@ def main():
     observations = {}
     for round_id in range(3):
         for engine in (("native", "hf", "http") if round_id % 2 == 0 else ("http", "hf", "native")):
-            cmd = [ROOT / "zig-out/bin/zerv-tokenizer-bench", model, FIXTURE, "--bench"] if engine == "native" else [
+            cmd = [native, model, FIXTURE, "--bench"] if engine == "native" else [
                 sys.executable, Path(__file__).resolve(), "--http-worker" if engine == "http" else "--reference-worker",
                 "--tokenizer", config, "--server", args.server]
             raw = run(cmd)
@@ -215,7 +217,7 @@ def main():
                 observations.setdefault(key, []).append(row["elapsed_ns"] / row["iterations"])
     summary = {key: dict(median_ns=statistics.median(v), min_ns=min(v), max_ns=max(v), stdev_ns=statistics.stdev(v), trials=len(v)) for key, v in observations.items()}
     (args.output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    paths = [ROOT / "build.zig"]
+    paths = zerv_build.build_files()
     for directory in ("src", "bench", "tools", "tests"):
         paths += sorted(p for p in (ROOT / directory).rglob("*") if p.is_file() and p.suffix in (".zig", ".py", ".c", ".json", ".gguf", ".bin", ".txt"))
     for path in paths:
@@ -227,8 +229,8 @@ def main():
         (args.output / ("server-" + name)).write_bytes(source.read_bytes())
     extensions = sorted(Path(packages.__file__).parent.glob("*.so"))
     manifest = dict(host=platform.uname()._asdict(), python=sys.version, packages=run([sys.executable, "-m", "pip", "freeze"]).splitlines(),
-                    hf_extensions={str(p): sha(p) for p in extensions}, zig_version=run([zig, "version"]).strip(), zig_sha256=sha(zig),
-                    native_binary_sha256=sha(ROOT / "zig-out/bin/zerv-tokenizer-bench"), model_sha256=model_hash, model_bytes=model.stat().st_size,
+                    hf_extensions={str(p): sha(p) for p in extensions}, **zerv_build.provenance(),
+                    native_binary_sha256=sha(native), model_sha256=model_hash, model_bytes=model.stat().st_size,
                     tokenizer_sha256=sha(config), fixture_sha256=sha(FIXTURE), cpu=args.cpu, warmups=3, rounds=3, trials=7,
                     iterations=ITERATIONS, commands=commands, sources={str(p.relative_to(ROOT)): sha(p) for p in paths},
                     server=args.server, server_record=str(args.server_record.resolve()),

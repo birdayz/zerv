@@ -11,9 +11,9 @@ server for that pair. Nothing else is supported yet.
 ## Build and run
 
 ```sh
-zig build server -Doptimize=ReleaseFast -Dcpu=native     # Zig 0.16.0, see docs/development.md
-zig-out/bin/zerv --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --prefill-precision f16
-zig-out/bin/zerv --model ... --prefill-precision f16 --parallel 8 --kv-type f16   # 8 users at once
+bazel build --config=release //src:zerv          # Bazel, see docs/development.md
+bazel-bin/src/zerv --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --prefill-precision f16
+bazel-bin/src/zerv --model ... --prefill-precision f16 --parallel 8 --kv-type f16   # 8 users at once
 ```
 
 `zerv` without arguments prints every option. Speed knobs that change kernels or scheduling

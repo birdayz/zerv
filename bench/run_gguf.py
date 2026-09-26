@@ -13,7 +13,9 @@ import subprocess
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
+sys.path.insert(0, str(ROOT / "tools"))
+import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
 sys.path.insert(0, str(ROOT / "tests/reference"))
 from gguf_oracle import Oracle, InitParams
 
@@ -72,7 +74,6 @@ def reference_worker(model, library):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--zig", type=Path, default=ROOT / ".tools/zig-x86_64-linux-0.16.0/zig")
     p.add_argument("--library", type=Path, required=True)
     p.add_argument("--model", type=Path, required=True)
     p.add_argument("--output", type=Path)
@@ -89,7 +90,7 @@ def main():
     cpu = allowed[0] if args.cpu is None else args.cpu
     if cpu not in allowed:
         raise ValueError("CPU not in allowed affinity")
-    model, zig, library = (x.resolve(strict=True) for x in (args.model, args.zig, args.library))
+    model, library = (x.resolve(strict=True) for x in (args.model, args.library))
     commands = []
 
     def run(command):
@@ -101,12 +102,13 @@ def main():
         done.check_returncode()
         return done.stdout
 
-    run([zig, "build", "test"])
-    run([zig, "build", "test", "inspect-build", "gguf-bench-build", "-Doptimize=ReleaseFast"])
+    run(zerv_build.test_command())
+    run(zerv_build.build_command("zerv-inspect", "zerv-gguf-bench"))
+    inspect, bench = zerv_build.path("zerv-inspect"), zerv_build.path("zerv-gguf-bench")
     model_hash = sha(model)
     oracle = Oracle(library)
     reference = oracle.inspect(model)
-    native = json.loads(run([ROOT / "zig-out/bin/zerv-inspect", model]))
+    native = json.loads(run([inspect, model]))
     if native != reference:
         (args.output / "mismatch.json").write_text(json.dumps(dict(native=native, reference=reference), indent=2))
         raise ValueError("native/reference container inspection mismatch")
@@ -116,7 +118,7 @@ def main():
     observations = {"native": [], "reference": []}
     for round_id in range(3):
         for engine in (("native", "reference") if round_id % 2 == 0 else ("reference", "native")):
-            command = [ROOT / "zig-out/bin/zerv-gguf-bench", model] if engine == "native" else [
+            command = [bench, model] if engine == "native" else [
                 sys.executable, Path(__file__).resolve(), "--reference-worker", "--model", model, "--library", library]
             raw = run(command)
             (args.output / f"{round_id}-{engine}.jsonl").write_text(raw)
@@ -127,7 +129,7 @@ def main():
                            stdev_ns=statistics.stdev(values), trials=len(values)) for engine, values in observations.items()}
     summary["native_over_reference"] = summary["native"]["median_ns"] / summary["reference"]["median_ns"]
     (args.output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    sources = [Path("build.zig")]
+    sources = [path.relative_to(ROOT) for path in zerv_build.build_files()]
     for directory in ("src", "bench", "tools", "tests"):
         sources += [path.relative_to(ROOT) for path in (ROOT / directory).rglob("*")
                     if path.is_file() and path.suffix in (".zig", ".py", ".c", ".json", ".gguf", ".bin", ".txt")]
@@ -136,11 +138,11 @@ def main():
         saved.parent.mkdir(parents=True, exist_ok=True)
         saved.write_bytes((ROOT / path).read_bytes())
     manifest = dict(model=dict(path=str(model), size=model.stat().st_size, sha256=model_hash),
-                    oracle=oracle.identity, zig=dict(path=str(zig), sha256=sha(zig), version=run([zig, "version"]).strip()),
+                    oracle=oracle.identity, build=zerv_build.provenance(),
                     host=platform.uname()._asdict(), python=sys.version, allowed_cpus=allowed, effective_cpu=cpu,
                     warmups=3, trials=7, iterations=10, rounds=3, commands=commands,
                     sources={str(path): sha(ROOT / path) for path in sorted(sources)},
-                    binaries={str(path.relative_to(ROOT)): sha(path) for path in [ROOT / "zig-out/bin/zerv-inspect", ROOT / "zig-out/bin/zerv-gguf-bench"]},
+                    binaries={str(path.relative_to(ROOT)): sha(path) for path in [inspect, bench]},
                     caveats=["Warm header/page cache; no weight reads or GPU upload timed.",
                              "Native borrows metadata and validates UTF-8 and complete payload bounds; reference copies metadata.",
                              "Native page_allocator vs reference allocator. Reference ctypes call/getter overhead included."])

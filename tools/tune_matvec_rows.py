@@ -21,6 +21,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from compile_matvec import PINS, ROWS_CONFIG, sha  # noqa: E402
 from check_shader_spills import stats as shader_stats  # noqa: E402
+import zerv_build  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = ROOT/"models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf"
@@ -52,9 +53,7 @@ def main():
     for tool, digest in PINS.items():
         path = shutil.which(tool)
         if not path or sha(path) != digest: raise SystemExit("tool pin mismatch: "+tool)
-    zig = ROOT/".tools/zig-x86_64-linux-0.16.0/zig"
-    subprocess.run([str(zig), "build", "matvec-rows-bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native"], cwd=ROOT, check=True)
-    bench = work/"zerv-matvec-rows-bench"; bench.write_bytes((ROOT/"zig-out/bin/zerv-matvec-rows-bench").read_bytes()); bench.chmod(0o755)
+    bench = work/"zerv-matvec-rows-bench"; bench.write_bytes(zerv_build.binary("zerv-matvec-rows-bench").read_bytes()); bench.chmod(0o755)
     counts = [int(c) for c in a.counts.split(",")]
     grid = [tuple(int(v) for v in item.split(":")) for item in a.grid.split(",")]
     variants = [(r, g, c) for r in counts for g, c in grid]

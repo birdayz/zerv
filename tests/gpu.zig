@@ -1,4 +1,4 @@
-//! Explicit hardware tests: zig build gpu-test, not part of driver-free CPU tests.
+//! Explicit hardware tests: bazel test //tests:gpu, not part of driver-free CPU tests.
 const std = @import("std");
 const gpu = @import("zerv").gpu;
 const workload = @import("gpu_workload.zig");

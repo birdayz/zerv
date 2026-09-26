@@ -22,7 +22,10 @@ def main():
     run, dest = a.run.resolve(), a.output.resolve()
     if not dest.is_relative_to(ROOT/"third_party"): p.error("output must be under third_party")
     saved = json.loads((run/"manifest.json").read_text())
-    zig = ROOT/".tools/zig-x86_64-linux-0.16.0/zig"
+    # The archived tree builds with its own build.zig, using the Zig of this repository's
+    # Bazel toolchain (the same executable, sha256 2317bbb9..., as the archived runs).
+    sys.path.insert(0, str(ROOT/"tools")); import zerv_build  # noqa: E402
+    zig = zerv_build.binary("zig", config=None)
     if saved["status"] != "passed" or sha(zig) != saved["zig_sha256"]: raise ValueError("baseline/compiler mismatch")
     sources = verified_sources(run, saved)
     required = {Path("src/matvec/root.zig"), Path("src/matvec/matvec.comp"), Path("bench/gpu_matvec.zig")}

@@ -15,9 +15,9 @@ test:
 quick:
     bazelisk test --config=quick //...
 
-# Real-device Vulkan tests (needs the GPU to itself).
+# Real-device Vulkan tests in both modes and the shader spill gate (needs the GPU to itself).
 gpu:
-    bazelisk test //tests:gpu
+    bazelisk test //tests:gpu //tests:gpu_release_fast //tests:gpu_spills
 
 # ReleaseFast, native-CPU binaries to measure: the server, benchmarks and tools.
 release:

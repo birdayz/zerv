@@ -6,8 +6,11 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
 PROFILE = r'''
 const std = @import("std");
 pub var io: std.Io = undefined;
@@ -48,10 +51,12 @@ def main():
     if not dest.is_relative_to(ROOT / "third_party"):
         p.error("instrumented research copy must be in third_party")
     dest.mkdir(parents=True, exist_ok=False)
-    for name in ("build.zig", ".zig-version"):
-        shutil.copy2(ROOT / name, dest / name)
+    # A workspace of its own (third_party/ is outside this one's packages, .bazelignore).
     for name in ("src", "bench", "tests", "tools"):
         shutil.copytree(ROOT / name, dest / name, ignore=shutil.ignore_patterns("__pycache__"))
+    for path in zerv_build.build_files():
+        (dest / path.relative_to(ROOT)).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, dest / path.relative_to(ROOT))
     bpe = dest / "src/tokenizer/bpe.zig"
     source = bpe.read_text()
     original_sha = hashlib.sha256(source.encode()).hexdigest()
@@ -82,10 +87,13 @@ def main():
     }
     try stdout.interface.flush();''')
     path.write_text(source)
-    zig = ROOT / ".tools/zig-x86_64-linux-0.16.0/zig"
-    commands = [[str(zig), "build", "tokenizer-bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native"],
-                ["taskset", "-c", str(a.cpu), str(dest / "zig-out/bin/zerv-tokenizer-bench"), str(a.model.resolve()), str(ROOT / "tests/fixtures/tokenizer/manifest.json"), "--bench"]]
-    for i, command in enumerate(commands):
+    build = zerv_build.build_command("zerv-tokenizer-bench")
+    subprocess.run(build, cwd=dest, check=True)
+    bench = zerv_build.path("zerv-tokenizer-bench", root=dest)
+    commands = [build, ["taskset", "-c", str(a.cpu), str(bench), str(a.model.resolve()), str(ROOT / "tests/fixtures/tokenizer/manifest.json"), "--bench"]]
+    # The copy's Bazel server is not needed after its one build.
+    subprocess.run([zerv_build.BAZEL, "shutdown"], cwd=dest, check=True)
+    for i, command in enumerate(commands[1:], 1):
         result = subprocess.run(command, cwd=dest, capture_output=True, text=True)
         (dest / f"{i}.stdout").write_text(result.stdout)
         (dest / f"{i}.stderr").write_text(result.stderr)

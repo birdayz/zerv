@@ -127,17 +127,22 @@
 
 ## Commands and completion
 
-Zig is pinned to **0.16.0** in `.zig-version`. See [docs/development.md](docs/development.md)
-for verified toolchain setup and commands. Currently `zig build` / `zig build test`
-run native component tests; there is no server executable yet.
+Bazel builds and tests everything (`.bazelversion`; Zig **0.16.0** pinned in
+`MODULE.bazel`). See [docs/development.md](docs/development.md) for verified toolchain setup
+and commands. Harnesses build through `tools/zerv_build.py`, never another build tool.
 
-Required checks after native changes:
+Required checks after native changes (`zig fmt --check`, every CPU unit test in Debug and
+ReleaseFast, the Python tests):
 
 ```sh
-zig fmt --check build.zig src bench/*.zig tools/*.zig tests/*.zig
-zig build test
-zig build test -Doptimize=ReleaseFast
-python3 -m unittest discover -s tests -p 'test_*.py'
+bazel test //...
+```
+
+After GPU, shader or kernel changes also run the device tests in both modes and the shader
+spill gate:
+
+```sh
+bazel test //tests:gpu //tests:gpu_release_fast //tests:gpu_spills
 ```
 
 Reference-golden regeneration is separate and explicit; ordinary builds/tests must

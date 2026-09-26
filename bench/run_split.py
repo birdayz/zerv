@@ -12,7 +12,9 @@ import subprocess
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
+sys.path.insert(0, str(ROOT / "tools"))
+import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
 FIXTURE = ROOT / "tests/fixtures/tokenizer-split/manifest.json"
 ITERATIONS = {"ascii": 100, "multilingual": 100, "whitespace": 100}
 
@@ -98,7 +100,6 @@ def reference_worker():
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--zig", type=Path, default=ROOT / ".tools/zig-x86_64-linux-0.16.0/zig")
     p.add_argument("--output", type=Path)
     p.add_argument("--cpu", type=int, default=2)
     p.add_argument("--reference-worker", action="store_true", help=argparse.SUPPRESS)
@@ -112,7 +113,6 @@ def main():
         raise ValueError("unavailable CPU")
     tokenizers, _ = oracle()
     args.output.mkdir(parents=True, exist_ok=False)
-    zig = args.zig.resolve(strict=True)
     corpus = json.loads(FIXTURE.read_text())
     expected = expected_cases(corpus)
     for path, key in [(ROOT / "tests/reference/generate_split_goldens.py", "generator_sha256"),
@@ -131,13 +131,14 @@ def main():
         result.check_returncode()
         return result.stdout
 
-    run([zig, "build", "test", "--summary", "all"])
-    run([zig, "build", "test", "split-bench-build", "-Doptimize=ReleaseFast", "--summary", "all"])
+    run(zerv_build.test_command())
+    run(zerv_build.build_command("zerv-split-bench"))
+    native = zerv_build.path("zerv-split-bench")
     os.sched_setaffinity(0, {args.cpu})
     observations = {name: {"native": [], "hf": []} for name in expected}
     for round_id in range(3):
         for engine in (("native", "hf") if round_id % 2 == 0 else ("hf", "native")):
-            cmd = [ROOT / "zig-out/bin/zerv-split-bench", FIXTURE] if engine == "native" else [
+            cmd = [native, FIXTURE] if engine == "native" else [
                 sys.executable, Path(__file__).resolve(), "--reference-worker"]
             raw = run(cmd)
             (args.output / f"{round_id}-{engine}.jsonl").write_text(raw)
@@ -152,7 +153,7 @@ def main():
         stats["native_over_hf"] = stats["native"]["median_ns"] / stats["hf"]["median_ns"]
         summary[name] = stats
     (args.output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    paths = [ROOT / "build.zig"]
+    paths = zerv_build.build_files()
     for directory in ("src", "bench", "tools", "tests"):
         paths += sorted(path for path in (ROOT / directory).rglob("*")
                         if path.is_file() and path.suffix in (".zig", ".py", ".c", ".json", ".gguf", ".bin", ".txt"))
@@ -166,8 +167,8 @@ def main():
     manifest = dict(host=platform.uname()._asdict(), cpu_model=Path("/proc/cpuinfo").read_text().split("model name\t: ", 1)[1].splitlines()[0],
                     python=sys.version, packages=run([sys.executable, "-m", "pip", "freeze"]).splitlines(),
                     oracle_extensions={str(f): sha(f) for f in extensions},
-                    zig_version=run([zig, "version"]).strip(), zig_sha256=sha(zig),
-                    binary_sha256=sha(ROOT / "zig-out/bin/zerv-split-bench"), fixture_sha256=sha(FIXTURE),
+                    **zerv_build.provenance(),
+                    binary_sha256=sha(native), fixture_sha256=sha(FIXTURE),
                     sources={str(f.relative_to(ROOT)): sha(f) for f in paths}, commands=commands,
                     cpu=args.cpu, warmups=3, rounds=3, trials=7, iterations=ITERATIONS, corpus=expected,
                     caveat="Native validated UTF-8/borrowed slices vs HF Python str/allocated strings and offsets; no equivalent llama-server isolated-split endpoint; not BPE or serving.")

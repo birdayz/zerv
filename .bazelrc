@@ -36,5 +36,9 @@ build --strip=never
 test --test_output=errors
 test --test_summary=terse
 
+# Undeclared test outputs (the spill gate's shader statistics, //tests:gpu_spills) as plain
+# files under bazel-testlogs/<package>/<test>/test.outputs/, not zipped.
+test --nozip_undeclared_test_outputs
+
 # Per-user settings (e.g. --disk_cache shared between worktrees), not committed.
 try-import %workspace%/user.bazelrc

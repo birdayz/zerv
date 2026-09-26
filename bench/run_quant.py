@@ -14,7 +14,9 @@ import subprocess
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
+sys.path.insert(0, str(ROOT / "tools"))
+import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
 VALUES = 5120 * 2048
 ITERATIONS = 16
 TRIALS = 5
@@ -85,7 +87,6 @@ def validate(records, cases):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--zig", type=Path, required=True)
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--cpu", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -94,7 +95,7 @@ def main():
         parser.error("requires little-endian IEEE binary32 C floats")
     if args.cpu not in os.sched_getaffinity(0):
         parser.error("CPU is outside this process's allowed affinity")
-    zig, reference = args.zig.resolve(strict=True), args.reference.resolve(strict=True)
+    reference = args.reference.resolve(strict=True)
     destination = args.output.resolve()
     destination.mkdir(parents=True, exist_ok=False)
     manifest = {"schema_version": 1, "status": "running", "started_at": datetime.now(timezone.utc).isoformat(),
@@ -102,7 +103,7 @@ def main():
                 "cpu": args.cpu, "initial_affinity": sorted(os.sched_getaffinity(0)),
                 "values_per_call": VALUES, "iterations": ITERATIONS, "trials": TRIALS, "rounds": ROUNDS,
                 "warmup_calls": 3, "cache_policy": "reused buffers; warm; no cache flushing", "commands": [],
-                "zig_sha256": sha(zig), "reference_path": str(reference), "reference_sha256": sha(reference)}
+                "reference_path": str(reference), "reference_sha256": sha(reference)}
 
     def command(name, argv):
         manifest["commands"].append(argv)
@@ -113,15 +114,12 @@ def main():
         return completed.stdout
 
     try:
-        manifest["zig_version"] = command("zig-version", [str(zig), "version"]).strip()
-        if manifest["zig_version"] != (ROOT / ".zig-version").read_text().strip():
-            raise RuntimeError("Zig version does not match project pin")
-        command("test-debug", [str(zig), "build", "test", "--summary", "all"])
-        command("test-release", [str(zig), "build", "test", "-Doptimize=ReleaseFast", "--summary", "all"])
-        command("build-bench", [str(zig), "build", "bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native"])
-        native = ROOT / "zig-out/bin/zerv-quant-bench"
+        manifest.update(zerv_build.provenance())
+        command("test", zerv_build.test_command())
+        command("build-bench", zerv_build.build_command("zerv-quant-bench"))
+        native = zerv_build.path("zerv-quant-bench")
         manifest["native_sha256"] = sha(native)
-        paths = [ROOT / "build.zig", ROOT / ".zig-version"]
+        paths = zerv_build.build_files()
         for directory in ("src", "bench", "tests"):
             paths += [p for p in (ROOT / directory).rglob("*") if p.is_file() and "__pycache__" not in p.parts]
         manifest["source_sha256"] = {str(p.relative_to(ROOT)): sha(p) for p in sorted(paths)}

@@ -17,7 +17,7 @@ import subprocess
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
 PIECES = ROOT/"third_party/tokenizer-oracle/2026-09-22/pieces.bin"
 EOS = {248046, 248044}
 THINK_END = 248069

@@ -14,7 +14,9 @@ import struct
 import subprocess
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
+sys.path.insert(0, str(ROOT / "tools"))
+import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
 sys.path.insert(0, str(ROOT))
 from bench import run_tokenizer as common
 
@@ -84,7 +86,6 @@ def main():
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--cpu", type=int, default=2)
     p.add_argument("--baseline-run", type=Path, help="verified saved run to interleave the pre-optimization binary")
-    p.add_argument("--zig", type=Path, default=ROOT / ".tools/zig-x86_64-linux-0.16.0/zig")
     args = p.parse_args()
     if args.cpu not in os.sched_getaffinity(0):
         p.error("unavailable CPU")
@@ -109,7 +110,7 @@ def main():
         return result.stdout + (result.stderr if combined else "")
 
     try:
-        zig, model, config = [path.resolve(strict=True) for path in (args.zig, args.model, args.tokenizer)]
+        model, config = [path.resolve(strict=True) for path in (args.model, args.tokenizer)]
         corpus = json.loads(common.FIXTURE.read_text())
         extra_path = ROOT / "tests/fixtures/tokenizer-optimization.json"
         extra = json.loads(extra_path.read_text())
@@ -156,13 +157,10 @@ def main():
         manifest["model_bytes"] = model.stat().st_size
         if manifest["model_sha256"] != MODEL_SHA:
             raise ValueError("model hash mismatch")
-        manifest["zig_version"] = run([zig, "version"]).strip()
-        if manifest["zig_version"] != (ROOT / ".zig-version").read_text().strip():
-            raise ValueError("compiler version mismatch")
-        manifest["zig_sha256"] = common.sha(zig)
-        run([zig, "build", "test", "--summary", "all"])
-        run([zig, "build", "test", "tokenizer-bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native", "--summary", "all"])
-        native = ROOT / "zig-out/bin/zerv-tokenizer-bench"
+        manifest.update(zerv_build.provenance())
+        run(zerv_build.test_command())
+        run(zerv_build.build_command("zerv-tokenizer-bench"))
+        native = zerv_build.path("zerv-tokenizer-bench")
         # A repeatable baseline binary, not just a digest of a later-overwritten build.
         artifacts = ROOT / "third_party/tokenizer-matched" / dest.name
         artifacts.mkdir(parents=True, exist_ok=False)
@@ -206,7 +204,7 @@ def main():
         if reference_check != dict(cases=len(corpus["cases"]), decode_cases=len(corpus["decode_cases"]), workloads=len(corpus["workloads"])):
             raise ValueError("incomplete reference validation")
         (dest / "reference-validation.json").write_text(json.dumps(reference_check, indent=2) + "\n")
-        paths = [ROOT / "build.zig", ROOT / ".zig-version"]
+        paths = zerv_build.build_files()
         for directory in ("src", "bench", "tools", "tests"):
             paths += sorted(path for path in (ROOT / directory).rglob("*") if path.is_file() and path.suffix in (".zig", ".py", ".c", ".json", ".gguf", ".bin", ".txt"))
         manifest["sources"] = {str(path.relative_to(ROOT)): common.sha(path) for path in paths}

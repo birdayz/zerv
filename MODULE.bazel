@@ -10,6 +10,11 @@ zig = use_extension("@rules_zig//zig:extensions.bzl", "zig")
 zig.toolchain(default = True, zig_version = "0.16.0")
 use_repo(zig, "zig_toolchains")
 
+bazel_dep(name = "platforms", version = "1.1.0")
+
+# This host's glibc first (bazel/BUILD.bazel), then rules_zig's targets.
+register_toolchains("//bazel:x86_64-linux-gnu.2.43_toolchain")
+
 register_toolchains("@rules_zig//zig/target:all")
 
 register_toolchains("@zig_toolchains//:all")
@@ -23,6 +28,22 @@ new_local_repository(
     name = "vulkan_loader",
     build_file_content = 'exports_files(["libvulkan.so"], visibility = ["//visibility:public"])',
     path = "/usr/lib",
+)
+
+# The Vulkan driver the GPU tests run on: RADV, which compiles our SPIR-V (ACO), and the ICD
+# manifest that selects it. Inputs of the GPU tests, so a driver update re-runs them instead of
+# reusing results cached with the previous driver. This machine's driver (Mesa RADV): the GPU
+# tests are `manual`, so `bazel test //...` does not need these files.
+new_local_repository(
+    name = "vulkan_driver",
+    build_file_content = 'exports_files(["libvulkan_radeon.so"], visibility = ["//visibility:public"])',
+    path = "/usr/lib",
+)
+
+new_local_repository(
+    name = "vulkan_icd",
+    build_file_content = 'exports_files(["radeon_icd.json"], visibility = ["//visibility:public"])',
+    path = "/usr/share/vulkan/icd.d",
 )
 
 # Python: a hermetic interpreter and hash-locked packages (requirements_lock.txt) for the

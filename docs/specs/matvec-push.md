@@ -114,7 +114,7 @@ output bits for ~3-4% GPU time, so it violates the no-behavior-change requiremen
   `separate` selects the pre-FMA arithmetic (`ACCUM_FMA 0`, modules in
   `src/matvec/shaders/separate/`) with its own verify table (`matvec.rowsGroups`), and
   reproduces the pre-FMA captures and logits byte for byte on both oracles.
-- **Gates:** `zig build gpu-test` (all 48 fixtures in both layouts; multi-row ≡ single
+- **Gates:** `bazel test //tests:gpu` (all 48 fixtures in both layouts; multi-row ≡ single
   row on all fixtures and shapes); `tools/verify_model.py` FP64 gates on the default and
   long oracles in every mode (captures change; the bounds decide); `zerv-spec-check`
   11/11; `zerv-mtp-check` scenario C and the FP64 MTP reference; `zerv-prefix-check`.

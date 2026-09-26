@@ -19,7 +19,7 @@ import sys
 import threading
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
 MODEL_SHA = "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d"
 TEMPLATE = ROOT/"third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/official-template.jinja"
 LLAMA_SERVER = "/usr/bin/llama-server"
@@ -273,12 +273,12 @@ def main():
     out = a.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     if sha(a.model) != MODEL_SHA: raise SystemExit("model mismatch")
     workload = json.loads(a.workload.read_text())
-    build = ["bazelisk", "build", "--config=release", "//src:zerv"]
     if a.zerv_binary:
         build = ["reused", str(a.zerv_binary.resolve()), sha(a.zerv_binary)]
         source = a.zerv_binary.resolve()
     else:
         sys.path.insert(0, str(ROOT/"tools")); import zerv_build  # noqa: E402  (lazy: tests import this module)
+        build = zerv_build.build_command("zerv")
         source = zerv_build.binary("zerv")
     # Keyed by the output's parent and name (the output directory itself must be fresh).
     artifact = ROOT/"third_party/serving-bench"/out.parent.name/out.name; artifact.mkdir(parents=True, exist_ok=False)

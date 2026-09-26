@@ -1,6 +1,6 @@
 //! The `zerv` umbrella module: every package, for executables that use several (the server,
 //! benchmarks, tools, GPU tests). Packages are separate modules with declared dependencies
-//! (build.zig `packages`); unit tests import only theirs.
+//! (src/NAME/BUILD.bazel `deps`); unit tests import only theirs.
 pub const quant = @import("quant");
 pub const gpu = @import("gpu");
 pub const matvec = @import("matvec");

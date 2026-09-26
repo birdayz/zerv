@@ -15,6 +15,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/"tests/reference"), str(ROOT/"tools"), str(ROOT/"bench")]
+import zerv_build  # noqa: E402
 from generate_gpu_matvec import metrics, sha
 from compile_matvec import PINS
 from run_gpu_driver import gpu_snapshot
@@ -56,9 +57,8 @@ def main():
         stream = artifact/"stream.spv"
         run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", ROOT/"bench/matvec_stream.comp", "-o", stream])
         run(["spirv-val", "--target-env", "vulkan1.1", stream])
-        zig = ROOT/".tools/zig-x86_64-linux-0.16.0/zig"
-        run([zig, "build", "gpu-matvec-bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native"])
-        native = artifact/"native"; shutil.copy2(ROOT/"zig-out/bin/zerv-gpu-matvec-bench", native)
+        run(zerv_build.build_command("zerv-gpu-matvec-bench"))
+        native = artifact/"native"; shutil.copy2(zerv_build.path("zerv-gpu-matvec-bench"), native)
         m.update(native_sha256=sha(native), stream_sha256=sha(stream), stream_source_sha256=sha(ROOT/"bench/matvec_stream.comp"),
                  production_shader_manifest_sha256=sha(ROOT/"src/matvec/shaders/manifest.json"))
         os.sched_setaffinity(0, {a.cpu})

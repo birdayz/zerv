@@ -6,8 +6,7 @@
 `artifact` (bounded GGUF parsing and Linux mmap), `chat` (official Qwen3.8
 text-only rendering), `text` (Unicode-9 NFC), and `tokenizer` (Qwen splitting, bounded BPE encoding, raw-byte decoding and GGUF vocab
 loading), plus `gpu` (bounded native Vulkan memory/transfers/dispatch, not model
-operators). `zig build` defaults to running native tests. **There is
-no server executable or model-serving command yet.**
+operators). Bazel builds and tests everything (below).
 
 The native build imports only Zig standard library and our modules. Explicit GPU
 executables additionally link the system Vulkan loader and OS libc startup/TLS;
@@ -21,100 +20,103 @@ GPU executables have only system Vulkan/libc/ELF-loader direct dependencies.
 
 ## Pinned toolchain
 
-Zig **0.16.0**, recorded in `.zig-version`. A project-local compiler was downloaded,
-SHA-256 verified, extracted, and executed successfully on 2026-09-22. Nothing was
-installed into the system. Reproduce on Linux x86_64:
+Bazel builds and tests everything: the Zig packages, tests, server, benchmarks and tools, and
+the Python tests (user decision 2026-09-26: **Bazel only**, one graph with exact caching;
+conventions follow `../fdb-go`). Nothing is installed into the system besides `bazelisk`,
+which downloads the Bazel of `.bazelversion`. Pins:
 
-```sh
-mkdir -p .tools
-curl --fail --location --retry 2 \
-  -o .tools/zig-0.16.0.tar.xz \
-  https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
-printf '%s  %s\n' \
-  70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00 \
-  .tools/zig-0.16.0.tar.xz | sha256sum --check
-tar -xJf .tools/zig-0.16.0.tar.xz -C .tools
-export PATH="$PWD/.tools/zig-x86_64-linux-0.16.0:$PATH"
-zig version
-```
+- Bazel **9.2.0** (`.bazelversion`, latest stable on 2026-09-26); `MODULE.bazel` and its lock
+  file `MODULE.bazel.lock` pin every module.
+- Zig **0.16.0** through rules_zig 0.16.0: the SDK tarball sha256
+  `70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00`, the same as the former
+  project-local `.tools/zig-x86_64-linux-0.16.0` (its `zig` executable, sha256 `2317bbb9…`, is
+  byte-identical, so manifests' `zig_sha256` stay comparable). `bazel run //bazel:zig -- …`
+  runs it.
+- Python **3.14** (rules_python 2.3.4, hermetic interpreter) with hash-locked packages
+  (`requirements_lock.txt`: numpy 2.5.3) for the Python tests.
+- Zig target `x86_64-linux-gnu.2.43` (`bazel/BUILD.bazel`): rules_zig's default glibc 2.17 lacks
+  symbols the host Vulkan loader references (glibc 2.34/2.38; `zig test` links with
+  `--no-allow-shlib-undefined`) and links libm/libpthread/libdl separately. 2.43 is the newest
+  Zig 0.16 provides (the host has 2.44). Every Zig compile uses `-mcpu=native` (as `zig build`
+  did; a cache shared across machines would need an explicit CPU model).
 
-The local `.tools/` directory and build products are ignored by git. The diagnostic GPU shader is compiled/validated with pinned `glslc`/SPIR-V tools;
-its checked-in SPIR-V fixture removes those development tools from ordinary tests.
-GPU model kernels are not implemented yet. GPU targets select the bundled LLVM+
-LLD: Zig0.16's default linker rejects system GCC16 CRT `.sframe` relocations.
+The diagnostic GPU shader is compiled/validated with pinned `glslc`/SPIR-V tools; its
+checked-in SPIR-V fixture removes those development tools from ordinary tests.
 
 ## Verified native commands
 
-From the repository root, with the pinned Zig on PATH:
+From the repository root (`just` recipes in `justfile`):
 
 ```sh
-zig fmt --check build.zig src bench/*.zig tools/*.zig tests/*.zig
-zig build test --summary all
-zig build test -Doptimize=ReleaseFast --summary all
-python3 -m unittest discover -s tests -p 'test_*.py' -v
-```
-
-All four at once, in one parallel build graph (the same checks; 2026-09-26):
-
-```sh
-zig build check        # fmt, Debug and ReleaseFast unit tests, Python tests
-```
-
-### Bazel (branch `bazel`, 2026-09-26; migration in progress)
-
-User decision 2026-09-26: **all tooling moves to Bazel only**, for exact caching of Zig, the
-tests, shaders, kernels and the Python tools; conventions follow `../fdb-go`. Pins:
-Bazel 9.2.0 (`.bazelversion`, latest stable), rules_zig 0.16.0 with Zig 0.16.0 (sha256
-`70e49664…`, the same SDK as `.tools/`), rules_python 2.3.4 with a hermetic Python 3.14,
-numpy 2.5.3 hash-locked (`requirements_lock.txt`).
-
-```sh
-just test        # bazelisk test //...: zig fmt, Zig unit tests Debug + ReleaseFast, Python tests
-just quick       # Debug unit tests and Python tests only (--config=quick)
-just gpu         # bazelisk test //tests:gpu (real device; tagged manual, exclusive)
-just release     # ReleaseFast, native-CPU server, benchmarks and tools (--config=release)
+bazel test //...        # required checks: zig fmt, CPU unit tests Debug + ReleaseFast, Python tests
+bazel test --config=quick //...   # Debug unit tests and Python tests only
+bazel test //tests:gpu //tests:gpu_release_fast //tests:gpu_spills   # real device
+bazel build --config=release //...   # ReleaseFast, native CPU: server, benchmarks, tools
+tools/zerv_build.py zerv-spec-check  # build (release) and print an executable's path
 ```
 
 - **One Bazel package per directory, explicit deps.** `src/NAME/BUILD.bazel` is the
-  package's `zig_library` (module `NAME`) with its dependencies and embedded data; `//src:zerv`
-  the umbrella; `//src:zerv` the server. Tests: `tests/BUILD.bazel`, macro `zerv_test`
-  (`bazel/defs.bzl`) = the test in Debug plus `NAME_release_fast` (a `zig_configure_test`,
-  stripped, tag `release_fast`), each declaring the packages it imports, the files it embeds
-  and the files it opens at run time (`data`). The golden SHA-256 is a ReleaseFast
-  `zig_static_library` (`//tests/support:fast_sha256`). Python tests are `py_test`s declaring
-  every script and file they read (runfiles; the tests no longer `resolve()` their path, which
-  led out of the runfiles into the source tree).
+  package's `zig_library` (module `NAME`) with its dependencies and embedded data;
+  `//src:zerv_lib` the umbrella module `zerv`; `//src:zerv` the server. Tests:
+  `tests/BUILD.bazel`, macro `zerv_test` (`bazel/defs.bzl`) = the test in Debug plus
+  `NAME_release_fast` (a `zig_configure_test`, stripped, tag `release_fast`), each declaring the
+  packages it imports, the files it embeds and the files it opens at run time (`data`). The
+  golden SHA-256 is a ReleaseFast `zig_static_library` (`//tests/support:fast_sha256`). Python
+  tests are `py_test`s declaring every script and file they read (runfiles).
+- **GPU tests** (`//tests:gpu`, `//tests:gpu_release_fast`; tags `manual`, `exclusive`, `gpu`,
+  so `//...` does not run them) declare the Vulkan loader, the RADV driver
+  (`/usr/lib/libvulkan_radeon.so`) and its ICD manifest as inputs: a driver update reruns them
+  instead of reusing results cached with the old driver. The rest of the driver's closure
+  (libdrm, firmware, kernel) is not declared; `--nocache_test_results` forces a rerun.
+  `//tests:gpu_spills` is the shader spill gate (`tools/check_shader_spills.py`) over the
+  ReleaseFast GPU tests; its RADV statistics land in
+  `bazel-testlogs/tests/gpu_spills/test.outputs/shaderstats.txt`.
+- **Harnesses build through `tools/zerv_build.py`**: `binary(name)` / `build(...)` run
+  `bazel build --config=release` and take the path from `bazel cquery` of the same
+  configuration; `test_command()` gates a measurement on `bazel test //...` (GPU runners add
+  the GPU tests); `provenance()` records Bazel's version, the Zig executable's version and
+  sha256 and the hash of every build definition file (`build_files()`: `.bazelversion`,
+  `.bazelrc`, `.bazelignore`, `MODULE.bazel`, its lock file, `requirements_lock.txt`, `bazel/*.bzl`, every
+  `BUILD.bazel`), which the runners also copy with their source snapshots.
+  `tests/test_build_lists.py` fails if a bench/tools script builds any other way; the
+  exceptions are `bench/rebuild_*_baseline.py`, which rebuild archived trees with their own
+  `build.zig` (default compiler: the toolchain's Zig, the same executable).
+- **Caching:** action results in a disk cache shared by all worktrees
+  (`~/.cache/bazel/zerv-disk`, 20 GB bound); test results are cached per test binary and its
+  declared inputs (the test runner's seed is 0 without `--seed`, as `-Dtest-seed` defaulted).
+  `zig fmt --check` is a test (`//:zig_fmt`) over every package's `zig_srcs`. One output base
+  for all configurations: switching between the default and `--config=release` discards
+  Bazel's analysis cache, measured ~150 ms here (not the per-config output bases fdb-go
+  needs). `.bazelignore` keeps `docs/bench/data` (benchmark source snapshots, which contain
+  BUILD files of their tree), `third_party/` and `models/` out of `//...`.
 - **The sandbox found undeclared inputs** the Zig build had missed silently: `matvec` embeds
   `shaders/separate/*.spv`; `tests/gguf.zig` and `tests/model.zig` open
   `tests/fixtures/gguf/default.gguf` at run time; `matvec_gpu.zig` opens
   `src/matvec/shaders/f32_small.spv`. Correction to the `zig build` result caching below: "the
   CPU unit tests read no files at run time" was wrong for `gguf` and `model`; a change to that
-  fixture would not have invalidated their cached results.
-- **System interface:** the Vulkan loader (`/usr/lib/libvulkan.so`) is a declared input via a
-  `new_local_repository` (`@vulkan_loader`); libc is Zig's bundled glibc (target
-  `x86_64-linux-gnu.2.17`). Every Zig compile uses `-mcpu=native` (as `zig build` did; a cache
-  shared across machines would need an explicit CPU model).
-- **Caching:** action results in a disk cache shared by all worktrees
-  (`~/.cache/bazel/zerv-disk`, 20 GB bound); test results are cached per test binary and its
-  declared inputs. `zig fmt --check` is a test (`//:zig_fmt`) over every package's `zig_srcs`.
+  fixture would not have invalidated their cached results. The Python tests' modules under test
+  resolved their own path (`Path(__file__).resolve()`) out of the runfiles into the source tree
+  and so read undeclared files there; with `absolute()` six tests failed until their inputs
+  were declared (`gguf_oracle.py`, `generate_vulkan_goldens.py`, the NFC, split and tokenizer
+  golden binaries, `bench/workloads/long-v1.json`).
 - **Measured** (59 tests: 19 Zig files × 2 modes, 20 Python, fmt; nice'd, another session's GPU
   benchmark running): after `bazel clean` without disk cache 42.9 s; no-op 0.2 s; an edit in
   `session` 21.5 s (the ReleaseFast LLVM compiles of its dependents); reverting it 1.0 s (disk
   cache); `--config=quick` no-op 0.24 s.
-- **Not migrated yet:** the ~30 bench/tools harnesses that run `zig build …` and read
-  `zig-out/bin` (then `build.zig` goes); shaders and native kernels as Bazel actions with
-  hermetic glslc / LLVM (today checked-in `.spv` and code objects with manifests);
-  `tools/test_profile.py` (→ Bazel's own test timing and `--profile`).
+- **Not yet Bazel actions:** GLSL shaders and native RDNA3 kernels are checked in (`.spv`,
+  code objects) with manifests and regenerated by `tools/compile_*.py` /
+  `tools/build_native_gemm.py` with the host's pinned glslc/LLVM.
 
 ### Tests in parallel (2026-09-26)
 
 Zig 0.16 runs the tests of one binary one at a time ([ziglang/zig#15953](https://github.com/ziglang/zig/issues/15953),
-open); the build runner runs independent steps on every core. So:
+open); the build tool runs independent tests on every core (first `zig build`, now Bazel).
+So:
 
-- **One test binary per file.** `build.zig` lists the CPU unit test files (`unit_tests`); each
-  is its own compile and run step. `tests/test_build_lists.py` fails if a `tests/*.zig` file is
-  neither listed, nor imported by a listed file, nor part of the GPU aggregate
-  (`tests/gpu.zig`, which stays one serial binary: the device is shared).
+- **One test binary per file.** `tests/BUILD.bazel` has a test per CPU unit test file (then
+  `build.zig`'s `unit_tests`). `tests/test_build_lists.py` fails if a `tests/*.zig` file is
+  not a test's main or source or a helper library (the GPU aggregate `tests/gpu.zig` stays one
+  serial binary: the device is shared).
 - **Independent rounds run concurrently** inside a test through `tests/parallel.zig`:
   `parallel.rounds(n, ctx, f)` (each round seeds its own generator, `parallel.seed`), and
   `parallel.hashChunks` for golden fingerprints (chunks produced concurrently, hashed in
@@ -125,28 +127,30 @@ open); the build runner runs independent steps on every core. So:
   into every unit test; the code under test keeps the test's mode.
 - **Optimized test binaries are stripped** (debug info doubles their LLVM time:
   an empty ReleaseFast test compiles in 14.4 s with it, 6.4 s without). Failures still print
-  their messages; `-Dtest-symbols` keeps symbols for stack traces.
+  their messages; drop `-fstrip` from the `zerv_test` macro for stack traces.
 - **Keep a binary's run near 2 s or less** and do not let correctness depend on timing: a
   test that waits for a state must arrange it (see the batcher tests), not sleep and hope.
   Split a file when one binary dominates (`sampler_nucleus.zig`).
-- **Test results are cached.** The build runner passes its per-invocation random `--seed` to
-  every test binary, which made every run a cache miss; `build.zig` fixes it (`-Dtest-seed`,
-  default 0), so an unchanged test binary is not run again: a no-change `zig build test` takes
-  ~0.1 s. The CPU unit tests read no files at run time, so the binary is the whole input.
+- **Test results are cached.** `zig build`'s runner passed a per-invocation random `--seed`
+  to every test binary, which made every run a cache miss; `build.zig` fixed it (`-Dtest-seed`,
+  default 0), so an unchanged test binary was not run again (a no-change `zig build test` took
+  ~0.1 s). Bazel runs the binaries without `--seed` (seed 0) and caches results per binary and
+  declared inputs.
 - **Only dependents rebuild.** Packages are modules and each unit test declares its packages
   ("Package and interface discipline" below), so an edit rebuilds and reruns only the tests
   that depend on the edited package; before the split any `src/` edit rebuilt all 19.
 - `tools/test_profile.py [--optimize Debug|ReleaseFast] [name ...]`: per-test and per-binary
-  times (each binary run alone), to find the next one to split or parallelize.
+  times (each binary run alone, in its runfiles), to find the next one to split or
+  parallelize; per-target times: `bazel test --test_summary=detailed`.
 
 Measured on this machine (Ryzen 9 3900X, 12 cores / 24 threads;
 [report](bench/2026-09-26-test-parallelism.md)): `zig build test` 9.4 s cold, ~4.1 s warm,
 ~4–7 s after a `src/` edit (was ~96 s every time); `zig build check` 22.6 s cold, ~19–22 s after
 a `src/` edit (the ReleaseFast LLVM compiles, ~12 s each in parallel, are the critical path).
-Build system decision (user, 2026-09-26): **`zig build` only, no Bazel for now.** If Bazel
-comes later, it builds **everything** in one graph (Zig packages and tests, GLSL shaders and
-their manifests, the native RDNA3 kernels, the Python goldens/oracles), not only the non-Zig
-parts. The package modules above map one-to-one onto Bazel targets.
+Build system decisions (user, 2026-09-26): first **`zig build` only, no Bazel for now**, and if
+Bazel comes, it builds **everything** in one graph (Zig packages and tests, GLSL shaders and
+their manifests, the native RDNA3 kernels, the Python goldens/oracles); then the move to
+Bazel only (above). The package modules map one-to-one onto Bazel targets.
 The warm run uses 64 s of CPU in 4 s: it is at the machine's throughput. Not usable:
 `-fincremental` (0.16 produced a test binary that aborts).
 
@@ -160,7 +164,6 @@ results and limitations are in [the dated report](bench/2026-09-22-quant-decode.
 
 ```sh
 python3 bench/run_quant.py \
-  --zig .tools/zig-x86_64-linux-0.16.0/zig \
   --reference /usr/lib/libggml-base.so.0.24.0 \
   --cpu 0 \
   --output docs/bench/data/YYYY-MM-DD-quant-unique-run
@@ -174,7 +177,7 @@ trials per format/engine per round. It records raw results, dispersion, binary /
 source hashes, compiler/host/oracle identity and exact commands. It neither changes
 system clocks/power policy nor imports foreign code into the native binary.
 
-Native-only executable build: `zig build bench-build -Doptimize=ReleaseFast -Dcpu=native`.
+Native-only executable build: `bazel build --config=release //bench:zerv-quant-bench`.
 Its fixed workload contract is [specified here](specs/quant-benchmark.md). The separate
 Python runner adds external reference validation and repeatability. This is not a
 GPU/inference benchmark; a `llama-server` comparison remains mandatory once serving
@@ -202,8 +205,8 @@ native tests need only the committed JSON, not Python or the oracle library.
 ## Package and interface discipline
 
 - **Packages are Zig modules (2026-09-26).** Each `src/NAME/` directory is one module rooted
-  at `src/NAME/root.zig`, declared in `build.zig` `packages` with the packages it imports
-  (like a Bazel `go_library` and its deps). Dependencies are directional:
+  at `src/NAME/root.zig`, declared by the `zig_library` in `src/NAME/BUILD.bazel` with the
+  packages it imports (`deps`). Dependencies are directional:
 
   ```
   quant   gpu   artifact   text   chat          (std only)
@@ -217,11 +220,11 @@ native tests need only the committed JSON, not Python or the oracle library.
   - Across packages import the module (`@import("gpu")`, `@import("artifact").gguf`), never
     a path (`../gpu/…`); within a package, relative files. Zig resolves imports lazily, so
     an unreferenced import of an undeclared package would compile: `tests/test_build_lists.py`
-    checks that each package imports only what it declares, and that the directories and
-    the list agree.
+    checks that each package imports only what it declares, and that every package directory
+    has its BUILD file and library.
   - `src/root.zig` is the `zerv` umbrella re-exporting every package, for executables that use
     several (server, benchmarks, tools, GPU tests). Packages never import it.
-  - A unit test declares the packages it imports (`unit_tests` in `build.zig`), so an edit
+  - A unit test declares the packages it imports (its `deps` in `tests/BUILD.bazel`), so an edit
     rebuilds and reruns only the tests of the edited package's dependents (measured: a
     `session` edit rebuilds session, sampler, sampler_nucleus, prefix, serve, batcher, tools;
     a `quant` edit only the four quant tests).
@@ -245,8 +248,8 @@ native tests need only the committed JSON, not Python or the oracle library.
 ## Native artifact inspection and new component benchmarks
 
 ```sh
-zig build inspect-build -Doptimize=ReleaseFast
-zig-out/bin/zerv-inspect models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf
+bazel build --config=release //tools:zerv-inspect
+bazel-bin/tools/zerv-inspect models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf
 python3 bench/run_gguf.py --library /usr/lib/libggml-base.so.0.24.0 \
   --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf \
   --output docs/bench/data/YYYY-MM-DD-gguf-unique --cpu 2
@@ -270,7 +273,6 @@ No system package changes. Full installed versions/hashes are in fixture/benchma
 manifests. Unicode-9 NFC has its own completed verification and benchmark loop:
 
 ```sh
-zig build nfc-bench-build -Doptimize=ReleaseFast
 .tools/tokenizer-oracle-venv/bin/python bench/run_nfc.py \
   --cpu 2 --output docs/bench/data/YYYY-MM-DD-nfc-unique
 .tools/tokenizer-oracle-venv/bin/python tests/reference/generate_nfc.py \
@@ -287,7 +289,6 @@ Follow [TODO.md](../TODO.md): one active building block/package at a time.
 The subsequent Qwen splitter is independently verified and measured as well:
 
 ```sh
-zig build split-bench-build -Doptimize=ReleaseFast
 .tools/tokenizer-oracle-venv/bin/python bench/run_split.py \
   --cpu 2 --output docs/bench/data/YYYY-MM-DD-split-unique
 ```
@@ -297,8 +298,8 @@ fixture-regeneration command, two actual runs and the llama-server comparison
 boundary. The subsequent complete tokenizer is also verified and measured:
 
 ```sh
-zig build tokenizer-bench-build -Doptimize=ReleaseFast
-zig-out/bin/zerv-tokenizer-bench models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf \
+bazel build --config=release //bench:zerv-tokenizer-bench
+bazel-bin/bench/zerv-tokenizer-bench models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf \
   tests/fixtures/tokenizer/manifest.json
 ```
 
@@ -393,26 +394,26 @@ workloads and their own `generate_q4_1_goldens.py`/`generate_q5_k_goldens.py` to
 ## Explicit native GPU checks and repeatable driver benchmark
 
 ```sh
-zig build gpu-test --summary all
-zig build gpu-test -Doptimize=ReleaseFast --summary all
-zig build gpu-driver-bench-build -Doptimize=ReleaseFast -Dcpu=native
-zig-out/bin/zerv-gpu-driver-bench
+bazel test //tests:gpu //tests:gpu_release_fast
+bazel build --config=release //bench:zerv-gpu-driver-bench
+bazel-bin/bench/zerv-gpu-driver-bench
 python3 bench/run_gpu_driver.py --cpu 10 --output docs/bench/data/NEW-gpu-driver
 ```
 
 Shader spill gate (required when shaders, compile defines or tuning tables change;
 [RCA](bench/2026-09-24-aco-lds-spill.md)). Each command must report 0 FAIL (no VGPR
-spills in LDS); WARN lines are scratch spills (performance items):
+spills in LDS); WARN lines are scratch spills (performance items). The GPU tests' gate is a
+Bazel test; the model checks need the model, which is not a Bazel input:
 
 ```sh
-python3 tools/check_shader_spills.py --log third_party/spill-gate/gpu-test.txt -- zig build gpu-test -Doptimize=ReleaseFast
-python3 tools/check_shader_spills.py --log third_party/spill-gate/spec.txt -- zig-out/bin/zerv-spec-check MODEL
-python3 tools/check_shader_spills.py --log third_party/spill-gate/mtp.txt -- zig-out/bin/zerv-mtp-check MODEL third_party/mtp-check/tokens-short-nothink.json third_party/spill-gate/mtp-dump
-python3 tools/check_shader_spills.py --log third_party/spill-gate/f16.txt -- zig-out/bin/zerv-model-profile MODEL 4096 512 600 2 f16 f16
+bazel test //tests:gpu_spills   # log: bazel-testlogs/tests/gpu_spills/test.outputs/shaderstats.txt
+python3 tools/check_shader_spills.py --log third_party/spill-gate/spec.txt -- "$(tools/zerv_build.py zerv-spec-check)" MODEL
+python3 tools/check_shader_spills.py --log third_party/spill-gate/mtp.txt -- "$(tools/zerv_build.py zerv-mtp-check)" MODEL third_party/mtp-check/tokens-short-nothink.json third_party/spill-gate/mtp-dump
+python3 tools/check_shader_spills.py --log third_party/spill-gate/f16.txt -- "$(tools/zerv_build.py zerv-model-profile)" MODEL 4096 512 600 2 f16 f16
 ```
 
 GPU tests exercise actual transfers/compute and resource/state failures; default
-`zig build test` still needs no GPU/driver. Diagnostic shader compilation occurs
+`bazel test //...` still needs no GPU/driver. Diagnostic shader compilation occurs
 only in the explicit external generator, not at runtime. The runner rebuilds both
 native and independent C binaries; no old executable is required. CPU+GPU tests,
 full output hashes and matching device/queue/allocation metadata gate all timings.
@@ -447,7 +448,7 @@ download is part of this path.
 The f16 `gemm_f16x` kernel also ships as our own RDNA3 machine code in a RADV pipeline binary
 ([spec](specs/prefill.md), [report](bench/2026-09-24-gemm-f16x-isa.md)). Ordinary builds only
 embed the files. Regenerating them needs the GPU with RADV, clang and the lab binary, and must
-be followed by the gates in the spec (`zig build gpu-test`, `verify_model.py --gemm-code`,
+be followed by the gates in the spec (`bazel test //tests:gpu`, `verify_model.py --gemm-code`,
 serving outputs):
 
 ```sh
@@ -464,9 +465,7 @@ the fallback and runs the SPIR-V. `--gemm-code spirv` selects the SPIR-V explici
 
 ```sh
 # Ordinary checks use committed fixtures/SPIR-V, not ggml or shader compilers.
-zig build test
-zig build gpu-test
-zig build test gpu-test -Doptimize=ReleaseFast
+bazel test //... //tests:gpu //tests:gpu_release_fast
 
 # Explicit independent replay: fresh paths, existing pinned model/tools/libraries.
 python3 tools/replay_matvec.py --output-dir .tools/NEW-matvec-replay --restore-sources
@@ -514,9 +513,8 @@ all11 full-shape outputs. [Dated results](bench/2026-09-22-matvec-optimization.m
 ## Native model, session and server (blocks 09–12)
 
 ```sh
-export PATH="$PWD/.tools/zig-x86_64-linux-0.16.0:$PATH"
-zig build server -Doptimize=ReleaseFast            # zig-out/bin/zerv
-zig-out/bin/zerv --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --port 8080 --context 8192
+bazel build --config=release //src:zerv            # bazel-bin/src/zerv
+bazel-bin/src/zerv --model models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --port 8080 --context 8192
 curl -s localhost:8080/v1/chat/completions -H 'content-type: application/json' \
   -d '{"model":"qwen3.8-27b","messages":[{"role":"user","content":"Hi"}]}'
 
@@ -563,6 +561,5 @@ python3 tools/check_session.py --output docs/bench/data/NEW/session.json
 python3 bench/run_serving.py --output docs/bench/data/NEW-serving
 ```
 
-`zig build model-capture-build` builds the native capture tool used by
-`verify_model.py`. The oracle's FP64 pass uses all CPU cores for ~25 minutes; do
+`verify_model.py` builds its native capture tool (`//tools:zerv-model-capture`) itself. The oracle's FP64 pass uses all CPU cores for ~25 minutes; do
 not run GPU benchmarks concurrently with it.

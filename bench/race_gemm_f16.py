@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from run_gemm_f16 import MODEL_SHA, ROOT, SHAPES, Sampler, device_dir, sha  # noqa: E402
+from run_gemm_f16 import MODEL_SHA, ROOT, SHAPES, Sampler, device_dir, sha, zerv_build  # noqa: E402
 
 
 def parse_variant(spec):
@@ -59,8 +59,7 @@ def main():
     variants = [parse_variant(s) for s in a.variant]
     out = a.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     if sha(a.model) != MODEL_SHA: raise SystemExit("model mismatch")
-    subprocess.run([str(ROOT/".tools/zig-x86_64-linux-0.16.0/zig"), "build", "gemm-bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native"], cwd=ROOT, check=True)
-    tool = ROOT/"zig-out/bin/zerv-gemm-bench"
+    tool = zerv_build.binary("zerv-gemm-bench")
     dev = device_dir()
     only = set(a.only.split(",")) if a.only else None
     shapes = [(t, f) for t, f in SHAPES if not only or t in only]

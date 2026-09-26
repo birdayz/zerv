@@ -22,6 +22,8 @@ import threading
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
 MODEL_SHA = "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d"
 # f16-eligible projections (M >= 4096, M % 128 == 0) of the benchmark shape set.
 SHAPES = [("blk.0.ffn_gate.weight", "q4_0"), ("blk.8.ffn_down.weight", "q4_0"), ("blk.0.ffn_down.weight", "q4_1"),
@@ -71,8 +73,7 @@ def main():
     a = p.parse_args()
     out = a.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     if sha(a.model) != MODEL_SHA: raise SystemExit("model mismatch")
-    subprocess.run([str(ROOT/".tools/zig-x86_64-linux-0.16.0/zig"), "build", "gemm-bench-build", "-Doptimize=ReleaseFast", "-Dcpu=native"], cwd=ROOT, check=True)
-    tool = ROOT/"zig-out/bin/zerv-gemm-bench"
+    tool = zerv_build.binary("zerv-gemm-bench")
     dev = device_dir()
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv,
                     env={k: v for k, v in __import__("os").environ.items() if k.startswith(("RADV_", "ACO_"))}, model_sha256=MODEL_SHA, tool_sha256=sha(tool),

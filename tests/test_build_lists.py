@@ -6,6 +6,9 @@
   src/NAME/BUILD.bazel, and a package imports other packages only if its BUILD lists them in
   `deps`. Zig resolves imports lazily, so an unreferenced import of an undeclared package
   compiles; this check does not depend on that.
+- No harness builds with anything but Bazel (tools/zerv_build.py): no `zig build`, zig-out/
+  or a Zig outside the toolchain. Exception: bench/rebuild_*_baseline.py rebuild archived
+  trees, which carry their own build.zig.
 """
 import re
 import unittest
@@ -65,6 +68,16 @@ class BuildLists(unittest.TestCase):
                     self.assertNotIn('@import("zerv")', text, f"{path.relative_to(ROOT)}: a package cannot import the umbrella")
                     used = set(re.findall(r'@import\("([a-z_]+)"\)', text)) & set(dirs)
                     self.assertLessEqual(used, deps, f"{path.relative_to(ROOT)} imports undeclared packages {sorted(used - deps)}")
+
+    def test_harnesses_build_with_bazel(self):
+        scripts = sorted([*(ROOT / "bench").glob("*.py"), *(ROOT / "tools").glob("*.py")])
+        self.assertGreater(len(scripts), 20)
+        for path in scripts:
+            if path.name.startswith("rebuild_") and path.parent.name == "bench": continue
+            with self.subTest(script=str(path.relative_to(ROOT))):
+                text = path.read_text()
+                for marker in ("zig-out/", ".tools/zig", '"build.zig"', '"-Doptimize', '"build", "test"'):
+                    self.assertFalse(marker in text, f"builds outside Bazel ({marker}); use tools/zerv_build.py")
 
 
 if __name__ == "__main__":

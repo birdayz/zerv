@@ -11,10 +11,13 @@ import json
 from pathlib import Path
 import struct
 import subprocess
+import sys
 
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
 
 
 def run(probe, spv, work, name, A, B, C):
@@ -64,11 +67,12 @@ def summarize(name, D, E64, note):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--probe", type=Path, default=ROOT/"zig-out/bin/zerv-coopmat-probe")
+    p.add_argument("--probe", type=Path, help="default: //bench:zerv-coopmat-probe, built")
     p.add_argument("--spv", type=Path, default=ROOT/"bench/coopmat/probe.spv")
     p.add_argument("--work", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()
+    if a.probe is None: a.probe = zerv_build.binary("zerv-coopmat-probe")
     a.work.mkdir(parents=True, exist_ok=False)
     rng = np.random.default_rng(20260923)
     report = dict(probe=str(a.probe), experiments=[])

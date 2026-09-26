@@ -3,27 +3,35 @@
 
   tools/test_profile.py [--optimize Debug|ReleaseFast] [--top 20] [name ...]
 
-Builds the unit test binaries (`zig build test-install`, the module graph of build.zig), then
-runs each listed binary (or the named ones) alone, one at a time so the times are not skewed
-by the others, and times every test from the runner's per-test lines. Prints the slowest
-tests and each binary's run time. Development tool; no GPU.
+Builds the Zig unit test binaries with Bazel (//tests:NAME, or //tests:NAME_release_fast),
+then runs each (or the named ones) alone, one at a time so the times are not skewed by the
+others, in its runfiles tree as `bazel test` does, and times every test from the runner's
+per-test lines. Prints the slowest tests and each binary's run time. Development tool; no
+GPU. Bazel's own per-target times: `bazel test --test_summary=detailed`.
 """
 import argparse, re, subprocess, sys, time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ZIG = ROOT / ".tools/zig-x86_64-linux-0.16.0/zig"
+sys.path.insert(0, str(ROOT / "tools"))
+import zerv_build  # noqa: E402
 
 
 def unit_tests():
-    block = re.search(r"const unit_tests = \[_\]UnitTest\{(.*?)\n\};", (ROOT / "build.zig").read_text(), re.S)
-    return re.findall(r'\.name = "([a-z0-9_]+)"', block.group(1))
+    """The CPU Zig unit tests (zig_test targets without the gpu tag)."""
+    query = 'kind("zig_test", //tests:all) except attr(tags, "\\bgpu\\b", //tests:all)'
+    labels = zerv_build.bazel("query", query, capture=True).stdout.split()
+    return [label.rsplit(":", 1)[1] for label in labels]
 
 
-def build(optimize):
-    """All unit test binaries through the build graph (`zig build test-install`)."""
+def label(name, optimize):
+    return f"//tests:{name}" + ("_release_fast" if optimize == "ReleaseFast" else "")
+
+
+def build(names, optimize):
+    """The unit test binaries, in parallel (`bazel build`)."""
     t0 = time.monotonic()
-    r = subprocess.run([str(ZIG), "build", "test-install", f"-Doptimize={optimize}"], cwd=ROOT, capture_output=True, text=True)
+    r = subprocess.run([zerv_build.BAZEL, "build", *(label(n, optimize) for n in names)], cwd=ROOT, capture_output=True, text=True)
     if r.returncode != 0: raise SystemExit(f"build failed\n{r.stderr[-3000:]}")
     return time.monotonic() - t0
 
@@ -31,7 +39,7 @@ def build(optimize):
 def run(exe):
     """Per-test durations: the runner prints 'i/n name...' before a test and 'OK' after it."""
     t0 = time.monotonic()
-    p = subprocess.Popen([str(exe)], cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    p = subprocess.Popen([str(exe)], cwd=exe.parent / (exe.name + ".runfiles/_main"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     times, current, start = [], None, t0
     buf = ""
     while True:
@@ -53,15 +61,15 @@ def run(exe):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("names", nargs="*")
-    ap.add_argument("--optimize", default="Debug", choices=["Debug", "ReleaseFast", "ReleaseSafe"])
+    ap.add_argument("--optimize", default="Debug", choices=["Debug", "ReleaseFast"])
     ap.add_argument("--top", type=int, default=20)
     a = ap.parse_args()
     names = a.names or unit_tests()
-    build_s = build(a.optimize)
-    print(f"build (zig build test-install, all binaries in parallel): {build_s:.2f} s")
+    build_s = build(names, a.optimize)
+    print(f"build (bazel build, all binaries in parallel): {build_s:.2f} s")
     rows, binaries, failed = [], [], False
     for name in names:
-        times, run_s, rc = run(ROOT / "zig-out/tests" / f"test-{name}-{a.optimize}")
+        times, run_s, rc = run(ROOT / "bazel-bin/tests" / label(name, a.optimize).rsplit(":", 1)[1])
         failed |= rc != 0
         binaries.append((run_s, name, run_s, rc))
         rows += [(d, f"{name}: {test}", ok) for d, test, ok in times]

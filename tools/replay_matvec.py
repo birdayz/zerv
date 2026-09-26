@@ -10,6 +10,8 @@ import sys
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT/"tools"))
+import zerv_build  # noqa: E402
 
 
 def sha(path):
@@ -55,12 +57,9 @@ def main():
         manifest["fixture_sha256"] = sha(out/"matvec.json")
         run([sys.executable, ROOT/"tests/reference/generate_gpu_timing_abi.py", "--work", out/"timing-abi-work", "--output", out/"timing-abi.json"])
         if (out/"timing-abi.json").read_bytes() != (ROOT/"tests/fixtures/gpu/timing-abi.json").read_bytes(): raise ValueError("timestamp ABI replay mismatch")
-        zig = ROOT/".tools/zig-x86_64-linux-0.16.0/zig"
-        manifest["zig_sha256"] = sha(zig)
-        run([zig, "fmt", "--check", ROOT/"build.zig", ROOT/"src", *sorted((ROOT/"bench").glob("*.zig")), *sorted((ROOT/"tools").glob("*.zig")), *sorted((ROOT/"tests").glob("*.zig"))])
-        run([zig, "build", "test", "gpu-test", "--summary", "all"])
-        run([zig, "build", "test", "gpu-test", "-Doptimize=ReleaseFast", "--summary", "all"])
-        run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"])
+        manifest.update(zerv_build.provenance())
+        # Format check, CPU and GPU Zig tests in both modes, Python tests.
+        run(zerv_build.test_command(*zerv_build.GPU_TESTS))
         manifest["status"] = "passed"
         print("verified independent fixture, eight SPIR-V modules, research sources and native/Python suites")
     except Exception as error:

@@ -1,5 +1,5 @@
 //! SHA-256 for the golden fingerprints of the Debug unit tests, compiled in ReleaseFast
-//! and linked as an object (build.zig, `test_support`). The fingerprints hash hundreds of
+//! and linked as a static library (//tests/support:fast_sha256). The fingerprints hash hundreds of
 //! MB of decoded output; std's SHA-256 runs at ~134 MB/s in Debug and ~1.75 GB/s optimized
 //! on the test machine (docs/bench/2026-09-26-test-parallelism.md). The code under test
 //! stays in the test's own mode; only this hashing is optimized. Test support only.

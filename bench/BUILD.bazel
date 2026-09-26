@@ -130,7 +130,14 @@ zig_binary(
 )
 
 # Python harnesses (tests/test_*.py load them).
-exports_files(glob(["*.py"]), visibility = ["//tests:__pkg__"])
+exports_files(glob(["*.py", "workloads/*.json"]), visibility = ["//tests:__pkg__"])
+
+# Every Python script (//tests:test_build_lists checks how they build).
+filegroup(
+    name = "py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tests:__pkg__"],
+)
 
 # Every Zig source of this package (the format check, //:zig_fmt).
 filegroup(

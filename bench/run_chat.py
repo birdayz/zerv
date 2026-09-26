@@ -11,7 +11,9 @@ import subprocess
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
+sys.path.insert(0, str(ROOT / "tools"))
+import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
 FIXTURE = ROOT / "tests/fixtures/chat-template.json"
 
 
@@ -59,7 +61,6 @@ def reference_worker(config):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--config", required=True, type=Path)
-    p.add_argument("--zig", type=Path, default=ROOT / ".tools/zig-x86_64-linux-0.16.0/zig")
     p.add_argument("--output", type=Path)
     p.add_argument("--cpu", type=int, default=2)
     p.add_argument("--reference-worker", action="store_true", help=argparse.SUPPRESS)
@@ -72,7 +73,7 @@ def main():
     if args.cpu not in os.sched_getaffinity(0):
         raise ValueError("unavailable CPU")
     args.output.mkdir(parents=True, exist_ok=False)
-    config, zig = args.config.resolve(strict=True), args.zig.resolve(strict=True)
+    config = args.config.resolve(strict=True)
     corpus = json.loads(FIXTURE.read_text())
     if sha(config) != corpus["config_sha256"]:
         raise ValueError("config differs from reference fixture")
@@ -90,13 +91,14 @@ def main():
         result.check_returncode()
         return result.stdout
 
-    run([zig, "build", "test"])
-    run([zig, "build", "test", "chat-bench-build", "-Doptimize=ReleaseFast"])
+    run(zerv_build.test_command())
+    run(zerv_build.build_command("zerv-chat-bench"))
+    native = zerv_build.path("zerv-chat-bench")
     os.sched_setaffinity(0, {args.cpu})
     observations = {"native": [], "jinja": []}
     for round_id in range(3):
         for engine in (("native", "jinja") if round_id % 2 == 0 else ("jinja", "native")):
-            cmd = [ROOT / "zig-out/bin/zerv-chat-bench", FIXTURE] if engine == "native" else [
+            cmd = [native, FIXTURE] if engine == "native" else [
                 sys.executable, Path(__file__).resolve(), "--reference-worker", "--config", config]
             raw = run(cmd)
             (args.output / f"{round_id}-{engine}.jsonl").write_text(raw)
@@ -108,7 +110,7 @@ def main():
                for engine, v in observations.items()}
     summary["native_over_jinja"] = summary["native"]["median_ns_per_render"] / summary["jinja"]["median_ns_per_render"]
     (args.output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    paths = [ROOT / "build.zig"]
+    paths = zerv_build.build_files()
     for directory in ("src", "bench", "tools", "tests"):
         paths += sorted(path for path in (ROOT / directory).rglob("*")
                         if path.is_file() and path.suffix in (".zig", ".py", ".c", ".json", ".gguf", ".bin", ".txt"))
@@ -117,8 +119,8 @@ def main():
         saved.parent.mkdir(parents=True, exist_ok=True)
         saved.write_bytes(path.read_bytes())
     manifest = dict(host=platform.uname()._asdict(), python=sys.version, packages=run([sys.executable, "-m", "pip", "freeze"]).splitlines(),
-                    zig_version=run([zig, "version"]).strip(), zig_sha256=sha(zig),
-                    binary_sha256=sha(ROOT / "zig-out/bin/zerv-chat-bench"),
+                    **zerv_build.provenance(),
+                    binary_sha256=sha(native),
                     config_sha256=sha(config), sources={str(f.relative_to(ROOT)): sha(f) for f in paths},
                     commands=commands, cpu=args.cpu, warmups=3, rounds=3, trials=7, iterations=100,
                     corpus=expected, caveat="Specialized native text-only rendering vs general Jinja interpreter; not tokenization or serving.")

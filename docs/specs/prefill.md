@@ -217,8 +217,8 @@ bit-identical** to 13e at equal split. The next section lists the evidence.
    - Q4_0 (7 tensors), Q4_1, Q5_K and F32;
    - 1/23/100/512 rows;
    - the natural split, and forced splits (`--k-chunk` 0 and 1024).
-2. **Hardware tests.** GEMM fixtures in `zig build gpu-test` (Debug and
-   ReleaseFast).
+2. **Hardware tests.** GEMM fixtures in `bazel test //tests:gpu //tests:gpu_release_fast`
+   (Debug and ReleaseFast).
 3. **Model.** `verify_model` modes 0/1/13/29/60/512 must pass, and every captured
    tensor and logit file must be byte-identical to the 13f gate.
 4. **Serving.** Outputs must be identical to the previous run; then two serving runs

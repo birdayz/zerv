@@ -46,9 +46,9 @@ def main():
     a.report.parent.mkdir(parents=True, exist_ok=True)
     if sha(a.model) != MODEL_SHA: raise SystemExit("model mismatch")
     work.mkdir(parents=True)
-    build = ["bazelisk", "build", "--config=release", "//tools:zerv-model-capture"]
     if a.tool is None:
         import zerv_build
+        build = zerv_build.build_command("zerv-model-capture")
         source = zerv_build.binary("zerv-model-capture")
     else:
         build = ["archived-tool", str(a.tool)]
