@@ -132,6 +132,8 @@ def generate(a):
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--ucd", type=Path, required=True)
     p.add_argument("--tokenizer", type=Path, required=True)

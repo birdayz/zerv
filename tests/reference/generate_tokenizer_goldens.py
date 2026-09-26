@@ -32,6 +32,17 @@ def generate(a):
             alphabet[b] = chr(next_cp)
             next_cp += 1
     reverse = {c: b for b, c in alphabet.items()}
+    if a.pieces is None:
+        # The source-built llama.cpp adapter (//tests:oracle_tokenizer_pieces) over the model.
+        sys.path.insert(0, str(Path(__file__).absolute().parents[2] / "tools"))
+        import subprocess
+        import tempfile
+        import zerv_build
+        a.adapter, adapter_build = zerv_build.oracle("oracle_tokenizer_pieces")
+        a.pieces = Path(tempfile.mkdtemp()) / "pieces.bin"
+        subprocess.run([str(a.adapter), str(a.model), str(a.pieces)], check=True, stdout=subprocess.DEVNULL)
+    else:
+        adapter_build = None
     raw = a.pieces.read_bytes()
     count = struct.unpack_from("<I", raw)[0]
     if count != 248320:
@@ -107,8 +118,7 @@ def generate(a):
                     model_data_sha256=sha(binary), raw_pieces_sha256=sha(raw), raw_piece_count=count,
                     oracle_adapter_sha256=sha(Path(__file__).with_name("tokenizer_pieces.c").read_bytes()),
                     oracle_binary_sha256=sha(a.adapter.read_bytes()), hf_binary_sha256=sha(extension.read_bytes()),
-                    llama_library_sha256=sha(Path("/usr/lib/libllama.so.0.4.1").read_bytes()),
-                    llama_header_sha256=sha(Path("/usr/include/llama.h").read_bytes()),
+                    oracle_build=adapter_build,
                     forward_rank_cases=forward, cases=[case(text) for text in text_cases],
                     decode_cases=[dict(ids=ids, raw_hex=b"".join(pieces[i] for i in ids).hex()) for ids in decode_ids],
                     workloads=[dict(name=name, **case(text)) for name, text in workloads.items()])
@@ -119,10 +129,13 @@ def generate(a):
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--tokenizer", type=Path, required=True)
     p.add_argument("--chat", type=Path, required=True)
-    p.add_argument("--pieces", type=Path, required=True)
-    p.add_argument("--adapter", type=Path, required=True)
+    p.add_argument("--model", type=Path, help="GGUF whose vocabulary the source-built adapter dumps (default path)")
+    p.add_argument("--pieces", type=Path, help="raw pieces dumped earlier by --adapter (instead of --model)")
+    p.add_argument("--adapter", type=Path, help="the adapter binary that dumped --pieces")
     p.add_argument("--output", type=Path, required=True)
     generate(p.parse_args())
