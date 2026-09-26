@@ -9,6 +9,10 @@ build --incompatible_strict_action_env
 # comes from hermetic_cc_toolchain (MODULE.bazel).
 common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 
+# Python executables start the pinned interpreter directly (a shell bootstrap). The default
+# bootstrap runs `/usr/bin/env python3` first, i.e. the host's Python.
+common --@rules_python//python/config_settings:bootstrap_impl=script
+
 # rules_zig keeps Zig's own compiler cache under /tmp/zig-cache across actions; the sandbox
 # must let it persist (rules_zig README, "Zig Cache").
 build:linux --sandbox_add_mount_pair=/tmp

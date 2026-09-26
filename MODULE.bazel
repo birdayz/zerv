@@ -19,24 +19,6 @@ register_toolchains("@rules_zig//zig/target:all")
 
 register_toolchains("@zig_toolchains//:all")
 
-new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
-
-# The Vulkan driver the GPU tests run on: RADV, which compiles our SPIR-V (ACO), and the ICD
-# manifest that selects it. Inputs of the GPU tests, so a driver update re-runs them instead of
-# reusing results cached with the previous driver. This machine's driver (Mesa RADV): the GPU
-# tests are `manual`, so `bazel test //...` does not need these files.
-new_local_repository(
-    name = "vulkan_driver",
-    build_file_content = 'exports_files(["libvulkan_radeon.so"], visibility = ["//visibility:public"])',
-    path = "/usr/lib",
-)
-
-new_local_repository(
-    name = "vulkan_icd",
-    build_file_content = 'exports_files(["radeon_icd.json"], visibility = ["//visibility:public"])',
-    path = "/usr/share/vulkan/icd.d",
-)
-
 # C/C++, for development tools only (docs/specs/hermetic-build.md): clang from a pinned Zig
 # SDK with its bundled libc/libc++ headers. The host's C/C++ toolchain is never configured
 # (.bazelrc: BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN). Nothing zerv ships links C/C++.

@@ -22,8 +22,14 @@ GPU executables have only system Vulkan/libc/ELF-loader direct dependencies.
 
 Bazel builds and tests everything: the Zig packages, tests, server, benchmarks and tools, and
 the Python tests (user decision 2026-09-26: **Bazel only**, one graph with exact caching;
-conventions follow `../fdb-go`). Nothing is installed into the system besides `bazelisk`,
-which downloads the Bazel of `.bazelversion`. Pins:
+conventions follow `../fdb-go`), **hermetically** ([spec](specs/hermetic-build.md)): every
+compiler, library, header and interpreter an action uses is a sha256-pinned download or built
+in the graph; nothing from the host's `/usr` besides the platform (kernel, glibc, bash,
+coreutils). Nothing is installed into the system besides `bazelisk`, which downloads the Bazel
+of `.bazelversion` and runs it through `tools/bazel` (`--nohome_rc --nosystem_rc`: another
+project's `~/.bazelrc` injected `-I`/`-L` host paths into our C++ actions). Proof:
+`tools/hermetic_check.sh` runs `bazel test //...` in a slim Debian container without compilers,
+Python, Vulkan or shader tools, from empty caches. Pins:
 
 - Bazel **9.2.0** (`.bazelversion`, latest stable on 2026-09-26); `MODULE.bazel` and its lock
   file `MODULE.bazel.lock` pin every module.
@@ -32,11 +38,21 @@ which downloads the Bazel of `.bazelversion`. Pins:
   project-local `.tools/zig-x86_64-linux-0.16.0` (its `zig` executable, sha256 `2317bbb9…`, is
   byte-identical, so manifests' `zig_sha256` stay comparable). `bazel run //bazel:zig -- …`
   runs it.
-- Python **3.14** (rules_python 2.3.4, hermetic interpreter) with hash-locked packages
+- Python **3.14** (rules_python 2.3.4, hermetic interpreter, started directly: `bootstrap_impl
+  = script`, the default bootstrap runs the host's `python3` first) with hash-locked packages
   (`requirements_lock.txt`: numpy 2.5.3) for the Python tests.
-- Zig target `x86_64-linux-gnu.2.43` (`bazel/BUILD.bazel`): rules_zig's default glibc 2.17 lacks
-  symbols the host Vulkan loader references (glibc 2.34/2.38; `zig test` links with
-  `--no-allow-shlib-undefined`) and links libm/libpthread/libdl separately. 2.43 is the newest
+- C/C++ for development tools only: hermetic_cc_toolchain 4.3.0 (clang of a pinned Zig 0.15.2
+  SDK, bundled libc/libc++ headers, glibc 2.28 target); the host's C/C++ toolchain is never
+  configured (`BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1`). `//src:no_cc` (an aspect over the
+  dependencies of `//src:zerv`) fails if a C/C++ rule reaches what zerv ships.
+- Vulkan at link time: `//src/gpu:vulkan`, a stub `libvulkan.so.1` generated from the pinned
+  Vulkan registry (Vulkan-Headers vulkan-sdk-1.4.357.0; the 234 core commands, each traps if
+  ever called). The dynamic linker loads the real loader by that SONAME at run time;
+  `tests/test_linkage.py` checks every executable: static, or only libvulkan/glibc, no
+  RPATH/RUNPATH.
+- Zig target `x86_64-linux-gnu.2.43` (`bazel/BUILD.bazel`): rules_zig's default glibc 2.17
+  lacked symbols the host Vulkan loader references when it was linked (glibc 2.34/2.38; `zig
+  test` links with `--no-allow-shlib-undefined`) and links libm/libpthread/libdl separately. 2.43 is the newest
   Zig 0.16 provides (the host has 2.44). Every Zig compile uses `-mcpu=native` (as `zig build`
   did; a cache shared across machines would need an explicit CPU model).
 
@@ -66,10 +82,9 @@ tools/zerv_build.py zerv-spec-check  # build (release) and print an executable's
   golden SHA-256 is a ReleaseFast `zig_static_library` (`//tests/support:fast_sha256`). Python
   tests are `py_test`s declaring every script and file they read (runfiles).
 - **GPU tests** (`//tests:gpu`, `//tests:gpu_release_fast`; tags `manual`, `exclusive`, `gpu`,
-  so `//...` does not run them) declare the Vulkan loader, the RADV driver
-  (`/usr/lib/libvulkan_radeon.so`) and its ICD manifest as inputs: a driver update reruns them
-  instead of reusing results cached with the old driver. The rest of the driver's closure
-  (libdrm, firmware, kernel) is not declared; `--nocache_test_results` forces a rerun.
+  so `//...` does not run them) load the host's Vulkan loader and RADV at run time until the
+  loader and Mesa are built in the graph (spec, phase 4); meanwhile a driver update does not
+  invalidate their cached results (`--nocache_test_results` reruns them).
   `//tests:gpu_spills` is the shader spill gate (`tools/check_shader_spills.py`) over the
   ReleaseFast GPU tests; its RADV statistics land in
   `bazel-testlogs/tests/gpu_spills/test.outputs/shaderstats.txt`.
@@ -115,9 +130,13 @@ tools/zerv_build.py zerv-spec-check  # build (release) and print an executable's
 
 `//src/matvec:generated_shaders` and `//src/model:generated_shaders` run
 `tools/compile_matvec.py` / `tools/compile_model.py` (py_binaries carrying their GLSL sources;
-the variant tables stay in those scripts) with the declared host glslc and spirv-val
-(`@shader_tools`, `@shader_tool_libs` in `MODULE.bazel`: shaderc 2026.3, SPIRV-Tools
-1.4.357.0 and the libraries they load; the scripts check the executables' sha256 pins). One
+the variant tables stay in those scripts) with glslc and spirv-val built from source:
+shaderc v2026.3, glslang and SPIRV-Tools of vulkan-sdk-1.4.357.0 (168d452a, 9a49b088),
+SPIRV-Headers 29981f65 — the revisions of the host packages that produced the committed
+modules, all 172 of which the source-built tools reproduce byte for byte (only the manifests'
+`tools` entries changed: the tools' version lines instead of host binary hashes).
+SPIRV-Tools and SPIRV-Headers carry upstream BUILD files; glslang and shaderc use ours
+(`bazel/third_party/*.BUILD`, sources and defines as upstream BUILD.gn/CMake, no HLSL). One
 action per package, compiling in parallel (8 jobs; matvec 100 modules 33 s → 3.2 s, model 72
 modules 16 s → 1.9 s standalone, byte-identical output). `generated_shaders_test` (tag
 `shaders`, part of `//...`) fails on any missing, extra or differing file; after an intended
@@ -128,10 +147,8 @@ bazel run //src/matvec:update_shaders    # writes src/matvec/shaders (and manife
 bazel run //src/model:update_shaders
 ```
 
-then the GPU gates (spill gate, GPU tests, model gates). The shader tools are system packages
-(declared, pinned), not hermetic downloads: an Arch update of shaderc/glslang/SPIRV-Tools
-fails the pin check until reviewed. A hermetic option is the LunarG SDK 1.4.357.0 tarball
-(330 MB; byte identity with the pinned tools untested).
+then the GPU gates (spill gate, GPU tests, model gates). Harnesses that compile experimental
+variants get the same tools from `tools/zerv_build.py` `shader_tools()`, never the host's.
 
 ### Tests in parallel (2026-09-26)
 

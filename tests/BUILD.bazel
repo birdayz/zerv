@@ -177,9 +177,6 @@ zig_test(
     data = [
         "//src/matvec:shaders/f32_small.spv",
         "//src/gpu:vulkan",
-        # Not opened by path: declared so that a driver change invalidates the results.
-        "@vulkan_driver//:libvulkan_radeon.so",
-        "@vulkan_icd//:radeon_icd.json",
     ],
     linkopts = ["$(location //src/gpu:vulkan)"],
     zigopts = ["-lc"],
