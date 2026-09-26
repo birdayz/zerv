@@ -250,7 +250,7 @@ test "arena layouts: context bounds and disjoint regions" {
     try t.expectError(error.ContextTooLarge, layout.act(50_000_000, 1, 0, false, 1, false));
     // io block: prefill token ids and RoPE rows follow the logits.
     try t.expectEqual(@as(u32, layout.io.logits + 248320), layout.io.tokens);
-    try t.expectEqual(layout.io.words(512), @as(u64, layout.io.tokens) + 512 + 512 * 64 + layout.io.spec_words + layout.io.batch_max * layout.io.slot_entry);
+    try t.expectEqual(layout.io.words(512), @as(u64, layout.io.tokens) + 512 + 512 * 64 + layout.io.spec_words + layout.io.batch_max * layout.io.slot_entry + 512 * 4 + layout.io.max_seqs * layout.io.seq_words);
     // MTP words after the prefill RoPE rows: positions, tokens, drafts, sources, RoPE rows.
     const sp = layout.io.spec(512);
     try t.expectEqual(layout.io.rope(512) + 512 * 64, sp.pos);
@@ -264,7 +264,11 @@ test "arena layouts: context bounds and disjoint regions" {
     // control words after sin, before the logits; the batch table last.
     try t.expectEqual(@as(u32, layout.io.sin + 32), layout.io.slot);
     try t.expect(layout.io.slot + layout.io.slot_entry <= layout.io.logits);
-    try t.expectEqual(layout.io.words(512), @as(u64, layout.io.batch(512)) + 32 * 4);
+    // Packed prefill (docs/specs/concurrent.md, "18d.1 design"): row entries after the batch
+    // table, then the sequence table, last.
+    try t.expectEqual(layout.io.packRows(512), layout.io.batch(512) + 32 * 4);
+    try t.expectEqual(layout.io.seqs(512), layout.io.packRows(512) + 512 * 4);
+    try t.expectEqual(layout.io.words(512), @as(u64, layout.io.seqs(512)) + 8 * 8);
 }
 
 test "slots: state arena slot strides, KV pool pages and per-slot page tables" {

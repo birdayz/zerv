@@ -38,6 +38,10 @@ KERNELS_KV16 = {"qkprep_kv16": 3, "qk_b_kv16": 11, "attn_scores_kv16": 16, "attn
 # no address spill); the `_legacy` modules without it (Options.delta_state_out = false).
 STATE_OUT = {"delta", "delta_b"}
 KERNELS_LEGACY = {"delta_legacy": 6, "delta_b_legacy": 15}
+# Packed multi-sequence prefill (docs/specs/concurrent.md, "18d.1 design"; parallel mode):
+# name -> (KERNEL, extra defines).
+KERNELS_PACKED = {"qk_p": (11, []), "qk_p_kv16": (11, ["-DKV16"]), "conv_p": (14, []), "delta_p": (15, ["-DSTATE_OUT=1"])}
+FLASH_PACKED = {"attn_flash_p": [], "attn_flash_p_kv16": ["-DKV16"]}
 
 
 def main():
@@ -104,6 +108,16 @@ def main():
         output = a.output_dir/(name+".spv")
         f16out = ["-DF16OUT"] if name in KERNELS_H else ["-DKV16"] if name in KERNELS_KV16 else ["-DSTATE_OUT=1"] if name in STATE_OUT else []
         subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DKERNEL={kernel}"] + f16out + [str(source), "-o", str(output)], check=True)
+        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
+        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+    for name, (kernel, extra) in KERNELS_PACKED.items():
+        output = a.output_dir/(name+".spv")
+        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DKERNEL={kernel}", "-DPACKED=1"] + extra + [str(source), "-o", str(output)], check=True)
+        subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
+        manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
+    for name, extra in FLASH_PACKED.items():
+        output = a.output_dir/(name+".spv")
+        subprocess.run(["glslc", "--target-env=vulkan1.1", "-O", "-fshader-stage=compute", "-DPACKED=1"] + FLASH_DEFINES + extra + [str(flash), "-o", str(output)], check=True)
         subprocess.run(["spirv-val", "--target-env", "vulkan1.1", str(output)], check=True)
         manifest["modules"][name] = dict(sha256=sha(output), bytes=output.stat().st_size)
     (a.output_dir/"manifest.json").write_text(json.dumps(manifest, indent=2)+"\n")

@@ -304,6 +304,111 @@ Nothing checks these for us, so each is enforced in code and covered by a test:
   3. Quality against FP64: not yet run.
   4. Serving: after a faster kernel.
 
+### 18d.1 design: packed multi-sequence prefill (specified 2026-09-26, before implementation; implemented the same day, gates 1–3 passed — see "As implemented")
+
+Measured problem ([report](../bench/2026-09-25-multiuser.md), "Final comparison"):
+- With 8 users in lockstep, the 8 prompts arriving together are prefilled one at a time.
+  A ~100-token prompt costs ~170 ms on the 128-row plan, about 40 TFLOPS against ~53 at 512
+  rows.
+- Streaming users see ~12 stalls of ~134 ms per round: gap p99 147 ms against vLLM's 51.
+- 8-user throughput 150.9 against vLLM's 158.2 tok/s. vLLM packs the prompts into one pass.
+
+**Idea.** One prefill plan carries the next chunk of several sequences (distinct slots),
+each exactly the chunk its solo prefill would run (`chunkFor` on its remaining tokens), so
+every sequence's outputs stay bitwise its solo outputs.
+
+**Layout of a packed plan.**
+- Sequence s occupies rows `[b_s, b_s + n_s)`, with `b_s` a multiple of 8 (the flash row
+  group `flash_rows`) and segments in order. Rows between segments are padding.
+- The total span must fit the plan's rows.
+- io gets a sequence table (`layout.io.seqs`, at most `max_seqs` = 8 entries of 8 words):
+  `b_s`, `n_s`, `p0_s` (first position), page-table offset, state offset.
+- io also gets a per-row entry (position, page-table offset, state offset, flag) for every
+  plan row. Padding rows carry flag 1 and position 0.
+- RoPE rows are per row, as today.
+- The io count is the plan span (last `b_s + n_s`).
+- A single sequence is the case S = 1 with `b_0 = 0`: in parallel mode (slots > 1) every
+  prefill uses the packed kernels.
+
+**Kernels** (new modules: parallel mode only; the single-slot modules stay byte-identical):
+- **Unchanged, per row:** embed, norms, gate, swiglu, gnorm and the f16 GEMMs (`gemm_f16`,
+  `gemm_f16m`, `gemm_f16x` are bitwise equal per element at any plan size, gpu-tested).
+  Padding rows compute values nobody reads.
+- **`qk_p`:** as `qk_b` with the per-row position and page table. Padding rows store no KV.
+- **`attn_flash_p`:** workgroup (group g, head group) takes its row group's sequence from the
+  row entries: position `p0_s + (row − b_s)`, page table and count `n_s`. The key-loop bound
+  is `p0_s + min(row0 − b_s + RW, n_s)`, exactly the solo bound. A group of padding rows
+  returns.
+- **`conv_p`, `delta_p`:** grid y = sequence. Workgroup (segment, s) scans rows
+  `b_s .. b_s + n_s − 1` from sequence s's state and stores it. The per-row arithmetic and
+  order are the single-sequence kernels'.
+- **Output:** the final norm and the output head run on each sequence's last row (S rows),
+  by the single-row modules, one dispatch per sequence. Their logits go to S io slots.
+
+**Split-K rule** (the FP32 GEMMs left in the f16 mode: attn_k, attn_v, ssm_alpha,
+ssm_beta):
+- Today the chunk depends on the plan's rows (`gemm.splitChunk(M, plan rows, …)`), so a
+  row's arithmetic differs between plans.
+- In the f16 prefill mode it becomes a function of the shape only: the rule evaluated at
+  128 rows, on every plan and at every slot count. One arithmetic, so the 1-slot and K-slot
+  models keep agreeing.
+- `Options.f16_split = .shape` (default) | `.plan` (the previous rule).
+- This changes f16-mode prefill outputs once. The serving references are regenerated, and
+  `verify_model --precision f16` (unbounded, informational) is rerun.
+- The FP32 prefill mode is unchanged: packing requires `--prefill-precision f16`.
+
+**Scheduling (`serve/batcher.zig`).**
+- When a unit ends and prompts are pending, the scheduler packs, in `--prefill-order`,
+  pending sequences' next chunks while the aligned span fits the largest plan
+  (`--prefill-pack N`, default 8 sequences; `1` is the previous behaviour).
+- The plan is the smallest whose rows cover the span.
+- A packed unit runs in segments like a chunk; decode steps interleave by the same stall
+  budget.
+
+**Gates.**
+1. gpu-test: `qk_p`, `attn_flash_p`, `conv_p` and `delta_p` bitwise equal to the
+   single-sequence kernels, for sequences at several offsets, padding, and S = 1..8.
+2. `zerv-batch-check`: packed joins of 2..8 sequences with different prompt lengths
+   (chunk grids of 1–3 chunks), decode batches between segments. Every prefill logits row
+   and every later decode row is bitwise equal to the same sequence served alone by the
+   K-slot model.
+3. Serving identity (`run_concurrent.py --reference`, regenerated reference) at 1–8 clients.
+4. `run_multiuser.py` against vLLM and llama-server: steady gap p99 / max, TTFT and 8-user
+   throughput.
+
+**As implemented (2026-09-26).** Differences from the design above, found while building it:
+- **Plans of at least 128 rows in parallel mode.** Plans of 32 and 64 rows run every
+  projection in FP32, since the f16 kernels need whole 128-row tiles. A short chunk alone
+  would then use different arithmetic than the same chunk packed. In the packable
+  configuration (slots > 1, f16 prefill, `f16_split = .shape`) the model records only plans
+  of 128 rows or more. The first packed batch-check run found this: 126 mismatches, all on
+  sequences with a 40- or 61-token prompt.
+- **Solo reference = the same server serving one request at a time.** With the change
+  above, `--parallel 8` and `--parallel 1` differ in arithmetic for prompts under 128
+  tokens. Batch invariance is judged against the same configuration at concurrency 1.
+- **Every prefill in parallel mode uses the packed kernels,** including single-sequence
+  `prefill`/`runChunk` calls (one sequence at row 0), and logits come from `pack_logits`.
+  `delta_state_out = false` is refused with several slots, since the packed DeltaNet kernel
+  exists only with separate state output.
+- **Output head:** a final norm of every row, a row copy of each sequence's last row to `hn`
+  row s (source word in its table entry), then the multi-row output projection over S rows.
+  Commands: `seg_tail[plan][S − 2]` for S = 2..`pack_seqs`.
+- **Scheduler:**
+  - `prefillUnit(items)` / `packFits(remaining)` replace `prefillChunk`. Items and tokens
+    are passed only when a chunk starts, since the model copies the tokens into io then.
+  - Members stay `running` for the whole chunk, so no member slot is freed or reset while the
+    chunk writes its state.
+  - A member whose generation is canceled or leaves completes with `Canceled` at the next
+    unit boundary. The chunk continues for the others and is aborted only when every member
+    is gone.
+  - Completed prompts' held logits are counted (`prefill_holds`). A new chunk waits until
+    all are sampled.
+- **Gate 1 is covered at model level:** `zerv-batch-check … pack`, every logits row bitwise
+  equal to the sequence prefilled alone. Its cases: prompts 40–700 tokens, packs of 1–4
+  (the prompt set caps packs at the 512-row plan), three join orders and pack caps, decode
+  batches between segments, and f32/f16 KV, f16 decode and 256-token pages. 504/504 in each
+  configuration. A separate kernel-level gpu-test was not written.
+
 ## Session and HTTP (host performance)
 
 - `session.Generation` becomes a per-request state machine: `feed(logits rows) → tokens, output

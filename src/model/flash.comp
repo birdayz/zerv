@@ -84,17 +84,35 @@ void main() {
     uint count=io[IO_COUNT], p0=io[IO_P0];
     uint row0=gl_WorkGroupID.x*RW;
     if (row0>=count) return; // uniform per workgroup
+#if PACKED
+    // Packed prefill (docs/specs/concurrent.md, "18d.1 design"): `slots` is the io word of the
+    // per-row entries (position, page-table offset, state offset, padding flag). A sequence's
+    // rows start at a multiple of RW, so the group holds one sequence's rows (a prefix of nv)
+    // then padding: exactly the solo group with count - row0 = nv.
+    if (io[p.slots+row0*4u+3u]!=0u) return; // an all-padding group
+    uint nv=0u;
+    [[unroll]] for (uint r=0;r<RW;r++) if (row0+r<count && io[p.slots+(row0+r)*4u+3u]==0u) nv=r+1u;
+    uint ptab=p.ptab+io[p.slots+row0*4u+1u];
+    uint kv_end=io[p.slots+(row0+nv-1u)*4u]+1u;
+#else
     // The slot's page table (docs/specs/concurrent.md, "18b.2 design"): offset io[slots + 1].
     uint ptab=p.ptab+(p.slots!=0u ? io[p.slots+1u] : 0u);
     uint kv_end=p0+min(row0+RW,count);
+#endif
     bool split=gl_SubgroupSize<64u; // two subgroups per 64-thread group
     uint sg_in_group=split ? lane/gl_SubgroupSize : 0u;
     // Wave-uniform Q rows (clamped past count), as vec4 indices at d = 0.
     uint qrow[RW], qpos[RW];
     [[unroll]] for (uint r=0;r<RW;r++) {
+#if PACKED
+        uint row=row0+min(r,nv-1u);
+        qrow[r]=(p.qr+row*6144u+h*256u)/4u;
+        qpos[r]=io[p.slots+row*4u];
+#else
         uint row=min(row0+r,count-1u);
         qrow[r]=(p.qr+row*6144u+h*256u)/4u;
         qpos[r]=p0+row;
+#endif
     }
     float m[RW], l[RW];
     vec4 o[RW];
@@ -204,7 +222,11 @@ void main() {
     }
     [[unroll]] for (uint r=0;r<RW;r++) {
         uint row=row0+r;
+#if PACKED
+        if (r>=nv) continue;
+#else
         if (row>=count) continue;
+#endif
         uint ob=p.out_+row*6144u+h*256u+lane*4u;
         vec4 y=o[r]/l[r];
         act[ob]=y.x; act[ob+1u]=y.y; act[ob+2u]=y.z; act[ob+3u]=y.w;

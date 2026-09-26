@@ -1,6 +1,7 @@
 //! Continuous batching (src/serve/batcher.zig, docs/specs/concurrent.md "18c design") with a
 //! fake backend: every returned logits row must be exactly what the sequence computes
-//! alone, while generations join and leave, hold rows, pause, get canceled and see errors.
+//! alone, while generations join and leave, hold rows, pause, get canceled, see errors
+//! and prefill in packed chunks.
 const std = @import("std");
 const zerv = @import("zerv");
 const batcher = zerv.serve.batcher;
@@ -36,14 +37,21 @@ const Fake = struct {
     io: std.Io,
     hist: [max_slots]u64 = @splat(0),
     rows_out: [max_slots * V]f32 = @splat(0),
-    prefill_out: [V]f32 = @splat(0),
+    prefill_out: [batcher.max_pack * V]f32 = @splat(0),
     delay_ns: u64 = 0,
     unit_delay_ns: u64 = 0,
     fail_batches: u32 = 0,
     sizes: [max_slots + 1]u32 = @splat(0),
     calls: u32 = 0,
     segments: u32 = 1,
-    flight: ?u32 = null,
+    /// The chunk in flight: its slots, their chunk tokens, and their remaining lengths.
+    flight: ?usize = null,
+    fslots: [batcher.max_pack]u32 = undefined,
+    fcount: [batcher.max_pack]usize = undefined,
+    ftotal: [batcher.max_pack]usize = undefined,
+    ftokens: [batcher.max_pack][3]u32 = undefined,
+    pack_cap: usize = 1,
+    packs: u32 = 0,
     seg: u32 = 0,
     no_batch_in_chunk: bool = false,
     aborts: u32 = 0,
@@ -58,30 +66,53 @@ const Fake = struct {
         if (self.flight != null) self.violations += 1;
         self.hist[slot] = 7;
     }
-    pub fn prefillChunk(self: *Fake, slot: u32, tokens: []const u32) !batcher.Chunk {
-        for (tokens) |token| if (token == poison) {
-            self.violations += 1;
-        };
-        if (self.flight) |f| {
-            if (f != slot) self.violations += 1;
-        } else self.flight = slot;
+    pub fn packFits(self: *Fake, remaining: []const usize) bool {
+        return remaining.len <= self.pack_cap;
+    }
+    /// Starting a chunk copies each item's next 3 tokens (the model copies them into its io
+    /// block); later units never read the prompts.
+    pub fn prefillUnit(self: *Fake, items: []const batcher.Item) !batcher.Unit {
+        if (self.flight == null) {
+            if (items.len == 0 or items.len > self.pack_cap) {
+                self.violations += 1;
+                return error.FakeBadPack;
+            }
+            self.flight = items.len;
+            for (items, 0..) |item, i| {
+                for (item.tokens) |token| if (token == poison) {
+                    self.violations += 1;
+                };
+                const n = @min(3, item.tokens.len);
+                self.fslots[i] = item.slot;
+                self.fcount[i] = n;
+                self.ftotal[i] = item.tokens.len;
+                @memcpy(self.ftokens[i][0..n], item.tokens[0..n]);
+            }
+            if (items.len > 1) self.packs += 1;
+        } else if (items.len != 0) self.violations += 1;
         if (self.unit_delay_ns > 0) try self.io.sleep(.fromNanoseconds(self.unit_delay_ns), .awake);
         self.seg += 1;
-        if (self.seg < self.segments) return .{ .consumed = 0, .logits = null };
+        if (self.seg < self.segments) return .{ .done = false };
         self.seg = 0;
+        const k = self.flight.?;
         self.flight = null;
-        const n = @min(3, tokens.len);
-        for (tokens[0..n]) |token| if (token == poison) {
-            self.violations += 1;
-        };
-        for (tokens[0..n]) |token| self.hist[slot] = mix(self.hist[slot], token);
-        if (n < tokens.len) return .{ .consumed = n, .logits = null };
-        logitsFor(self.hist[slot], &self.prefill_out);
-        if (self.done_count < self.done_order.len) {
-            self.done_order[self.done_count] = slot;
-            self.done_count += 1;
+        var unit: batcher.Unit = .{ .done = true, .logits = self.prefill_out[0 .. k * V] };
+        for (0..k) |i| {
+            const slot = self.fslots[i];
+            for (self.ftokens[i][0..self.fcount[i]]) |token| self.hist[slot] = mix(self.hist[slot], token);
+            unit.consumed[i] = self.fcount[i];
+            logitsFor(self.hist[slot], self.prefill_out[i * V ..][0..V]);
+            if (self.fcount[i] == self.ftotal[i] and self.done_count < self.done_order.len) {
+                self.done_order[self.done_count] = slot;
+                self.done_count += 1;
+            }
         }
-        return .{ .consumed = n, .logits = &self.prefill_out };
+        return unit;
+    }
+    fn inFlight(self: *const Fake, slot: u32) bool {
+        const k = self.flight orelse return false;
+        for (self.fslots[0..k]) |s| if (s == slot) return true;
+        return false;
     }
     pub fn checkRow(self: *Fake, row: batcher.Row) !void {
         if (row.token == self.bad_token) return error.FakeBadRow;
@@ -93,9 +124,9 @@ const Fake = struct {
     }
     pub fn decodeBatch(self: *Fake, rows: []const batcher.Row) ![]const f32 {
         self.calls += 1;
-        if (self.flight) |f| {
+        if (self.flight != null) {
             if (self.no_batch_in_chunk) self.violations += 1;
-            for (rows) |row| if (row.slot == f) {
+            for (rows) |row| if (self.inFlight(row.slot)) {
                 self.violations += 1;
             };
         }
@@ -471,4 +502,82 @@ test "batcher: a row that cannot run fails alone; the other rows of its batch ru
         try t.expectEqualSlices(f32, &want, &got);
     }
     for (slots) |sl| b.leave(sl);
+}
+
+test "batcher: pending prompts pack into one chunk; each gets its solo logits; a canceled member does not stop the others" {
+    const io = t.io;
+    // 1. Six generations with prompts of 2..12 tokens start together over 6 slots, packs of
+    // up to 4: packed chunks happen, and every logits row is the solo one.
+    {
+        var fake: Fake = .{ .io = io, .segments = 3, .unit_delay_ns = 200_000, .pack_cap = 4 };
+        var b = try B.init(io, &fake, .{ .slots = 6, .vocab = V, .stall = .{ .ns = 0 }, .order = .shortest, .pack = 4 });
+        var task = try io.concurrent(B.run, .{&b});
+        var prompts: [6][12]u32 = undefined;
+        var plans: [6]Plan = undefined;
+        for (&prompts, &plans, 0..) |*pr, *pl, i| {
+            for (pr, 0..) |*x, j| x.* = @intCast(100 * i + j + 1);
+            pl.* = .{ .prompt = pr[0 .. 2 + 2 * i], .steps = 6 };
+        }
+        var gate: std.Io.Semaphore = .{ .permits = 6 };
+        var outs: [6][64]u32 = undefined;
+        var results: [6]anyerror!void = undefined;
+        try runAll(&b, &gate, &plans, &outs, &results);
+        b.stop();
+        task.await(io);
+        for (results) |r| try r;
+        for (plans, outs) |plan, out| {
+            var want: [64]u32 = undefined;
+            soloTokens(plan.prompt, plan.steps, &want);
+            try t.expectEqualSlices(u32, want[0..plan.steps], out[0..plan.steps]);
+        }
+        try t.expect(fake.packs > 0);
+        try t.expect(b.stats.packed_chunks > 0);
+        try t.expectEqual(@as(u32, 0), fake.violations);
+    }
+    // 2. Two prompts in one pack; one generation is canceled mid-chunk: the other completes
+    // with its solo logits, the chunk is not aborted, and the canceled slot is reused.
+    {
+        var fake: Fake = .{ .io = io, .segments = 8, .unit_delay_ns = 2_000_000, .pack_cap = 2 };
+        var b = try B.init(io, &fake, .{ .slots = 2, .vocab = V, .stall = .{ .ns = 0 }, .order = .shortest, .pack = 2 });
+        var task = try io.concurrent(B.run, .{&b});
+        const a = try b.join();
+        const c = try b.join();
+        try b.reset(a);
+        try b.reset(c);
+        var long: [9]u32 = undefined;
+        for (&long, 0..) |*x, i| x.* = @intCast(i + 1);
+        const short = [_]u32{ 40, 41, 42 };
+        var fa = try io.concurrent(longPrefill, .{ &b, a, @as([]const u32, &long) });
+        var fc = try io.concurrent(shortPrefill, .{ &b, c, @as([]const u32, &short) });
+        while (fake.flight == null or fake.flight.? < 2) try io.sleep(.fromMicroseconds(200), .awake);
+        try t.expectError(error.Canceled, fa.cancel(io));
+        b.leave(a);
+        const logits = try fc.await(io);
+        var want: [V]f32 = undefined;
+        logitsFor(mix(mix(mix(7, 40), 41), 42), &want);
+        try t.expectEqualSlices(f32, &want, &logits);
+        b.sampled(c);
+        const again = while (true) break b.join() catch |e| switch (e) {
+            error.NoSlot => {
+                try io.sleep(.fromMilliseconds(1), .awake);
+                continue;
+            },
+            else => return e,
+        };
+        try b.reset(again);
+        const l2 = try b.prefill(again, &.{9});
+        logitsFor(mix(7, 9), &want);
+        try t.expectEqualSlices(f32, &want, l2);
+        b.leave(again);
+        b.leave(c);
+        b.stop();
+        task.await(io);
+        try t.expectEqual(@as(u64, 0), b.stats.aborted_chunks);
+        try t.expectEqual(@as(u32, 0), fake.violations);
+    }
+}
+
+fn shortPrefill(b: *B, slot: u32, prompt: []const u32) anyerror![V]f32 {
+    const logits = try b.prefill(slot, prompt);
+    return logits[0..V].*;
 }

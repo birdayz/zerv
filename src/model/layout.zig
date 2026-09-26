@@ -437,7 +437,20 @@ pub const io = struct {
     pub fn batch(rows: u32) u32 {
         return rope(rows) + rows * 64 + spec_words;
     }
+    /// Packed multi-sequence prefill (docs/specs/concurrent.md, "18d.1 design"): per-row
+    /// entries (position, page-table offset, state offset, padding flag; `rows` of them) and
+    /// the sequence table (`max_seqs` entries of `seq_words`: first row, rows, first position,
+    /// page-table offset, state offset, word of the sequence's last final-norm row; rows 0:
+    /// unused).
+    pub const max_seqs = 8;
+    pub const seq_words = 8;
+    pub fn packRows(rows: u32) u32 {
+        return batch(rows) + batch_max * slot_entry;
+    }
+    pub fn seqs(rows: u32) u32 {
+        return packRows(rows) + rows * 4;
+    }
     pub fn words(rows: u32) u64 {
-        return @as(u64, batch(rows)) + batch_max * slot_entry;
+        return @as(u64, seqs(rows)) + max_seqs * seq_words;
     }
 };

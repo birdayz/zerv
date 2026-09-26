@@ -247,6 +247,9 @@ finish independent tests and benchmark gates before advancing.
     +5.3% on 128-row plans), `run_multiuser.py`; against vLLM and llama-server: zerv leads at 1–4 users, on TTFT
     and on long-prompt interference (40 tok/s kept against 5–13); vLLM leads 8-user throughput (158 vs 151) and
     steady gap p99 (51 vs 147 ms) by packing simultaneous prompts into one prefill.
+86. [Packed multi-sequence prefill](bench/2026-09-26-packed-prefill.md) (18d.1): several prompts per chunk, each
+    bitwise its solo prefill; `--prefill-pack`, `--f16-split`; 8-user 150.8 tok/s (vLLM 151.9), TTFT p95 1.05 s;
+    a failure found by the gate (sub-128-row plans) fixed; steady gap p99 still behind vLLM.
 85. [f16 decode kernel v2](bench/2026-09-26-decode-v2.md) (18e part 3): `gemm_f16d` bitwise v1, 1.3–1.5×
     faster; 8-row step 38.6 ms vs FP32 46.3; ablations show WMMA decode bounded near 600–700 GB/s on this card
     (the 16×16 tile's issue cost), so it cannot beat FP32 at 1 row; `zerv-decode-f16-bench`, batched-step profile.

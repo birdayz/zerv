@@ -259,17 +259,35 @@ pub const ModelBackend = struct {
         self.m.select(slot) catch |e| return self.check(e);
         self.m.reset() catch |e| return self.check(e);
     }
-    /// One segment of a chunk when the model records them (several slots; docs/specs/
-    /// concurrent.md "18c.2 design"), else a whole chunk.
-    pub fn prefillChunk(self: *ModelBackend, slot: u32, tokens: []const u32) !batcher.Chunk {
-        self.m.select(slot) catch |e| return self.check(e);
+    /// Whether these prompts' next chunks fit one packed chunk (docs/specs/concurrent.md,
+    /// "18d.1 design"): always for one; several need the model's packed commands.
+    pub fn packFits(self: *ModelBackend, remaining: []const usize) bool {
+        if (remaining.len <= 1) return true;
+        if (!self.m.packable() or remaining.len > self.m.pack_seqs) return false;
+        var left: [batcher.max_pack]u32 = undefined;
+        for (remaining, left[0..remaining.len]) |r, *l| l.* = @intCast(@min(r, std.math.maxInt(u32)));
+        return self.m.packSpan(left[0..remaining.len]) <= self.m.rows;
+    }
+    /// One segment of a (packed) chunk when the model records them (several slots; docs/specs/
+    /// concurrent.md "18c.2 design"), else a whole chunk of the one item.
+    pub fn prefillUnit(self: *ModelBackend, items: []const batcher.Item) !batcher.Unit {
         if (self.m.live_seg > 0) {
-            const seg = self.m.prefillSegment(tokens) catch |e| return self.check(e);
-            return .{ .consumed = seg.consumed, .logits = if (seg.consumed == tokens.len) seg.logits else null };
+            var pack: [batcher.max_pack]model.PackItem = undefined;
+            for (items, pack[0..items.len]) |item, *pi| pi.* = .{ .slot = item.slot, .tokens = item.tokens };
+            const seg = self.m.prefillPackedSegment(pack[0..items.len]) catch |e| return self.check(e);
+            if (!seg.done) return .{ .done = false };
+            var unit: batcher.Unit = .{ .done = true, .logits = seg.logits };
+            for (seg.consumed[0..batcher.max_pack], &unit.consumed) |c, *u| u.* = c;
+            return unit;
         }
+        if (items.len != 1) return error.InvalidBatch;
+        self.m.select(items[0].slot) catch |e| return self.check(e);
+        const tokens = items[0].tokens;
         const c = self.m.nextChunk(@intCast(tokens.len));
         const logits = self.m.runChunk(&self.m.prefill_commands[c.plan], c.plan, tokens[0..c.rows]) catch |e| return self.check(e);
-        return .{ .consumed = c.rows, .logits = if (c.rows == tokens.len) logits else null };
+        var unit: batcher.Unit = .{ .done = true, .logits = logits };
+        unit.consumed[0] = c.rows;
+        return unit;
     }
     pub fn abortChunk(self: *ModelBackend) void {
         self.m.abortChunk();

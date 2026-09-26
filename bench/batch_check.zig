@@ -17,7 +17,11 @@
 //!      permutation of a larger pool (non-identity, interleaved page tables);
 //!   4. error cases (duplicate slot, page in use, unmapped slot);
 //!   5. timings: decodeBatch per row count at a common position, and step().
-//! Usage: zerv-batch-check MODEL [f32|f16 [PAGE_TOKENS [CONTEXT [f32|f16[@v1|@v2][@all]]]]] > report.jsonl
+//! Usage: zerv-batch-check MODEL [f32|f16 [PAGE_TOKENS [CONTEXT [f32|f16[@v1|@v2][@all] [pack]]]]] > report.jsonl
+//! `pack`: the packed-prefill gate instead (docs/specs/concurrent.md, "18d.1 design"; f16
+//! prefill mode): every sequence prefilled alone is the reference; then the sequences join
+//! in packed chunks of 2..8 (re-packed chunk by chunk, several chunk grids) with decode
+//! batches of the joined ones between segments; every logits row must be bitwise equal.
 //! (KV type, page tokens, context, decode precision; exit status 1 on any mismatch). With
 //! decode precision f16 the reference is the same mode on a one-slot model, each sequence
 //! decoded alone through one-row batches (batch invariance within the mode).
@@ -63,7 +67,9 @@ pub fn main(init: std.process.Init) !void {
     const a = init.arena.allocator();
     const io = init.io;
     const args = try init.minimal.args.toSlice(a);
-    if (args.len < 2 or args.len > 6) return error.Usage;
+    if (args.len < 2 or args.len > 7) return error.Usage;
+    const pack_mode = args.len == 7 and std.mem.eql(u8, args[6], "pack");
+    if (args.len == 7 and !pack_mode) return error.Usage;
     const kv_type: model.KvType = if (args.len >= 3) std.meta.stringToEnum(model.KvType, args[2]) orelse return error.Usage else .f32;
     const page: u32 = if (args.len >= 4) (if (std.mem.eql(u8, args[3], "context")) 0 else try std.fmt.parseInt(u32, args[3], 10)) else model.layout.default_kv_page;
     const context: u32 = if (args.len >= 5) try std.fmt.parseInt(u32, args[4], 10) else 2048;
@@ -90,7 +96,7 @@ pub fn main(init: std.process.Init) !void {
     defer file.deinit();
     var container = try zerv.artifact.gguf.Container.parse(a, file.bytes, .{});
     defer container.deinit();
-    var device = try gpu.Device.open(.{ .max_allocated_bytes = 23 * 1024 * 1024 * 1024, .storage16 = kv_type == .f16, .cooperative_matrix = precision == .f16, .subgroup_size_control = precision == .f16 });
+    var device = try gpu.Device.open(.{ .max_allocated_bytes = 23 * 1024 * 1024 * 1024, .storage16 = kv_type == .f16, .cooperative_matrix = precision == .f16 or pack_mode, .subgroup_size_control = precision == .f16 or pack_mode });
     defer device.deinit() catch @panic("live device resources");
 
     var prng = std.Random.DefaultPrng.init(0x18b2);
@@ -103,6 +109,8 @@ pub fn main(init: std.process.Init) !void {
     for (&xs) |*x| for (x) |*token| {
         token.* = random.intRangeLessThan(u32, 0, 150000);
     };
+
+    if (pack_mode) return packCheck(a, io, &device, &container, out, kv_type, page, context, precision, dkernel, dformats, &prompts, &xs);
 
     // Phase A: references from the one-slot model.
     const ref_prefill = try a.alloc(f32, K * vocab);
@@ -359,3 +367,115 @@ const Recorder = struct {
         return sum;
     }
 };
+
+/// The packed-prefill gate (`pack` mode; docs/specs/concurrent.md, "18d.1 design").
+fn packCheck(a: std.mem.Allocator, io: std.Io, device: *gpu.Device, container: *zerv.artifact.gguf.Container, out: *std.Io.Writer, kv_type: model.KvType, page: u32, context: u32, precision: model.DecodePrecision, dkernel: model.DecodeF16Kernel, dformats: model.DecodeF16Formats, prompts: *const [K][max_prompt]u32, xs: *const [K][T]u32) !void {
+    _ = io;
+    var m: model.Model = undefined;
+    try m.init(device, container, .{ .context = context, .prefill_rows = 512, .prefill_precision = .f16, .kv_type = kv_type, .kv_page_tokens = page, .slots = K, .batch_rows = K, .decode_precision = precision, .decode_f16_kernel = dkernel, .decode_f16_formats = dformats });
+    defer m.deinit();
+    if (!m.packable()) return error.NotPackable;
+    // References: each sequence alone (one-sequence chunks), then T single-row steps.
+    const ref_prefill = try a.alloc(f32, K * vocab);
+    const ref = try a.alloc(f32, K * T * vocab);
+    for (0..K) |i| {
+        try m.select(@intCast(i));
+        try m.reset();
+        @memcpy(ref_prefill[i * vocab ..][0..vocab], try m.prefill(prompts[i][0..prompt_lens[i]]));
+        for (0..T) |t| @memcpy(ref[(i * T + t) * vocab ..][0..vocab], try m.decodeBatch(&.{.{ .slot = @intCast(i), .token = xs[i][t] }}));
+    }
+    var stats: Stats = .{};
+    var packs_seen: u32 = 0; // bit n: a chunk of n sequences ran
+    var interleaved: u64 = 0;
+    // Three rounds with different join orders and pack caps.
+    const orders = [3][K]u32{ .{ 0, 1, 2, 3, 4, 5, 6, 7 }, .{ 7, 3, 5, 1, 6, 0, 4, 2 }, .{ 2, 4, 6, 0, 1, 3, 5, 7 } };
+    const caps = [3]u32{ 8, 3, 2 };
+    for (orders, caps) |order, cap| {
+        for (0..K) |i| {
+            try m.select(@intCast(i));
+            try m.reset();
+        }
+        var consumed: [K]u32 = @splat(0);
+        var steps: [K]u32 = @splat(0);
+        var joined: [K]bool = @splat(false);
+        var done_count: u32 = 0;
+        while (done_count < K) {
+            // Next packed chunk: pending sequences in join order while they fit.
+            var items: [8]model.PackItem = undefined;
+            var ids: [8]u32 = undefined;
+            var n: u32 = 0;
+            var remaining: [8]u32 = undefined;
+            for (order) |i| {
+                if (joined[i] or n == cap) continue;
+                remaining[n] = prompt_lens[i] - consumed[i];
+                if (m.packSpan(remaining[0 .. n + 1]) > 512) continue;
+                items[n] = .{ .slot = i, .tokens = prompts[i][consumed[i]..prompt_lens[i]] };
+                ids[n] = i;
+                n += 1;
+            }
+            if (n > 0) {
+                packs_seen |= @as(u32, 1) << @intCast(n);
+                while (true) {
+                    const seg = try m.prefillPackedSegment(items[0..n]);
+                    if (seg.done) {
+                        for (ids[0..n], 0..) |i, s| {
+                            consumed[i] += seg.consumed[s];
+                            if (consumed[i] == prompt_lens[i]) {
+                                try check(out, &stats, "packed-prefill", i, -1, seg.logits.?[s * vocab ..][0..vocab], ref_prefill[i * vocab ..][0..vocab]);
+                                joined[i] = true;
+                            }
+                        }
+                        break;
+                    }
+                    // A decode batch of the joined, unfinished sequences between segments.
+                    var rows: [K]model.BatchRow = undefined;
+                    var who: [K]u32 = undefined;
+                    var b: usize = 0;
+                    for (0..K) |i| if (joined[i] and steps[i] < T) {
+                        rows[b] = .{ .slot = @intCast(i), .token = xs[i][steps[i]] };
+                        who[b] = @intCast(i);
+                        b += 1;
+                    };
+                    if (b == 0) continue;
+                    interleaved += 1;
+                    const logits = try m.decodeBatch(rows[0..b]);
+                    for (who[0..b], 0..) |i, r| {
+                        try check(out, &stats, "decode-between-packed", i, steps[i], logits[r * vocab ..][0..vocab], ref[(i * T + steps[i]) * vocab ..][0..vocab]);
+                        steps[i] += 1;
+                        if (steps[i] == T) done_count += 1;
+                    }
+                }
+                continue;
+            }
+            // Everyone joined: finish the decode steps.
+            var rows: [K]model.BatchRow = undefined;
+            var who: [K]u32 = undefined;
+            var b: usize = 0;
+            for (0..K) |i| if (steps[i] < T) {
+                rows[b] = .{ .slot = @intCast(i), .token = xs[i][steps[i]] };
+                who[b] = @intCast(i);
+                b += 1;
+            };
+            const logits = try m.decodeBatch(rows[0..b]);
+            for (who[0..b], 0..) |i, r| {
+                try check(out, &stats, "decode-after-packed", i, steps[i], logits[r * vocab ..][0..vocab], ref[(i * T + steps[i]) * vocab ..][0..vocab]);
+                steps[i] += 1;
+                if (steps[i] == T) done_count += 1;
+            }
+        }
+        try out.flush();
+    }
+    // Error cases: a duplicate slot, more sequences than the pack holds.
+    var errors_ok = true;
+    for (0..K) |i| {
+        try m.select(@intCast(i));
+        try m.reset();
+    }
+    if (m.prefillPackedSegment(&.{ .{ .slot = 1, .tokens = prompts[1][0..10] }, .{ .slot = 1, .tokens = prompts[2][0..10] } })) |_| {
+        errors_ok = false;
+    } else |e| errors_ok = errors_ok and e == error.InvalidBatch;
+    const passed = stats.failures == 0 and errors_ok and packs_seen & 0b1_1111_1100 != 0 and interleaved > 0;
+    try out.print("{{\"summary\":true,\"mode\":\"pack\",\"compared\":{d},\"failures\":{d},\"pack_sizes_seen\":\"{b}\",\"batches_between_segments\":{d},\"errors_ok\":{},\"passed\":{}}}\n", .{ stats.compared, stats.failures, packs_seen, interleaved, errors_ok, passed });
+    try out.flush();
+    if (!passed) std.process.exit(1);
+}

@@ -103,10 +103,23 @@ pub const Options = struct {
     /// (default): Q4_0 only; Q4_1 and Q5_K stay FP32 (measured faster there). `.all`: every
     /// f16-eligible format (Q4_0, Q4_1, Q5_K), the definition before 2026-09-26.
     decode_f16_formats: DecodeF16Formats = .q4_0,
+    /// f16 prefill mode: split-K chunk of the projections that stay FP32 GEMMs (M < 4096:
+    /// attn_k, attn_v, ssm_alpha, ssm_beta). `.shape` (default): the rule at 128 rows on
+    /// every plan, so a row's arithmetic does not depend on the plan (packed prefill,
+    /// docs/specs/concurrent.md "18d.1 design"); `.plan`: the plan's own rows (before
+    /// 2026-09-26).
+    f16_split: F16Split = .shape,
 };
 pub const DecodePrecision = enum { f32, f16 };
 pub const DecodeF16Kernel = enum { v1, v2 };
 pub const DecodeF16Formats = enum { q4_0, all };
+pub const F16Split = enum { shape, plan };
+
+/// Split-K chunk of an FP32 prefill GEMM (`gemm.splitChunk` at the rows the rule uses).
+fn prefillSplit(options: Options, M: u32, plan_rows: u32, K: u32) u32 {
+    const rows = if (options.prefill_precision == .f16 and options.f16_split == .shape) 128 else plan_rows;
+    return gemm.splitChunk(M, rows, K, split_target, gemm.tileFor(M, plan_rows));
+}
 pub const Error = gpu.Error || matvec.Error || config.Error || layout.Error || gemm.Error || error{ InvalidToken, ContextFull, TooManyPipelines, InvalidTensorBytes, CaptureFull, PrefillDisabled, ProbeFailed, InvalidPlan, UnsupportedDevice, InvalidContext, InvalidSnapshot, InsufficientVram, VerifyDisabled, VerifyPending, NoVerify, MtpDisabled, VramBudgetUnknown, InvalidDraftVocab, MtpNeedsOneSlot, InvalidBatch, InvalidSlot, PagesMissing, PageInUse, ChunkInFlight, SlotNeedsReset };
 
 /// Segmented prefill (docs/specs/concurrent.md, "18c.2 design"): with several slots each
@@ -116,7 +129,27 @@ pub const prefill_segments = config.layers / prefill_segment_layers;
 /// One `Model.prefillSegment`: `consumed` > 0 when a chunk completed (its tokens), with the
 /// last token's logits (borrowed until the next prefill or decode call).
 pub const Segment = struct { consumed: u32, logits: ?[]const f32 };
-const ChunkState = struct { plan: usize, rows: u32, first: u32, slot: u32, next: u32 };
+/// A prefill chunk in flight: `n` sequences (distinct slots), sequence s with `rows[s]` rows
+/// from position `first[s]` at plan row `base[s]` (docs/specs/concurrent.md, "18d.1 design").
+const ChunkState = struct {
+    plan: usize,
+    span: u32,
+    next: u32,
+    n: u32,
+    slots: [layout.io.max_seqs]u32 = undefined,
+    first: [layout.io.max_seqs]u32 = undefined,
+    rows: [layout.io.max_seqs]u32 = undefined,
+    base: [layout.io.max_seqs]u32 = undefined,
+    fn has(self: *const ChunkState, slot: u32) bool {
+        for (self.slots[0..self.n]) |s| if (s == slot) return true;
+        return false;
+    }
+};
+/// One sequence of a packed prefill: its slot and the prompt tokens not yet consumed.
+pub const PackItem = struct { slot: u32, tokens: []const u32 };
+/// A packed segment's result: when the chunk ends, `consumed[s]` tokens of item s and its
+/// logits at `logits[s * vocab ..]` (borrowed until the next prefill).
+pub const PackedSegment = struct { done: bool, consumed: [layout.io.max_seqs]u32 = @splat(0), logits: ?[]const f32 = null };
 
 /// One row of a batched decode (`Model.decodeBatch`): a sequence slot and its next token.
 pub const BatchRow = struct { slot: u32, token: u32 };
@@ -209,10 +242,10 @@ pub const Probe = struct {
 /// Optional recording extras; the production commands use none.
 pub const Hooks = struct { capture: ?*Capture = null, probe: ?Probe = null };
 
-const KernelId = enum { embed, norm, qkprep, conv, delta, swiglu, zero, reduce, embed_b, qk_b, gate, conv_b, delta_b, attn_scores, attn_pv, attn_combine, gnorm_b, rowcopy, argmax_a, argmax_b, copy2d, flash, attn_gmax, attn_cblock, delta_legacy, delta_b_legacy };
+const KernelId = enum { embed, norm, qkprep, conv, delta, swiglu, zero, reduce, embed_b, qk_b, gate, conv_b, delta_b, attn_scores, attn_pv, attn_combine, gnorm_b, rowcopy, argmax_a, argmax_b, copy2d, flash, attn_gmax, attn_cblock, delta_legacy, delta_b_legacy, qk_p, conv_p, delta_p, flash_p };
 /// Kernels that read or write the KV cache: bound to a KV buffer (binding 2) instead of
 /// the state arena; `kernels[id]` binds KV buffer 0, `kv_kernels[g - 1]` buffer g.
-const kv_kernel_ids = [_]KernelId{ .qkprep, .qk_b, .attn_scores, .attn_pv, .flash };
+const kv_kernel_ids = [_]KernelId{ .qkprep, .qk_b, .attn_scores, .attn_pv, .flash, .qk_p, .flash_p };
 fn kvSlot(id: KernelId) ?usize {
     for (kv_kernel_ids, 0..) |k, i| if (k == id) return i;
     return null;
@@ -315,7 +348,7 @@ pub fn hModule(id: HKernel) []align(4) const u8 {
 comptime {
     std.debug.assert(@sizeOf(NormHPush) == 44 and @sizeOf(SwigluHPush) == 24 and @sizeOf(GateHPush) == 20);
 }
-const push_sizes = [kernel_count]u32{ @sizeOf(EmbedPush), @sizeOf(NormPush), @sizeOf(QkPush), @sizeOf(ConvDPush), @sizeOf(DeltaDPush), @sizeOf(SwigluPush), @sizeOf(ZeroPush), @sizeOf(gemm.ReducePush), @sizeOf(EmbedBPush), @sizeOf(QkBPush), @sizeOf(GatePush), @sizeOf(ConvPush), @sizeOf(DeltaPush), attention.pushBytes(.scores), attention.pushBytes(.pv), attention.pushBytes(.combine), @sizeOf(GNormPush), @sizeOf(RowCopyPush), @sizeOf(ArgmaxAPush), @sizeOf(ArgmaxBPush), @sizeOf(Copy2dPush), @sizeOf(FlashPush), attention.pushBytes(.gmax), attention.pushBytes(.block), @sizeOf(DeltaDPush), @sizeOf(DeltaPush) };
+const push_sizes = [kernel_count]u32{ @sizeOf(EmbedPush), @sizeOf(NormPush), @sizeOf(QkPush), @sizeOf(ConvDPush), @sizeOf(DeltaDPush), @sizeOf(SwigluPush), @sizeOf(ZeroPush), @sizeOf(gemm.ReducePush), @sizeOf(EmbedBPush), @sizeOf(QkBPush), @sizeOf(GatePush), @sizeOf(ConvPush), @sizeOf(DeltaPush), attention.pushBytes(.scores), attention.pushBytes(.pv), attention.pushBytes(.combine), @sizeOf(GNormPush), @sizeOf(RowCopyPush), @sizeOf(ArgmaxAPush), @sizeOf(ArgmaxBPush), @sizeOf(Copy2dPush), @sizeOf(FlashPush), attention.pushBytes(.gmax), attention.pushBytes(.block), @sizeOf(DeltaDPush), @sizeOf(DeltaPush), @sizeOf(QkBPush), @sizeOf(ConvPush), @sizeOf(DeltaPush), @sizeOf(FlashPush) };
 const split_target: u32 = 384; // ~4 workgroups per compute unit on the target card
 fn splitSlot(name: []const u8) usize {
     const suffixes = [_]struct { []const u8, usize }{
@@ -373,6 +406,12 @@ fn module(id: KernelId, kv: layout.KvType) []align(4) const u8 {
         const qkprep16 align(4) = @embedFile("shaders/qkprep_kv16.spv").*;
         const qk_b16 align(4) = @embedFile("shaders/qk_b_kv16.spv").*;
         const flash16 align(4) = @embedFile("shaders/attn_flash_kv16.spv").*;
+        const qk_p align(4) = @embedFile("shaders/qk_p.spv").*;
+        const qk_p16 align(4) = @embedFile("shaders/qk_p_kv16.spv").*;
+        const conv_p align(4) = @embedFile("shaders/conv_p.spv").*;
+        const delta_p align(4) = @embedFile("shaders/delta_p.spv").*;
+        const flash_p align(4) = @embedFile("shaders/attn_flash_p.spv").*;
+        const flash_p16 align(4) = @embedFile("shaders/attn_flash_p_kv16.spv").*;
     };
     return switch (id) {
         .embed => &M.embed,
@@ -401,6 +440,10 @@ fn module(id: KernelId, kv: layout.KvType) []align(4) const u8 {
         .argmax_b => &M.argmax_b,
         .copy2d => &M.copy2d,
         .flash => if (kv == .f16) &M.flash16 else &M.flash,
+        .qk_p => if (kv == .f16) &M.qk_p16 else &M.qk_p,
+        .conv_p => &M.conv_p,
+        .delta_p => &M.delta_p,
+        .flash_p => if (kv == .f16) &M.flash_p16 else &M.flash_p,
     };
 }
 
@@ -558,6 +601,17 @@ pub const Model = struct {
     rpipe_keys: [max_pipelines]u32 = undefined,
     rpipe_count: u8 = 0,
     output_rows: RProj = .{},
+    /// Packed prefill (docs/specs/concurrent.md, "18d.1 design"; several slots): the output
+    /// head over the sequences' last rows into `pack_logits` (`pack_seqs` x vocab, host).
+    pack_seqs: u32 = 0,
+    pack_rpipe: matvec.RowsPipeline = undefined,
+    pack_rpipe_live: bool = false,
+    pack_out: RProj = .{},
+    pack_logits: gpu.Buffer = undefined,
+    pack_logits_live: bool = false,
+    /// Last segment of a packed chunk of s = 2..pack_seqs sequences: [plan][s - 2].
+    seg_tail: [max_plans][layout.io.max_seqs - 1]gpu.Commands = undefined,
+    live_tail: u16 = 0,
     /// Host-visible logits of the verify rows (`verify_rows` x vocab).
     verify_logits: gpu.Buffer = undefined,
     verify_logits_live: bool = false,
@@ -683,6 +737,18 @@ pub const Model = struct {
             if (options.prefill_precision == .f16 and (!device.cooperative_matrix or device.subgroup.size != 64 or !device.full_subgroups or
                 device.subgroup_sizes.min > gemm.f16x_subgroup or device.subgroup_sizes.max < gemm.f16x_subgroup)) return error.UnsupportedDevice;
             self.plan_count = makePlans(self.rows, &self.plans);
+            // Packed prefill (docs/specs/concurrent.md, "18d.1 design"): plans below 128 rows
+            // run every projection in FP32 (the f16 kernels need whole 128-row tiles), so a
+            // short chunk's arithmetic would depend on whether it is packed. In the packable
+            // configuration every chunk takes a plan of at least 128 rows.
+            if (options.slots > 1 and options.prefill_precision == .f16 and options.f16_split == .shape and self.rows >= 128) {
+                var kept: u8 = 0;
+                for (self.plans[0..self.plan_count]) |plan| if (plan.rows >= 128) {
+                    self.plans[kept] = plan;
+                    kept += 1;
+                };
+                self.plan_count = kept;
+            }
         }
         if (options.mtp and options.verify_rows < 2) return error.VerifyDisabled;
         if (options.slots == 0 or options.slots > layout.max_slots) return error.InvalidSlots;
@@ -704,7 +770,7 @@ pub const Model = struct {
         const n_sized = if (options.mtp) sized.len else config.tensor_count;
         for (self.plans[0..self.plan_count]) |plan| for (sized[0..n_sized]) |*s| {
             if (s.role != .matrix or std.mem.eql(u8, config.specName(s), "output.weight")) continue;
-            const chunk = gemm.splitChunk(@intCast(s.rows), plan.rows, @intCast(s.k), split_target, gemm.tileFor(@intCast(s.rows), plan.rows));
+            const chunk = prefillSplit(options, @intCast(s.rows), plan.rows, @intCast(s.k));
             // (f16-mode projections never split; sizing their FP32 split slot is harmless.)
             if (chunk == 0) continue;
             const words = @as(u64, gemm.splitCount(@intCast(s.k), chunk)) * plan.rows * s.rows;
@@ -762,6 +828,7 @@ pub const Model = struct {
         var fixed: u64 = snapshot_vram;
         for (banks.bytes[0..banks.count]) |bytes| fixed += bytes;
         var host: u64 = layout.io.words(@max(self.rows, 1)) * 4 + options.staging_bytes + @as(u64, rowSpan(options)) * config.vocab * 4;
+        if (options.slots > 1 and self.rows > 0) host += @as(u64, @min(layout.io.max_seqs, options.slots)) * config.vocab * 4;
         if (options.snapshot_memory == .host) host += self.snapshotBytes() * options.snapshots;
         if (options.embedding_memory == .host) host += tensors[0].data.len;
         const budget = try device.memoryBudget();
@@ -863,6 +930,12 @@ pub const Model = struct {
             self.verify_logits = try gpu.Buffer.init(device, @as(u64, rowSpan(options)) * config.vocab * 4, .host);
             self.verify_logits_live = true;
         }
+        if (options.slots > 1 and self.rows > 0) {
+            if (!options.delta_state_out) return error.InvalidBatch; // the packed DeltaNet kernel stores state separately
+            self.pack_seqs = @min(layout.io.max_seqs, options.slots, decodeRows(options));
+            self.pack_logits = try gpu.Buffer.init(device, @as(u64, self.pack_seqs) * config.vocab * 4, .host);
+            self.pack_logits_live = true;
+        }
 
         // Resolve parameter offsets and projections.
         for (specs, tensors, placements) |*s, t, place| {
@@ -883,6 +956,15 @@ pub const Model = struct {
             if (std.mem.eql(u8, name, "output.weight")) {
                 self.output = try self.projection(s, t, place, self.act_layout.hn, null);
                 if (rowSpan(options) > 0) self.output_rows = try self.rprojection(s, t, place, self.act_layout.hn, null);
+                if (self.pack_seqs > 0) {
+                    const format = try config.matrixFormat(t.kind);
+                    const aligned = (format == .q4_1 or format == .q5_k) and place.offset % 4 == 0;
+                    const count = @min(matvec.max_rows, self.pack_seqs);
+                    self.pack_rpipe = try matvec.RowsPipeline.initWith(format, aligned, self.options.matvec_accumulation, count, &self.banks[place.bank], &self.act, &self.pack_logits);
+                    self.pack_rpipe_live = true;
+                    const shape: matvec.Shape = .{ .format = format, .columns = @intCast(s.k), .rows = @intCast(s.rows) };
+                    self.pack_out = .{ .pipe = 0, .geo = try self.pack_rpipe.projectionSpan(shape, place.offset, @as(u64, self.act_layout.hn) * 4, 0, @intCast(s.k), @intCast(s.rows), count, self.pack_seqs) };
+                }
                 if (self.act_layout.mtp) |M| {
                     for (self.mtp_head[0..options.verify_rows], 0..) |*head, row| head.* = try self.projectionRows(s, t, place, M.mo + @as(u32, @intCast(row)) * config.hidden, M.logits, self.draftVocab());
                 }
@@ -1024,7 +1106,18 @@ pub const Model = struct {
             self.live_seg += 1;
             try c.begin();
             const first: u32 = @intCast(g * prefill_segment_layers);
-            try self.recordPrefillRange(c, i, .{}, first, first + prefill_segment_layers);
+            try self.recordPrefillRange(c, i, .{}, first, first + prefill_segment_layers, 1);
+            try c.end();
+        };
+        // Last segments of packed chunks of several sequences (f16 mode with the shape-only
+        // split rule: every row's arithmetic is then independent of the plan).
+        if (self.packable()) for (0..self.plan_count) |i| for (2..self.pack_seqs + 1) |ns| {
+            const c = &self.seg_tail[i][ns - 2];
+            c.* = try gpu.Commands.init(device);
+            self.live_tail += 1;
+            try c.begin();
+            const first: u32 = config.layers - prefill_segment_layers;
+            try self.recordPrefillRange(c, i, .{}, first, config.layers, @intCast(ns));
             try c.end();
         };
         for (1..options.verify_rows + 1) |n| {
@@ -1146,6 +1239,13 @@ pub const Model = struct {
                 left -= 1;
             };
             self.live_seg = 0;
+            var tails = self.live_tail;
+            outer: for (&self.seg_tail) |*plan| for (plan) |*c| {
+                if (tails == 0) break :outer;
+                c.deinit() catch @panic("prefill segment still pending");
+                tails -= 1;
+            };
+            self.live_tail = 0;
         }
         for (self.slot_resets[0..self.live_slot_resets]) |*c| c.deinit() catch @panic("reset command still pending");
         self.live_slot_resets = 0;
@@ -1161,6 +1261,8 @@ pub const Model = struct {
         if (self.save_live) self.save_commands.deinit() catch @panic("save command still pending");
         self.save_live = false;
         for (self.rpipes[0..self.rpipe_count]) |*p| p.deinit() catch @panic("model pipeline in use");
+        if (self.pack_rpipe_live) self.pack_rpipe.deinit() catch @panic("model pipeline in use");
+        self.pack_rpipe_live = false;
         self.rpipe_count = 0;
         for (self.pipelines[0..self.pipeline_count]) |*p| p.deinit() catch @panic("model pipeline in use");
         self.pipeline_count = 0;
@@ -1187,6 +1289,8 @@ pub const Model = struct {
         self.kv_live = 0;
         if (self.verify_logits_live) self.verify_logits.deinit() catch @panic("verify logits in use");
         self.verify_logits_live = false;
+        if (self.pack_logits_live) self.pack_logits.deinit() catch @panic("pack logits in use");
+        self.pack_logits_live = false;
         if (self.embed_host_live) self.embed_host.deinit() catch @panic("embedding in use");
         self.embed_host_live = false;
         const arenas = [_]*gpu.Buffer{ &self.act, &self.state, &self.io };
@@ -1322,60 +1426,142 @@ pub const Model = struct {
         return @as(u64, self.slot) * self.state_layout.slot_words * 4;
     }
 
+    /// Whether packed chunks of several sequences are recorded: several slots, the f16 prefill
+    /// mode and the shape-only split rule (every row's arithmetic independent of the plan).
+    pub fn packable(self: *const Model) bool {
+        return self.pack_seqs >= 2 and self.options.prefill_precision == .f16 and self.options.f16_split == .shape;
+    }
+
+    /// Plan rows a packed chunk of these sequences' next chunks spans (each sequence's rows
+    /// start at a multiple of `flash_rows`), for callers choosing what to pack.
+    pub fn packSpan(self: *const Model, remaining: []const u32) u32 {
+        var span: u32 = 0;
+        for (remaining, 0..) |left, i| {
+            const rows = self.nextChunk(left).rows;
+            span = (if (i == 0) 0 else std.mem.alignForward(u32, span, flash_rows)) + rows;
+        }
+        return span;
+    }
+
     /// Segmented prefill of the current slot (docs/specs/concurrent.md, "18c.2 design"; needs
     /// several slots): runs the next segment of the chunk in flight, or starts the next chunk
     /// of `tokens` (the prompt tokens not yet consumed; its chunk grid is `prefill`'s) with its
     /// first segment. Decode batches may run between segments; other slots' prefill, `select`
     /// and single-sequence calls may not (`ChunkInFlight`).
     pub fn prefillSegment(self: *Model, tokens: []const u32) Error!Segment {
-        if (self.live_seg == 0) return error.PrefillDisabled;
+        if (self.chunk) |c| if (!c.has(self.slot)) return error.ChunkInFlight;
+        const seg = try self.prefillPackedSegment(&.{.{ .slot = self.slot, .tokens = tokens }});
+        if (!seg.done) return .{ .consumed = 0, .logits = null };
+        return .{ .consumed = seg.consumed[0], .logits = seg.logits.?[0..config.vocab] };
+    }
+
+    /// Packed segmented prefill (docs/specs/concurrent.md, "18d.1 design"): runs the next
+    /// segment of the chunk in flight (`items` are ignored then), or starts a chunk holding
+    /// each item's next chunk (its solo chunk grid) with its first segment. Several items
+    /// need `packable()`; their slots must differ and their span fit the largest plan.
+    pub fn prefillPackedSegment(self: *Model, items: []const PackItem) Error!PackedSegment {
+        if (self.live_seg == 0 or self.pack_seqs == 0) return error.PrefillDisabled;
         if (self.chunk == null) {
-            if (self.pending_verify != 0) return error.VerifyPending;
-            if (self.needs_reset[self.slot]) return error.SlotNeedsReset;
-            if (tokens.len == 0) return error.InvalidToken;
-            const c = self.nextChunk(@intCast(tokens.len));
-            const chunk = tokens[0..c.rows];
-            for (chunk) |token| if (token >= config.vocab) return error.InvalidToken;
-            if (chunk.len > self.state_layout.context - self.position) return error.ContextFull;
-            try self.ensureMapped(self.slot, @as(u64, self.position) + chunk.len);
-            const words = std.mem.bytesAsSlice(u32, try self.io.mapped());
-            words[layout.io.count] = c.rows;
-            words[layout.io.p0] = self.position;
-            @memcpy(words[layout.io.tokens..][0..chunk.len], chunk);
-            self.writeRope(words, layout.io.rope(self.rows), self.position, chunk.len);
-            self.chunk = .{ .plan = c.plan, .rows = c.rows, .first = self.position, .slot = self.slot, .next = 0 };
-            self.io_dirty = false;
+            try self.startChunk(items, null);
         } else if (self.io_dirty) {
-            // A decode batch wrote the count, its rows' tokens and RoPE rows 0..B-1 (the
-            // tokens are read by segment 0 only, which ran before any batch).
-            const c = self.chunk.?;
+            // A decode batch wrote the count and RoPE rows 0..B-1 (the tokens are read by
+            // segment 0 only, which ran before any batch); the row entries and the sequence
+            // table live elsewhere.
             const words = std.mem.bytesAsSlice(u32, try self.io.mapped());
-            words[layout.io.count] = c.rows;
-            words[layout.io.p0] = c.first;
-            self.writeRope(words, layout.io.rope(self.rows), c.first, @min(c.rows, self.options.batch_rows));
+            const c = self.chunk.?;
+            words[layout.io.count] = c.span;
+            const limit = @min(c.span, self.options.batch_rows);
+            for (0..c.n) |i| {
+                if (c.base[i] >= limit) continue;
+                self.writeRope(words, layout.io.rope(self.rows) + 64 * c.base[i], c.first[i], @min(c.rows[i], limit - c.base[i]));
+            }
             self.io_dirty = false;
         }
         const c = &self.chunk.?;
-        std.debug.assert(c.slot == self.slot);
-        self.seg_commands[c.plan][c.next].run(self.options.timeout_ns) catch |e| {
+        const commands = if (c.next == prefill_segments - 1 and c.n > 1) &self.seg_tail[c.plan][c.n - 2] else &self.seg_commands[c.plan][c.next];
+        commands.run(self.options.timeout_ns) catch |e| {
             self.abortChunk();
             return e;
         };
         c.next += 1;
-        if (c.next < prefill_segments) return .{ .consumed = 0, .logits = null };
-        const rows = c.rows;
+        if (c.next < prefill_segments) return .{ .done = false };
+        var out: PackedSegment = .{ .done = true };
+        for (0..c.n) |i| {
+            out.consumed[i] = c.rows[i];
+            self.setSlotPosition(c.slots[i], c.first[i] + c.rows[i]);
+        }
+        const n = c.n;
         self.chunk = null;
-        self.position += rows;
-        const after = try self.io.mapped();
-        const floats: []align(1) const f32 = std.mem.bytesAsSlice(f32, after[layout.io.logits * 4 ..][0 .. config.vocab * 4]);
-        return .{ .consumed = rows, .logits = @alignCast(floats) };
+        const bytes = try self.pack_logits.mapped();
+        const floats: []align(1) const f32 = std.mem.bytesAsSlice(f32, bytes[0 .. n * config.vocab * 4]);
+        out.logits = @alignCast(floats);
+        return out;
     }
 
-    /// Drop the chunk in flight (its generation went away). Its slot's state is partly
-    /// advanced: the slot accepts only `reset` until then.
+    fn setSlotPosition(self: *Model, slot: u32, position: u32) void {
+        if (slot == self.slot) self.position = position else self.slot_positions[slot] = position;
+    }
+
+    /// Validates `items`, lays out their next chunks and writes the io words of the chunk.
+    /// `rows`: the single item's chunk length when the caller chose it (`runChunk`).
+    fn startChunk(self: *Model, items: []const PackItem, rows: ?u32) Error!void {
+        if (rows != null and items.len != 1) return error.InvalidBatch;
+        if (items.len == 0 or items.len > self.pack_seqs) return error.InvalidBatch;
+        if (items.len > 1 and !self.packable()) return error.InvalidBatch;
+        if (self.pending_verify != 0) return error.VerifyPending;
+        var c: ChunkState = .{ .plan = 0, .span = 0, .next = 0, .n = @intCast(items.len) };
+        var seen: u64 = 0;
+        for (items, 0..) |item, i| {
+            if (item.slot >= self.state_layout.slots) return error.InvalidSlot;
+            const bit = @as(u64, 1) << @intCast(item.slot);
+            if (seen & bit != 0) return error.InvalidBatch;
+            seen |= bit;
+            if (self.needs_reset[item.slot]) return error.SlotNeedsReset;
+            if (item.tokens.len == 0) return error.InvalidToken;
+            const chunk: Chunk = if (rows) |n| .{ .rows = n, .plan = self.planFor(n) } else self.nextChunk(@intCast(item.tokens.len));
+            if (chunk.rows == 0 or chunk.rows > item.tokens.len) return error.InvalidToken;
+            if (items.len == 1) c.plan = chunk.plan;
+            for (item.tokens[0..chunk.rows]) |token| if (token >= config.vocab) return error.InvalidToken;
+            const pos = self.slotPosition(item.slot);
+            if (chunk.rows > self.state_layout.context - pos) return error.ContextFull;
+            try self.ensureMapped(item.slot, @as(u64, pos) + chunk.rows);
+            c.slots[i] = item.slot;
+            c.first[i] = pos;
+            c.rows[i] = chunk.rows;
+            c.base[i] = if (i == 0) 0 else std.mem.alignForward(u32, c.span, flash_rows);
+            c.span = c.base[i] + chunk.rows;
+        }
+        if (c.span > self.rows) return error.InvalidBatch;
+        if (items.len > 1) c.plan = self.planFor(c.span);
+        const words = std.mem.bytesAsSlice(u32, try self.io.mapped());
+        words[layout.io.count] = c.span;
+        words[layout.io.p0] = c.first[0];
+        const prow = layout.io.packRows(self.rows);
+        const pseq = layout.io.seqs(self.rows);
+        // Padding rows: token 0, flagged (no KV, no output); every row gets an entry.
+        @memset(words[layout.io.tokens..][0..c.span], 0);
+        for (0..c.span) |row| words[prow + 4 * row ..][0..4].* = .{ 0, 0, 0, 1 };
+        for (0..layout.io.max_seqs) |i| {
+            words[pseq + i * layout.io.seq_words ..][0..layout.io.seq_words].* = .{ 0, 0, 0, 0, 0, self.act_layout.h, 0, 0 };
+        }
+        for (items, 0..) |item, i| {
+            const b = c.base[i];
+            const ptab = item.slot * self.act_layout.ptab_words;
+            const state = item.slot * self.state_layout.slot_words;
+            @memcpy(words[layout.io.tokens + b ..][0..c.rows[i]], item.tokens[0..c.rows[i]]);
+            self.writeRope(words, layout.io.rope(self.rows) + 64 * b, c.first[i], c.rows[i]);
+            for (0..c.rows[i]) |r| words[prow + 4 * (b + r) ..][0..4].* = .{ c.first[i] + @as(u32, @intCast(r)), ptab, state, 0 };
+            words[pseq + i * layout.io.seq_words ..][0..layout.io.seq_words].* = .{ b, c.rows[i], c.first[i], ptab, state, self.act_layout.h + (b + c.rows[i] - 1) * config.hidden, 0, 0 };
+        }
+        self.chunk = c;
+        self.io_dirty = false;
+    }
+
+    /// Drop the chunk in flight (its generation went away). Its slots' states are partly
+    /// advanced: they accept only `reset` until then.
     pub fn abortChunk(self: *Model) void {
         const c = self.chunk orelse return;
-        self.needs_reset[c.slot] = true;
+        for (c.slots[0..c.n]) |slot| self.needs_reset[slot] = true;
         self.chunk = null;
     }
 
@@ -1385,7 +1571,7 @@ pub const Model = struct {
         if (row.slot >= self.state_layout.slots) return error.InvalidSlot;
         if (row.token >= config.vocab) return error.InvalidToken;
         if (self.needs_reset[row.slot]) return error.SlotNeedsReset;
-        if (self.chunk) |c| if (c.slot == row.slot) return error.ChunkInFlight;
+        if (self.chunk) |c| if (c.has(row.slot)) return error.ChunkInFlight;
         const pos = self.slotPosition(row.slot);
         if (pos >= self.state_layout.context) return error.ContextFull;
         try self.ensureMapped(row.slot, @as(u64, pos) + 1);
@@ -1638,7 +1824,7 @@ pub const Model = struct {
                 return .{ .pipe = index.?, .push = push, .groups = groups, .reduce = null, .x16 = true };
             },
         };
-        push.k_chunk = gemm.splitChunk(M, plan.rows, K, split_target, tile);
+        push.k_chunk = prefillSplit(self.options, M, plan.rows, K);
         const splits = gemm.splitCount(K, push.k_chunk);
         var reduce: ?gemm.ReducePush = null;
         if (splits > 1) {
@@ -1654,9 +1840,7 @@ pub const Model = struct {
     /// Clear recurrent and convolution state; the next step is position 0.
     pub fn reset(self: *Model) Error!void {
         self.pending_verify = 0; // an uncommitted verify is abandoned with the sequence
-        if (self.chunk) |c| if (c.slot == self.slot) {
-            self.chunk = null;
-        };
+        if (self.chunk) |c| if (c.has(self.slot)) self.abortChunk(); // the other slots need a reset too
         self.needs_reset[self.slot] = false;
         try (if (self.slot == 0) &self.reset_commands else &self.slot_resets[self.slot - 1]).run(self.options.timeout_ns);
         self.position = 0;
@@ -1923,6 +2107,17 @@ pub const Model = struct {
         if (self.needs_reset[self.slot]) return error.SlotNeedsReset;
         if (self.chunk != null) return error.ChunkInFlight;
         try self.ensureMapped(self.slot, @as(u64, self.position) + chunk.len);
+        if (self.pack_seqs > 0) {
+            // Several slots: the packed layout with one sequence (docs/specs/concurrent.md,
+            // "18d.1 design"); logits in `pack_logits` row 0.
+            try self.startChunk(&.{.{ .slot = self.slot, .tokens = chunk }}, @intCast(chunk.len));
+            self.chunk = null;
+            try commands.run(self.options.timeout_ns);
+            self.position += @intCast(chunk.len);
+            const packed_bytes = try self.pack_logits.mapped();
+            const packed_floats: []align(1) const f32 = std.mem.bytesAsSlice(f32, packed_bytes[0 .. config.vocab * 4]);
+            return @alignCast(packed_floats);
+        }
         try self.flushMtp();
         const bytes = try self.io.mapped();
         const words = std.mem.bytesAsSlice(u32, bytes);
@@ -2087,14 +2282,21 @@ pub const Model = struct {
     /// Record one prefill chunk for plan `plan` (row count read from io at run time,
     /// at most `plans[plan].rows`) into `commands`.
     pub fn recordPrefill(self: *Model, commands: *gpu.Commands, plan: usize, hooks: Hooks) Error!void {
-        return self.recordPrefillRange(commands, plan, hooks, 0, config.layers);
+        return self.recordPrefillRange(commands, plan, hooks, 0, config.layers, 1);
     }
 
     /// Layers [first, end) of a prefill chunk: `first == 0` adds the embedding, `end ==
     /// layers` the final norm, the output head and the MTP catch-up. A range starting at
     /// layer il > 0 reads the chunk's rows of `A.r`/`A.f` (and the io words) as the previous
     /// range left them (docs/specs/concurrent.md, "18c.2 design").
-    fn recordPrefillRange(self: *Model, commands: *gpu.Commands, plan: usize, hooks: Hooks, first: u32, end: u32) Error!void {
+    /// With several slots (`pack_seqs` > 0) the chunk is packed (docs/specs/concurrent.md,
+    /// "18d.1 design"): the per-sequence kernels read the io row entries and sequence table,
+    /// and the tail runs the output head on `outs` sequences' last rows into `pack_logits`.
+    fn recordPrefillRange(self: *Model, commands: *gpu.Commands, plan: usize, hooks: Hooks, first: u32, end: u32, outs: u32) Error!void {
+        const packed_rows = self.pack_seqs > 0;
+        if (outs == 0 or outs > @max(self.pack_seqs, 1)) return error.InvalidBatch;
+        const prow = layout.io.packRows(self.rows);
+        const pseq = layout.io.seqs(self.rows);
         if (self.rows == 0) return error.PrefillDisabled;
         if (plan >= self.plan_count) return error.InvalidPlan;
         if (first >= end or end > config.layers) return error.InvalidPlan;
@@ -2137,14 +2339,14 @@ pub const Model = struct {
                 try r.snapRows("Kcur", li, A.kc, 1024, 1024, false);
                 try r.snapRows("Vcur", li, A.vc, 1024, 1024, false);
                 try r.bar();
-                try r.attn(.qk_b, ai, QkBPush{ .slots = self.slot_io, .qf = A.qf, .kc = A.kc, .vc = A.vc, .qn = A.qn, .qr = A.qr, .kn = A.kn, .kr = A.kr, .qw = L.q_norm, .kw = L.k_norm, .kcache = S.kcache(ai), .vcache = S.vcache(ai), .ctx = ctx, .rope = layout.io.rope(self.rows), .eps = eps, .ptab = A.ptab, .pstride = S.pstride(ai) }, .{ config.heads + config.kv_heads, B, 1 });
+                try r.attn(if (packed_rows) .qk_p else .qk_b, ai, QkBPush{ .slots = if (packed_rows) prow else self.slot_io, .qf = A.qf, .kc = A.kc, .vc = A.vc, .qn = A.qn, .qr = A.qr, .kn = A.kn, .kr = A.kr, .qw = L.q_norm, .kw = L.k_norm, .kcache = S.kcache(ai), .vcache = S.vcache(ai), .ctx = ctx, .rope = layout.io.rope(self.rows), .eps = eps, .ptab = A.ptab, .pstride = S.pstride(ai) }, .{ config.heads + config.kv_heads, B, 1 });
                 try r.mark(.qkprep, li);
                 try r.snapRows("Qcur_normed", li, A.qn, 6144, 6144, false);
                 try r.snapRows("Kcur_normed", li, A.kn, 1024, 1024, false);
                 try r.snapRows("Qcur", li, A.qr, 6144, 6144, false);
                 try r.snapRows("Kcur_roped", li, A.kr, 1024, 1024, false);
                 try r.bar();
-                try r.attn(.flash, ai, FlashPush{ .slots = self.slot_io, .qr = A.qr, .kcache = S.kcache(ai), .vcache = S.vcache(ai), .out = A.pregate, .ctx = ctx, .scale = 1.0 / 16.0, .ptab = A.ptab, .pstride = S.pstride(ai) }, .{ std.math.divCeil(u32, B, flash_rows) catch unreachable, config.heads / flash_groups, 1 });
+                try r.attn(if (packed_rows) .flash_p else .flash, ai, FlashPush{ .slots = if (packed_rows) prow else self.slot_io, .qr = A.qr, .kcache = S.kcache(ai), .vcache = S.vcache(ai), .out = A.pregate, .ctx = ctx, .scale = 1.0 / 16.0, .ptab = A.ptab, .pstride = S.pstride(ai) }, .{ std.math.divCeil(u32, B, flash_rows) catch unreachable, config.heads / flash_groups, 1 });
                 try r.mark(.attention, li);
                 try r.bar();
                 const gate_push: GatePush = .{ .pregate = A.pregate, .qf = A.qf, .gates = A.gates, .gated = A.gated };
@@ -2167,14 +2369,14 @@ pub const Model = struct {
                 try r.snapRows("alpha", li, A.alpha, config.v_heads, config.v_heads, false);
                 try r.snapRows("beta", li, A.beta_raw, config.v_heads, config.v_heads, false);
                 try r.bar();
-                try r.kernel(.conv_b, ConvPush{ .slots = self.slot_io, .mixed = A.mixed, .raw = A.conv_raw, .silu = A.conv_silu, .out = A.conv_out, .w = L.conv_w, .conv = S.convLayer(lin) }, .{ config.conv_channels / 128, 1, 1 });
+                try r.kernel(if (packed_rows) .conv_p else .conv_b, ConvPush{ .slots = if (packed_rows) pseq else self.slot_io, .mixed = A.mixed, .raw = A.conv_raw, .silu = A.conv_silu, .out = A.conv_out, .w = L.conv_w, .conv = S.convLayer(lin) }, .{ config.conv_channels / 128, @max(self.pack_seqs, 1), 1 });
                 try r.mark(.conv, li);
                 try r.snapRows("conv_output_raw", li, A.conv_raw, config.conv_channels, config.conv_channels, false);
                 try r.snapRows("conv_output_silu", li, A.conv_silu, config.conv_channels, config.conv_channels, false);
                 try r.snapRows("q_conv_predelta", li, A.conv_out, config.key_dim, config.conv_channels, false);
                 try r.snapRows("k_conv_predelta", li, A.conv_out + config.key_dim, config.key_dim, config.conv_channels, false);
                 try r.bar();
-                try r.kernel(self.deltaBKernel(), DeltaPush{ .slots = self.slot_io, .qk = A.conv_out, .v = A.conv_out + 2 * config.key_dim, .z = A.z, .beta_raw = A.beta_raw, .alpha = A.alpha, .beta_out = A.beta, .softplus_out = A.softplus, .g_out = A.gate, .o = A.o, .y = A.fo, .ssm = S.ssmLayer(lin), .a_w = L.ssm_a, .dt_w = L.dt, .norm_w = L.ssm_norm, .eps = eps, .state_out = S.ssmLayer(lin) }, .{ config.v_heads, 1, 1 });
+                try r.kernel(if (packed_rows) .delta_p else self.deltaBKernel(), DeltaPush{ .slots = if (packed_rows) pseq else self.slot_io, .qk = A.conv_out, .v = A.conv_out + 2 * config.key_dim, .z = A.z, .beta_raw = A.beta_raw, .alpha = A.alpha, .beta_out = A.beta, .softplus_out = A.softplus, .g_out = A.gate, .o = A.o, .y = A.fo, .ssm = S.ssmLayer(lin), .a_w = L.ssm_a, .dt_w = L.dt, .norm_w = L.ssm_norm, .eps = eps, .state_out = S.ssmLayer(lin) }, .{ config.v_heads, @max(self.pack_seqs, 1), 1 });
                 try r.bar();
                 try r.kernel(.gnorm_b, GNormPush{ .o = A.o, .y = A.fo, .z = A.z, .norm_w = L.ssm_norm, .eps = eps }, .{ config.v_heads, r.rows, 1 });
                 try r.mark(.delta, li);
@@ -2211,6 +2413,21 @@ pub const Model = struct {
         }
         try r.bar();
         if (end < config.layers) return;
+        if (packed_rows) {
+            // Every row's final norm (per-row arithmetic of the last-only norm), then each
+            // sequence's last row to `hn` row s (source word in its table entry), then the
+            // multi-row output head (bitwise the single-row head per row).
+            try r.kernel(.norm, NormPush{ .x = A.r, .a = A.f, .sum = A.x, .y = A.h, .w = self.output_norm, .stride = H, .flags = norm_add | norm_rows_io, .eps = eps }, .{ B, 1, 1 });
+            try r.mark(.norm, -1);
+            try r.bar();
+            for (0..outs) |sq| try r.kernel(.rowcopy, RowCopyPush{ .src = pseq + @as(u32, @intCast(sq)) * layout.io.seq_words + 5, .dst = A.hn + @as(u32, @intCast(sq)) * H, .words = H, .flags = 0 }, .{ H / 256, 1, 1 });
+            try r.bar();
+            var groups = RowGroups.init(outs, self.pack_rpipe.max_count);
+            while (groups.next()) |g| try self.pack_rpipe.recordAt(commands, self.pack_out.geo, g.first, g.count);
+            try r.mark(.output, -1);
+            try commands.barrier(.compute, .host);
+            return;
+        }
         if (A.mtp) |M| {
             // MTP catch-up input: the final norm of every row into hrows rows 1.. (the head
             // needs only the last).

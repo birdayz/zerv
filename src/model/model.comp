@@ -584,6 +584,11 @@ shared float head[256];
 void main() {
     uint h=gl_WorkGroupID.x, r=gl_WorkGroupID.y, d=gl_LocalInvocationID.x;
     if (r>=io[IO_COUNT]) return;
+#if PACKED
+    // Packed prefill (docs/specs/concurrent.md, "18d.1 design"): `slots` is the io word of
+    // the per-row entries (position, page-table offset, state offset, padding flag).
+    if (io[p.slots+r*4u+3u]!=0u) return; // padding row: no KV store (uniform per workgroup)
+#endif
     bool is_q=h<24u;
     uint kh=h-24u;
     float v=is_q ? act[p.qf+r*12288u+h*512u+d] : act[p.kc+r*1024u+kh*256u+d];
@@ -601,12 +606,20 @@ void main() {
         float c=uintBitsToFloat(io[rb+d-32u]), s=uintBitsToFloat(io[rb+32u+d-32u]);
         o=head[d-32u]*s+head[d]*c;
     }
+#if PACKED
+    uint pos=io[p.slots+r*4u];
+#else
     uint pos=io[IO_P0]+r;
+#endif
     if (is_q) {
         act[p.qr+r*6144u+h*256u+d]=o;
     } else {
         act[p.kr+r*1024u+kh*256u+d]=o;
+#if PACKED
+        uint pb=kv_page_base(p.ptab+io[p.slots+r*4u+1u],p.pstride,pos), jj=pos%KV_PAGE;
+#else
         uint pb=kv_page_base(p.ptab+row_ptab(p.slots,0u,0u),p.pstride,pos), jj=pos%KV_PAGE;
+#endif
         KV_STORE(pb+p.kcache+(kh*256u+d)*KV_PAGE+jj,o);
         KV_STORE(pb+p.vcache+(kh*KV_PAGE+jj)*256u+d,act[p.vc+r*1024u+kh*256u+d]);
     }
@@ -638,6 +651,35 @@ void main() {
 #elif KERNEL == K_CONVB
 // Batched conv: workgroup per 128-channel segment scans rows 0..count-1 sequentially.
 layout(push_constant) uniform P { uint mixed, raw, silu_, out_, w, conv, slots; } p;
+#if PACKED
+void main() {
+    uint seg=gl_WorkGroupID.x, t=gl_LocalInvocationID.x, c=seg*128u+t;
+    // Sequence gl_WorkGroupID.y of the packed plan (docs/specs/concurrent.md, "18d.1
+    // design"): `slots` is the io word of the sequence table (8 words each: first row,
+    // rows, first position, page-table offset, state offset).
+    uint sq=p.slots+gl_WorkGroupID.y*8u, b0=io[sq];
+    if (io[sq+1u]==0u) return; // unused entry (uniform per workgroup)
+    uint sb=p.conv+io[sq+4u]+c*3u, wb=p.w+c*4u;
+    float w0=param(wb), w1=param(wb+1u), w2=param(wb+2u), w3=param(wb+3u);
+    float s0=state[sb], s1=state[sb+1u], s2=state[sb+2u];
+    uint count=io[sq+1u];
+    for (uint r=0u;r<count;r++) {
+        uint at=(b0+r)*10240u+c;
+        float x=act[p.mixed+at];
+        float y=s0*w0;
+        y+=s1*w1;
+        y+=s2*w2;
+        y+=x*w3;
+        s0=s1; s1=s2; s2=x;
+        act[p.raw+at]=y;
+        float a=silu(y);
+        act[p.silu_+at]=a;
+        float ss=wg_sum(a*a); // uniform: count is uniform
+        act[p.out_+at]=seg<32u ? a/sqrt(ss+1e-6) : a;
+    }
+    state[sb]=s0; state[sb+1u]=s1; state[sb+2u]=s2;
+}
+#else
 void main() {
     uint seg=gl_WorkGroupID.x, t=gl_LocalInvocationID.x, c=seg*128u+t;
     uint sb=p.conv+row_state(p.slots,0u,0u)+c*3u, wb=p.w+c*4u;
@@ -660,6 +702,7 @@ void main() {
     }
     state[sb]=s0; state[sb+1u]=s1; state[sb+2u]=s2;
 }
+#endif
 
 #elif KERNEL == K_DELTAB
 // Batched GatedDeltaNet: workgroup per value head scans rows sequentially; thread j
@@ -679,6 +722,70 @@ float softplus(float x) {
     float l=(u==1.0) ? e : log(u)*(e/(u-1.0));
     return max(x,0.0)+l;
 }
+#if PACKED
+void main() {
+    uint hv=gl_WorkGroupID.x, j=gl_LocalInvocationID.x, kh=hv%16u;
+    // Sequence gl_WorkGroupID.y of the packed plan (see K_CONVB): rows b0 .. b0 + count - 1.
+    uint sq=p.slots+gl_WorkGroupID.y*8u, b0=io[sq];
+    if (io[sq+1u]==0u) return; // unused entry (uniform per workgroup)
+    uint so=io[sq+4u];
+    uint base=p.ssm+so+hv*16384u+j;
+    float s[128];
+    [[unroll]] for (uint i=0u;i<128u;i++) s[i]=state[base+i*128u];
+    float a_w=param(p.a_w+hv), dt=param(p.dt_w+hv);
+    uint count=io[sq+1u];
+    // Row 0's inputs; later rows are loaded one row ahead.
+    float qn=0.0, kn=0.0, vn=0.0;
+    if (count>0u) {
+        qn=act[p.qk+b0*10240u+kh*128u+j]*0.08838834764831845;
+        kn=act[p.qk+b0*10240u+2048u+kh*128u+j];
+        vn=act[p.v+b0*10240u+hv*128u+j];
+    }
+    for (uint seg0=0u;seg0<count;seg0+=SEG) {
+        uint seg_n=min(SEG,count-seg0);
+        barrier(); // previous segment's readers of seg_beta/seg_decay are done
+        for (uint rr=j;rr<seg_n;rr+=128u) {
+            uint r=b0+seg0+rr;
+            float beta=sigmoid_(act[p.beta_raw+r*48u+hv]);
+            float sp=softplus(act[p.alpha+r*48u+hv]+dt);
+            float g=a_w*sp;
+            act[p.beta_out+r*48u+hv]=beta; act[p.softplus_out+r*48u+hv]=sp; act[p.g_out+r*48u+hv]=g;
+            seg_beta[rr]=beta;
+            seg_decay[rr]=exp(g);
+        }
+        for (uint rr=0u;rr<seg_n;rr++) {
+            uint r=seg0+rr, b=r&1u;
+            // Buffer b was last read at row r-2; every thread has passed row r-1's
+            // barrier, hence finished row r-2.
+            qs[b][j]=qn;
+            ks[b][j]=kn;
+            float v=vn;
+            barrier(); // this row's q/k (and, at rr = 0, the segment's gate scalars)
+            if (r+1u<count) {
+                qn=act[p.qk+(b0+r+1u)*10240u+kh*128u+j]*0.08838834764831845;
+                kn=act[p.qk+(b0+r+1u)*10240u+2048u+kh*128u+j];
+                vn=act[p.v+(b0+r+1u)*10240u+hv*128u+j];
+            }
+            float beta=seg_beta[rr], decay=seg_decay[rr];
+            float kv=0.0;
+            [[unroll]] for (uint i=0u;i<128u;i++) kv+=(s[i]*decay)*ks[b][i];
+            float delta=(v-kv)*beta;
+            float o=0.0;
+            [[unroll]] for (uint i=0u;i<128u;i++) {
+                s[i]=s[i]*decay+ks[b][i]*delta;
+                o+=s[i]*qs[b][i];
+            }
+            act[p.o+(b0+r)*6144u+hv*128u+j]=o;
+        }
+    }
+#if STATE_OUT
+    uint out_base=p.state_out+so+hv*16384u+j; // see K_DELTA
+    [[unroll]] for (uint i=0u;i<128u;i++) state[out_base+i*128u]=s[i];
+#else
+    [[unroll]] for (uint i=0u;i<128u;i++) state[base+i*128u]=s[i];
+#endif
+}
+#else
 void main() {
     uint hv=gl_WorkGroupID.x, j=gl_LocalInvocationID.x, kh=hv%16u;
     uint so=row_state(p.slots,0u,0u);
@@ -738,6 +845,7 @@ void main() {
     [[unroll]] for (uint i=0u;i<128u;i++) state[base+i*128u]=s[i];
 #endif
 }
+#endif
 
 #elif KERNEL == K_GNORMB
 // Gated RMS norm of the batched GatedDeltaNet output (split out of K_DELTAB, block 13j):

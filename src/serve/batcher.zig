@@ -13,14 +13,21 @@
 //! When both are ready, `stall` decides: a batch preempts once `stall.ns` have passed since
 //! the last batch ended (at a unit boundary), or, with `.chunk`, only between chunks
 //! (alternating). A chunk in flight is finished before another prompt starts; between
-//! chunks the next prompt is the one with the fewest remaining tokens (`order`).
+//! chunks the next prompt is the one with the fewest remaining tokens (`order`), and up to
+//! `pack` pending prompts that the backend can pack with it run their next chunks together
+//! (docs/specs/concurrent.md, "18d.1 design").
 const std = @import("std");
 
 pub const max_slots = 64;
 pub const Row = struct { slot: u32, token: u32 };
-/// A prefill unit: `consumed` tokens processed (0: a segment of a chunk still in flight);
-/// the last token's logits when it consumed all of them.
-pub const Chunk = struct { consumed: usize, logits: ?[]const f32 };
+/// Sequences in one packed chunk at most.
+pub const max_pack = 8;
+/// A sequence of a prefill unit: its slot and its prompt tokens not yet consumed.
+pub const Item = struct { slot: u32, tokens: []const u32 };
+/// A prefill unit's result: `done` when its chunk ended; then item i consumed `consumed[i]`
+/// tokens, and `logits[i * vocab ..]` are its last token's logits (meaningful only for an
+/// item whose prompt is complete).
+pub const Unit = struct { done: bool, consumed: [max_pack]usize = @splat(0), logits: ?[]const f32 = null };
 /// When a waiting decode step preempts a prefill: `ns` after the last batch ended, at the
 /// next prefill unit boundary; `chunk`: only between chunks, alternating with them.
 pub const Stall = union(enum) { chunk, ns: u64 };
@@ -40,7 +47,9 @@ pub const Stats = struct {
     last_ns: i96 = 0,
     /// Batches by row count (index = rows, up to `max_slots`).
     sizes: [max_slots + 1]u64 = @splat(0),
-    /// Prefill units (segments) run, batches run inside a chunk, aborted chunks.
+    /// Prefill units (segments) run, batches run inside a chunk, aborted chunks, chunks
+    /// holding several prompts.
+    packed_chunks: u64 = 0,
     prefill_units: u64 = 0,
     batches_in_chunk: u64 = 0,
     aborted_chunks: u64 = 0,
@@ -48,9 +57,12 @@ pub const Stats = struct {
 
 /// `Backend` is called by the scheduler task only, never concurrently:
 ///   reset(slot: u32) !void
-///   prefillChunk(slot: u32, tokens: []const u32) !Chunk   (one unit; while it returns
-///       consumed 0 the next calls continue that chunk, with the remaining tokens)
-///   abortChunk() void   (drop the chunk in flight; its slot is reset before reuse)
+///   packFits(remaining: []const usize) bool   (can these prompts' next chunks run as one
+///       packed chunk? remaining.len >= 1)
+///   prefillUnit(items: []const Item) !Unit   (starts a chunk holding each item's next chunk
+///       and runs its first unit; with no items, runs the next unit of the chunk in flight;
+///       the tokens are read only by the starting call)
+///   abortChunk() void   (drop the chunk in flight; its slots are reset before reuse)
 ///   checkRow(row: Row) !void   (can this row run now? a failing row gets its own error,
 ///       the other rows of the batch run)
 ///   decodeBatch(rows: []const Row) ![]const f32   (rows.len logits rows of `vocab` floats)
@@ -68,7 +80,12 @@ pub fn Batcher(comptime Backend: type) type {
             gather: std.Io.Duration = .fromMilliseconds(2),
             stall: Stall = .chunk,
             order: Order = .fifo,
+            /// Prompts per packed chunk at most (1: one prompt at a time).
+            pack: u32 = 1,
         };
+        /// The chunk in flight: its slots (running until it ends) and which of them lost
+        /// their generation meanwhile (completed as canceled; freed when the chunk ends).
+        const Pack = struct { n: u32, slots: [max_pack]u32, gone: [max_pack]bool };
         const Op = enum { none, reset, prefill, step };
         const Hold = enum { none, row, prefill };
         const Slot = struct {
@@ -101,18 +118,20 @@ pub fn Batcher(comptime Backend: type) type {
         slot: [max_slots]Slot = @splat(.{}),
         stopping: bool = false,
         held_rows: u32 = 0,
-        prefill_held: bool = false,
+        /// Completed prompts whose logits are not yet sampled (a new chunk would overwrite them).
+        prefill_holds: u32 = 0,
         /// When the last held row was released (the gather window starts).
         released_ns: i96 = 0,
         arrivals: u64 = 0,
         last_batch: bool = false,
         last_batch_end: i96 = 0,
-        /// Slot whose chunk is in flight (between prefill units).
-        in_chunk: ?u32 = null,
+        /// The chunk in flight (between prefill units).
+        pack: ?Pack = null,
         stats: Stats = .{},
 
         pub fn init(io: std.Io, backend: Backend, options: Options) error{InvalidSlots}!Self {
             if (options.slots == 0 or options.slots > max_slots) return error.InvalidSlots;
+            if (options.pack == 0 or options.pack > max_pack) return error.InvalidSlots;
             return .{ .io = io, .backend = backend, .options = options };
         }
 
@@ -217,6 +236,7 @@ pub fn Batcher(comptime Backend: type) type {
                 return true;
             }
             s.canceled = true;
+            self.poke(); // a chunk member is completed at the next unit boundary
             return false;
         }
 
@@ -227,7 +247,7 @@ pub fn Batcher(comptime Backend: type) type {
                     self.held_rows -= 1;
                     if (self.held_rows == 0) self.released_ns = std.Io.Clock.awake.now(self.io).nanoseconds;
                 },
-                .prefill => self.prefill_held = false,
+                .prefill => self.prefill_holds -= 1,
             }
             s.hold = .none;
         }
@@ -275,6 +295,54 @@ pub fn Batcher(comptime Backend: type) type {
             self.io.futexWake(u32, &s.status.raw, 1);
         }
 
+        /// A chunk member whose generation went away: its waiter is told (canceled); the slot
+        /// stays running (so it is not reused) until the chunk ends.
+        fn dropMember(self: *Self, s: *Slot) void {
+            s.op = .none;
+            s.err = error.Canceled;
+            _ = s.status.fetchAdd(1, .release);
+            self.io.futexWake(u32, &s.status.raw, 1);
+        }
+
+        /// The chunk ended (or failed): release its members.
+        fn endPack(self: *Self, pk: Pack, unit: anyerror!Unit) void {
+            for (pk.slots[0..pk.n], 0..) |slot, i| {
+                const s = &self.slot[slot];
+                if (pk.gone[i]) {
+                    s.running = false;
+                    if (s.closing) {
+                        self.release(s);
+                        self.free(s);
+                    }
+                    continue;
+                }
+                const u = unit catch |e| {
+                    s.op = .none;
+                    s.err = e;
+                    self.complete(s);
+                    continue;
+                };
+                s.done += u.consumed[i];
+                if (s.done == s.tokens.len) {
+                    s.op = .none;
+                    if (u.logits) |l| {
+                        s.result = l[i * self.options.vocab ..][0..self.options.vocab];
+                        s.hold = .prefill;
+                        self.prefill_holds += 1;
+                        s.decoding = true;
+                    } else s.err = error.MissingLogits;
+                    self.complete(s);
+                } else if (s.done > s.tokens.len or u.consumed[i] == 0) {
+                    s.op = .none;
+                    s.err = error.InvalidChunk;
+                    self.complete(s);
+                } else {
+                    // More chunks: the operation stays queued.
+                    s.running = false;
+                }
+            }
+        }
+
         /// The scheduler task: runs operations until `stop`.
         pub fn run(self: *Self) void {
             var rows: [max_slots]Row = undefined;
@@ -285,32 +353,42 @@ pub fn Batcher(comptime Backend: type) type {
                     return;
                 }
                 const seen = self.wake.load(.acquire);
-                if (self.in_chunk) |ic| {
-                    const s = &self.slot[ic];
-                    if (!s.used or s.closing or s.op != .prefill) {
-                        // Its generation went away between two units: drop the chunk.
-                        self.in_chunk = null;
+                if (self.pack) |*pk| {
+                    var live: u32 = 0;
+                    for (pk.slots[0..pk.n], 0..) |slot, i| {
+                        const s = &self.slot[slot];
+                        if (!pk.gone[i] and (s.canceled or s.closing)) {
+                            pk.gone[i] = true;
+                            self.dropMember(s);
+                        }
+                        if (!pk.gone[i]) live += 1;
+                    }
+                    if (live == 0) {
+                        // Every generation of the chunk went away: drop it.
+                        const done = pk.*;
+                        self.pack = null;
                         self.stats.aborted_chunks += 1;
+                        self.endPack(done, error.Canceled);
                         self.mutex.unlock(self.io);
                         self.backend.abortChunk();
                         continue;
                     }
                 }
-                var pre: ?u32 = self.in_chunk;
+                var pre: ?u32 = null;
                 var n_steps: u32 = 0;
                 var n_decoding: u32 = 0;
                 for (self.slot[0..self.options.slots], 0..) |*s, i| {
                     if (!s.used or s.closing) continue;
                     if (s.decoding) n_decoding += 1;
                     switch (s.op) {
-                        .reset, .prefill => if (self.in_chunk == null and (pre == null or self.before(s, &self.slot[pre.?]))) {
+                        .reset, .prefill => if (!s.running and (pre == null or self.before(s, &self.slot[pre.?]))) {
                             pre = @intCast(i);
                         },
                         .step => n_steps += 1,
                         .none => {},
                     }
                 }
-                const prefill_ready = if (pre) |i| self.slot[i].op == .reset or !self.prefill_held else false;
+                const prefill_ready = self.pack != null or (if (pre) |i| self.slot[i].op == .reset or self.prefill_holds == 0 else false);
                 // Nanoseconds the batch still waits for missing slots (null: not ready yet).
                 var wait_ns: ?i96 = null;
                 if (n_steps > 0 and self.held_rows == 0) {
@@ -325,7 +403,7 @@ pub fn Batcher(comptime Backend: type) type {
                     continue;
                 }
                 const preempt = switch (self.options.stall) {
-                    .chunk => self.in_chunk == null,
+                    .chunk => self.pack == null,
                     .ns => |ns| std.Io.Clock.awake.now(self.io).nanoseconds - self.last_batch_end >= ns,
                 };
                 if (batch_ready and (!prefill_ready or (!self.last_batch and preempt))) {
@@ -340,7 +418,7 @@ pub fn Batcher(comptime Backend: type) type {
                     if (n < n_decoding) self.stats.partial_batches += 1;
                     self.last_batch = true;
                     self.stats.sizes[n] += 1;
-                    if (self.in_chunk != null) self.stats.batches_in_chunk += 1;
+                    if (self.pack != null) self.stats.batches_in_chunk += 1;
                     self.mutex.unlock(self.io);
                     // A row that cannot run fails alone; the others still run.
                     var good: [max_slots]Row = undefined;
@@ -372,60 +450,69 @@ pub fn Batcher(comptime Backend: type) type {
                         } else s.err = bad[r];
                         self.complete(s);
                     }
-                } else {
+                } else if (self.pack == null and self.slot[pre.?].op == .reset) {
                     const s = &self.slot[pre.?];
                     s.running = true;
                     self.last_batch = false;
                     self.mutex.unlock(self.io);
                     const t0 = self.now();
-                    if (s.op == .reset) {
-                        const out = self.backend.reset(pre.?);
-                        const t1 = self.now();
-                        self.mutex.lockUncancelable(self.io);
-                        self.account(&self.stats.prefill_ns, t0, t1);
-                        s.op = .none;
-                        if (out) |_| {} else |e| s.err = e;
-                        self.complete(s);
-                    } else {
-                        const out = self.backend.prefillChunk(pre.?, s.tokens[s.done..]);
-                        const t1 = self.now();
-                        self.mutex.lockUncancelable(self.io);
-                        self.account(&self.stats.prefill_ns, t0, t1);
-                        self.stats.prefill_units += 1;
-                        if (out) |chunk| {
-                            if (chunk.consumed > 0) self.stats.prefill_chunks += 1;
-                            self.in_chunk = if (chunk.consumed == 0) pre.? else null;
-                            s.done += chunk.consumed;
-                            if (s.done == s.tokens.len) {
-                                s.op = .none;
-                                s.result = chunk.logits orelse &.{};
-                                if (chunk.logits == null) s.err = error.MissingLogits else {
-                                    s.hold = .prefill;
-                                    self.prefill_held = true;
-                                    s.decoding = true;
-                                }
-                                self.complete(s);
-                            } else if (s.done > s.tokens.len) {
-                                s.op = .none;
-                                s.err = error.InvalidChunk;
-                                self.complete(s);
-                            } else if (s.canceled or s.closing) {
-                                // Its generation is gone: drop the prompt (a chunk in flight is
-                                // aborted by the next loop).
-                                s.op = .none;
-                                s.err = error.Canceled;
-                                self.complete(s);
-                            } else {
-                                // More units: the operation stays queued.
-                                s.running = false;
+                    const out = self.backend.reset(pre.?);
+                    const t1 = self.now();
+                    self.mutex.lockUncancelable(self.io);
+                    self.account(&self.stats.prefill_ns, t0, t1);
+                    s.op = .none;
+                    if (out) |_| {} else |e| s.err = e;
+                    self.complete(s);
+                } else {
+                    // A prefill unit: the next one of the chunk in flight, or a new chunk of the
+                    // first pending prompt plus those that pack with it (in `before` order).
+                    var items: [max_pack]Item = undefined;
+                    var n: usize = 0;
+                    if (self.pack == null) {
+                        var remaining: [max_pack]usize = undefined;
+                        var taken: u64 = 0;
+                        var next: ?u32 = pre;
+                        while (next) |i| {
+                            const s = &self.slot[i];
+                            remaining[n] = s.tokens.len - s.done;
+                            if (n > 0 and !self.backend.packFits(remaining[0 .. n + 1])) break;
+                            items[n] = .{ .slot = i, .tokens = s.tokens[s.done..] };
+                            taken |= @as(u64, 1) << @intCast(i);
+                            n += 1;
+                            if (n == self.options.pack) break;
+                            next = null;
+                            for (self.slot[0..self.options.slots], 0..) |*c, j| {
+                                if (!c.used or c.closing or c.running or c.op != .prefill or taken & (@as(u64, 1) << @intCast(j)) != 0) continue;
+                                if (next == null or self.before(c, &self.slot[next.?])) next = @intCast(j);
                             }
-                        } else |e| {
-                            // A failed unit leaves no chunk in flight (the backend drops it).
-                            self.in_chunk = null;
-                            s.op = .none;
-                            s.err = e;
-                            self.complete(s);
                         }
+                        var pk: Pack = .{ .n = @intCast(n), .slots = undefined, .gone = @splat(false) };
+                        for (items[0..n], 0..) |item, k| {
+                            pk.slots[k] = item.slot;
+                            self.slot[item.slot].running = true;
+                        }
+                        self.pack = pk;
+                        if (n > 1) self.stats.packed_chunks += 1;
+                    }
+                    self.last_batch = false;
+                    self.mutex.unlock(self.io);
+                    const t0 = self.now();
+                    const out = self.backend.prefillUnit(items[0..n]);
+                    const t1 = self.now();
+                    self.mutex.lockUncancelable(self.io);
+                    self.account(&self.stats.prefill_ns, t0, t1);
+                    self.stats.prefill_units += 1;
+                    const pk = self.pack.?;
+                    if (out) |unit| {
+                        if (unit.done) {
+                            self.stats.prefill_chunks += 1;
+                            self.pack = null;
+                            self.endPack(pk, unit);
+                        }
+                    } else |e| {
+                        // A failed unit leaves no chunk in flight (the backend drops it).
+                        self.pack = null;
+                        self.endPack(pk, e);
                     }
                 }
                 self.mutex.unlock(self.io);

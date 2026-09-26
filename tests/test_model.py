@@ -30,6 +30,7 @@ class ModelArtifactsTests(unittest.TestCase):
                          {f"gemm_f16n_{f}" for f in ("q4_0", "q4_1", "q5_k")} |  # Options.decode_precision = .f16 (block 18e)
                          {f"gemm_f16m_{f}" for f in ("q4_0", "q4_1", "q5_k")} |  # Options.f16_small_tile (block 18c.2)
                          {"gemm_f16d_q4_0"} |  # Options.decode_f16_kernel = .v2 (block 18e)
+                         {"qk_p", "qk_p_kv16", "conv_p", "delta_p", "attn_flash_p", "attn_flash_p_kv16"} |  # packed prefill (18d.1)
                          {"qkprep_kv16", "qk_b_kv16", "attn_scores_kv16", "attn_pv_kv16", "attn_flash_kv16"} |
                          {"delta_legacy", "delta_b_legacy"})  # Options.delta_state_out = false
         for name, record in manifest["modules"].items():
@@ -56,7 +57,7 @@ class ModelArtifactsTests(unittest.TestCase):
             # gemm_f16n_* (block 18e, decode f16 mode) and gemm_f16m_* (block 18c.2): as gemm_f16_*.
             # gemm_f16d_* (block 18e v2): also GroupNonUniformShuffle (65), the lane-half swap.
             expected = ([1, 9, 61, 65, 5345, 6022] if name.startswith("gemm_f16d_") else [1, 9, 61, 5345, 6022] if name.startswith(("gemm_f16_", "gemm_f16x_", "gemm_f16n_", "gemm_f16m_")) else [1, 61, 64] if name.startswith("gemm_")
-                        else [1, 61, 63, 64] if name in ("attn_flash", "attn_flash_kv16") else [1, 4433] if name.endswith(("_h", "_kv16")) else [1])
+                        else [1, 61, 63, 64] if name in ("attn_flash", "attn_flash_kv16", "attn_flash_p", "attn_flash_p_kv16") else [1, 4433] if name.endswith(("_h", "_kv16")) else [1])
             self.assertEqual(sorted(capabilities), expected, name)
 
     def test_oracle_fixture_provenance_and_self_consistency(self):

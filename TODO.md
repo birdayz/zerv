@@ -163,10 +163,10 @@ listed in it); block 18 is active.
     - [ ] Competitor: SGLang (user goal 2026-09-25: "absolute kings in all metrics" against
       vLLM and SGLang). Check ROCm/gfx1100 and Qwen3.8 support, verify and scan the image,
       then the same runs.
-    - [ ] Next lever (from the 18c.2 data): packed multi-sequence prefill. Several pending
-      prompts go in one plan, each with its solo chunk grid; the GEMMs are already bitwise
-      equal per element at any plan size, and the per-sequence kernels run per segment. Target:
-      8-user throughput and steady gap p99 above vLLM, queue TTFT.
+    - [x] 18d.1 packed multi-sequence prefill ([report](docs/bench/2026-09-26-packed-prefill.md)):
+      bitwise solo per sequence (batch-check pack 504/504 x4, serving 30/30). 8-user tok/s
+      141.7 → 150.8 (vLLM 151.9), TTFT p95 1.58 → 1.05 s. Steady gap p99 unchanged (149 vs
+      vLLM 53; max 193 vs 466–896): few chunks pack in the closed loop.
     - Queue decision 2026-09-25 (user goal: multi-user throughput and batching): 18e (batched
       projection kernels) goes before 18d. The 8-row step is the bottleneck: 46 ms, 2.3× one
       row, and the GPU is 99% busy. Within 18d, per-slot prefix caching comes first (bruh's

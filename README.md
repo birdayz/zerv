@@ -51,13 +51,13 @@ Decode: [report](docs/bench/2026-09-24-speculative.md).
 The competitors are vLLM 0.30.0 (official ROCm image, RedHatAI W4A16 checkpoint, FP8 KV cache)
 and llama-server (same GGUF as zerv). All run cold (no prompt cache), interleaved in 2 rounds.
 Competitor cells show each one's best configuration per metric (vLLM prefill chunk 2048 or 512,
-llama `-b 2048` or `-b 512`), and vLLM's faster round at 1 user. Medians; full tables: [report](docs/bench/2026-09-25-multiuser.md).
+llama `-b 2048` or `-b 512`), and vLLM's faster round at 1 user. Medians; full tables: [18c.2](docs/bench/2026-09-25-multiuser.md), [packed prefill](docs/bench/2026-09-26-packed-prefill.md).
 
 | Closed loop, short prompts | zerv | vLLM | llama-server |
 | --- | --- | --- | --- |
-| aggregate tok/s, 1 / 2 / 4 / 8 users | **48 / 87 / 139** / 151 | 36 / 64 / 108 / **158** | 38 / 64 / 93 / 131 |
-| TTFT p50, 8 users | **0.44 s** | 0.80 s | 3.3 s |
-| token gap p50 / p99 / max, 8 users | 46 / 147 / **191** ms | 46 / **51** / 430 ms | 47 / 55 / 798 ms |
+| aggregate tok/s, 1 / 2 / 4 / 8 users | **47 / 85 / 138 / 151** | 36 / 64 / 108 / 152–158 | 38 / 64 / 93 / 131 |
+| TTFT p50 / p95, 8 users | **0.59 / 1.05 s** | 0.80 / 1.17 s | 3.3 / 3.6 s |
+| token gap p50 / p99 / max, 8 users | 48 / 149 / **193** ms | 48 / **53** / 466 ms | 47 / 55 / 798 ms |
 
 | A 4,936-token prompt arrives while 6 users stream | zerv | vLLM | llama-server |
 | --- | --- | --- | --- |
@@ -74,8 +74,8 @@ llama `-b 2048` or `-b 512`), and vLLM's faster round at 1 user. Medians; full t
 
 ### Where zerv is behind
 
-- **8-user throughput and steady gap p99.** When 8 prompts arrive at once, zerv prefills
-  them one at a time; vLLM packs them into one pass. Next: packed multi-sequence prefill.
+- **Steady gap p99 at 8 users.** zerv spreads prefill into many ~140 ms stalls (3% of
+  gaps); vLLM makes rare 0.5–0.9 s ones. 8-user throughput is a tie with vLLM.
 - **Batched decode past 4 rows.** 8 rows cost 2.3× one row.
 - **No prefix cache with `--parallel N` > 1.**
 - vLLM's and SGLang's speculative decoding (MTP) have not been benchmarked yet.
