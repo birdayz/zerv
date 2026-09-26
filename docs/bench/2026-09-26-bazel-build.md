@@ -123,3 +123,78 @@ The spill gate compiles every pipeline with the shader cache disabled, most of t
   (`tools/zerv_build.py`, `tools/test_profile.py`).
 - The native kernel's driver capture and bitwise sweep (`tools/build_native_gemm.py`, the C
   lab against research Vulkan headers in `third_party/`) need the GPU and stay manual.
+
+## Hermetic phases 3–5: runtime, fixtures, harnesses, competitors (2026-09-26, evening)
+
+Question: do the source-built oracles and the source-built GPU runtime reproduce the
+committed fixtures and gates, and does the in-graph llama-server perform like the host's?
+Spec and details: [hermetic-build.md](../specs/hermetic-build.md) (phases 3–5). Host: Ryzen 9
+3900X, RX 7900 XTX, Mesa 26.2.3 (Arch) on the host and in the graph; model
+`Qwen3.8-27B-Q4_0.gguf` (sha256 ede16c7b…).
+
+**Byte-identity results** (committed fixtures regenerated with source-built programs on the
+source-built runtime):
+
+| artifact | result |
+| --- | --- |
+| Vulkan C ABI, timestamp ABI (`abi.json`, `timing-abi.json`) | same 64 structures / 86 constants and the same generated C source from headers 1.4.357.0 (was the 1.4.354 research copy); only header hashes changed |
+| `affine.spv`, `src/gpu/vk.zig` | byte-identical (vk.zig: the header comment names the new registry release) |
+| `dispatch.json` (real device) | 10 cases and device/allocation metadata identical |
+| `gpu/matvec.json` (ggml-vulkan) | 48 cases bitwise identical to the host driver's |
+| `chat-template.json` | 100 renderings identical (Jinja2/MarkupSafe files byte-identical to the old venv) |
+| model oracle, default and long sets | llama.cpp's captured tensors and logits byte-identical to the host package on the host driver; FP64 reference within 7e-13 (top-1 logits) |
+| native `gemm_f16x` for the test runtime | `.bin`/`.key`/`.s` identical to the host's; only `.global` (driver build) differs; bitwise sweep PASS (23 configurations) |
+
+**Gates on the test runtime** (`verify_model.py`, oracle 2026-09-26-hermetic):
+
+- FP32, modes 0, 1, 13, 29, 60, 512: every tensor within its bound (worst/bound ≤ 0.552),
+  greedy tokens all equal, 0 failures.
+- zerv on the host driver vs the source-built driver (FP32 modes 0 and 512; f16/native
+  mode 512): tensors, logits and serving logits bitwise identical.
+- f16 prefill, `--gemm-code native` (the `test_radv` binary was selected: `gemm_f16x: native`)
+  vs `spirv`, modes 13 and 512: bitwise identical. (f16 exceeds the FP32 bounds on the long
+  case at 512 rows, worst/bound 318.5, on both drivers; f16 is not gated by FP32 bounds.)
+- `//tests:gpu` and `//tests:gpu_release_fast` 41/41, `//tests:gpu_spills` pass; the native
+  GPU test requires the device key of the source-built driver (negative control: the host
+  driver fails with `WrongDriver`). `bazel test //...` 67/67.
+
+**Failures and negative results on the way** (kept in the spec): Mesa's meson linking the host
+`libelf` through Zig's search-dir answer; a segfault at exit without `-z nodelete`; build IDs
+differing by output base until `--strip-debug`; `gpu_release_fast` silently on the host driver
+(`zig_configure_test` drops `env`); the FP64 reference oversubscribed with 22 × 24 OpenBLAS
+threads (load average 394) under the pinned numpy.
+
+### llama-server built in the graph vs the host package (A/B)
+
+Question: may the in-graph llama-server (`//bench:llama-server`) replace `/usr/bin/llama-server`
+(Arch llama.cpp-vulkan, same commit b29c606e, GCC 16) as the serving competitor without making
+it slower? Engine `llama-fa-ub512` of `bench/run_serving.py` (workload `serving-v2.json`, 4
+cases × 3 repeats, greedy), one engine at a time; raw data
+[data/2026-09-26-llama-server-ab/](data/2026-09-26-llama-server-ab/) (per run: `summary.json`,
+`raw.jsonl`, `manifest.json` with the binary's hash).
+
+```sh
+M=models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf; D=docs/bench/data/2026-09-26-llama-server-ab
+tools/py bench/run_serving.py --model $M --engines llama-fa-ub512 --output $D/native-1              # in-graph
+tools/py bench/run_serving.py --model $M --engines llama-fa-ub512 --llama-server /usr/bin/llama-server --output $D/host-7
+```
+
+Median decode tok/s and TTFT per case; ratio = in-graph / host, means of the warm runs:
+
+| build (runs) | short decode | think decode | medium decode | long decode | TTFT ratios (short, think, medium, long) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| in-graph, generic x86-64 (medians over graph-2..4 / host-2..4) | 0.984 | 0.988 | 0.987 | 1.017 | 1.079, 1.018, 1.008, 0.999 |
+| in-graph, `-march=native` experiment (march-1,2 vs host-5,6) | 0.993 | 1.004 | 0.998 | 0.991 | (host-5 TTFT outliers) |
+| **`//bench:llama-server`** (`-march=native`; native-1,2 vs host-7,8, ABBA) | **0.997** | **0.999** | **0.994** | **0.993** | 0.996, 0.985, 1.002, 1.002 |
+
+- Outputs (text hashes) identical in all 13 runs of both builds.
+- The first run after an idle period is slow for either build (graph-1, host-3, host-5: TTFT
+  up to +100%); later runs are preceded by a discarded warm-up run.
+- The generic build decoded 1.0% slower on average in the warm adjacent pairs (graph-2/host-2,
+  host-4/graph-4: −1.7%…+1.6% per case). Compiled for the host CPU (`native_cpu_binary`, bazel/defs.bzl: a configuration
+  transition adding `-march=native` to the competitor's subtree only; the oracles keep their
+  build), the difference is −0.4% on average (−0.7%…−0.1%), smaller than the spread between
+  two runs of the same binary (up to 1.8%).
+- Verdict: `//bench:llama-server` replaces the host package as the competitor. A residual
+  decode difference below ~1% is not resolved at this sample size; serving claims within 1%
+  of llama-server remain undecidable either way.

@@ -1,3 +1,5 @@
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_test.bzl", "py_test")
 load("@rules_zig//zig:defs.bzl", "zig_library", "zig_shared_library")
 
 zig_library(
@@ -5,6 +7,51 @@ zig_library(
     main = "root.zig",
     srcs = glob(["*.zig"], exclude = ["root.zig"]),
     visibility = ["//visibility:public"],
+)
+
+# vk.zig, the scoped Vulkan declarations, generated from the pinned registry
+# (tools/generate_vulkan_bindings.py) and formatted by the toolchain's `zig fmt`; vk_zig_test: the committed file is exactly that,
+# `bazel run //src/gpu:vk_zig_update` rewrites it.
+genrule(
+    name = "vk_zig",
+    srcs = ["@vulkan_headers//:registry/vk.xml"],
+    outs = ["generated/vk.zig"],
+    cmd = "$(execpath //tools:generate_vulkan_bindings) --registry $< --revision 'vulkan-sdk-1.4.357.0 (@vulkan_headers)' --output $@ && $(execpath //bazel:zig) fmt $@ >/dev/null",
+    tools = [
+        "//bazel:zig",
+        "//tools:generate_vulkan_bindings",
+    ],
+)
+
+py_test(
+    name = "vk_zig_test",
+    srcs = ["//tools:check_generated.py"],
+    main = "//tools:check_generated.py",
+    args = [
+        "src/gpu/generated",
+        "src/gpu",
+        "--subset",
+        "--hint",
+        "'bazel run //src/gpu:vk_zig_update'",
+    ],
+    data = [
+        "vk.zig",
+        ":vk_zig",
+    ],
+    size = "small",
+)
+
+py_binary(
+    name = "vk_zig_update",
+    srcs = ["//tools:check_generated.py"],
+    main = "//tools:check_generated.py",
+    args = [
+        "src/gpu/generated",
+        "src/gpu",
+        "--subset",
+        "--update",
+    ],
+    data = [":vk_zig"],
 )
 
 # Link-time stand-in for the Vulkan loader: every core Vulkan command of the registry, in a

@@ -15,6 +15,7 @@ import json, os, pathlib, statistics, subprocess, sys, threading, time
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
+import host_info  # noqa: E402  (tools/host_info.py: the host, recorded without host tools)
 
 
 def lab(args):
@@ -49,9 +50,7 @@ class Sampler(threading.Thread):
 
 def busy():
     """Other GPU users of this project: the zerv server and tools, llama-server."""
-    out = subprocess.run(["pgrep", "-a", "-f", r"(^|/)(zerv(-[a-z0-9-]+)?|llama-server)( |$)"],
-                         capture_output=True, text=True).stdout
-    return [l for l in out.splitlines() if str(os.getpid()) != l.split()[0]]
+    return host_info.processes(r"(^|/)(zerv(-[a-z0-9-]+)?|llama-server)( |$)")
 
 
 def main():

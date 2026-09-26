@@ -1,31 +1,29 @@
 #!/usr/bin/env python3
-"""Extract independent native ABI sizes/offsets/constants from pinned Khronos C header."""
-import argparse
+"""Independent native ABI of the scoped Vulkan API (tests/fixtures/gpu/abi.json): sizes,
+alignments, field offsets and constants as the C compiler sees the pinned Khronos header.
+
+Bazel actions (tests/BUILD.bazel, `vulkan_abi`), checked against the committed fixture by
+`//tests:vulkan_abi_test`; `bazel run //tests:vulkan_abi_update` rewrites it.
+
+  generate_vulkan_abi.py source VK_XML OUT.c
+      the C program printing the ABI of every scoped structure and constant (vulkan_api.py)
+  generate_vulkan_abi.py record VK_XML HEADER C_SOURCE PROBE_OUTPUT OUT.json
+      the fixture: the compiled program's output plus the hashes of every input
+"""
 import hashlib
 import json
 from pathlib import Path
-import subprocess
-from vulkan_api import inventory
+import sys
 
-ROOT = Path(__file__).resolve().parents[2]
+from vulkan_api import inventory
 
 
 def sha(p):
-    return hashlib.sha256(p.read_bytes()).hexdigest()
+    return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--work", type=Path, required=True)
-    a = p.parse_args()
-    if a.output.exists() or a.work.exists():
-        p.error("output/work must be fresh")
-    headers = ROOT / "third_party/vulkan/1.4.354"
-    for source in json.loads((ROOT / "docs/research/2026-09-22/vulkan-sources.json").read_text()):
-        if sha(ROOT / source["local_path"]) != source["sha256"]:
-            raise ValueError("research source mismatch")
-    types, _, constants = inventory(headers / "registry/vk.xml")
+def source(xml):
+    types, _, constants = inventory(xml)
     lines = ['#include <vulkan/vulkan_core.h>', '#include <stddef.h>', '#include <stdio.h>', 'int main(void) {', 'puts("{\\"structs\\":[");']
     structs = sorted(n for n, t in types.items() if t.get("category") == "struct")
     for i, name in enumerate(structs):
@@ -38,20 +36,25 @@ def main():
     for i, name in enumerate(constants):
         lines.append(f'printf("{"," if i else ""}\\"{name}\\":%lld", (long long){name});')
     lines += ['puts("}}");', 'return 0;', '}']
-    a.work.mkdir(parents=True)
-    c = a.work / "abi.c"; exe = (a.work / "abi").resolve()
-    c.write_text("\n".join(lines) + "\n")
-    command = ["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-I" + str(headers / "include"), str(c), "-o", str(exe)]
-    subprocess.run(command, check=True)
-    result = json.loads(subprocess.check_output([exe], text=True))
-    result.update(schema_version=1, generator_sha256=sha(Path(__file__)), helper_sha256=sha(Path(__file__).with_name("vulkan_api.py")),
-                  header_sha256=sha(headers / "include/vulkan/vulkan_core.h"), xml_sha256=sha(headers / "registry/vk.xml"),
-                  c_source_sha256=sha(c), target="Linux x86_64 SysV C ABI")
-    a.output.parent.mkdir(parents=True, exist_ok=True)
-    with a.output.open("x") as f:
-        json.dump(result, f, indent=2); f.write("\n")
-    print(len(structs), "structs,", len(constants), "constants:", sha(a.output))
+    return "\n".join(lines) + "\n"
+
+
+def main():
+    args = sys.argv[1:]
+    if args[:1] == ["source"] and len(args) == 3:
+        Path(args[2]).write_text(source(args[1]))
+    elif args[:1] == ["record"] and len(args) == 6:
+        xml, header, c, probe, out = args[1:]
+        result = json.loads(Path(probe).read_text())
+        result.update(schema_version=1, generator_sha256=sha(__file__), helper_sha256=sha(Path(__file__).with_name("vulkan_api.py")),
+                      header_sha256=sha(header), xml_sha256=sha(xml), c_source_sha256=sha(c), target="Linux x86_64 SysV C ABI")
+        with open(out, "w") as f:
+            json.dump(result, f, indent=2); f.write("\n")
+    else:
+        sys.exit(__doc__)
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     main()

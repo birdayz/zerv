@@ -111,7 +111,8 @@ class MatvecFixtureTests(unittest.TestCase):
     def test_private_timestamp_abi_fixture_provenance(self):
         record = json.loads((ROOT/"tests/fixtures/gpu/timing-abi.json").read_text())
         self.assertEqual(record["generator_sha256"], sha((ROOT/"tests/reference/generate_gpu_timing_abi.py").read_bytes()))
-        self.assertEqual(record["header_sha256"], "55c06a17793bb1a9d752aa0906116fff9d1fb74f5dd3896777b92f124c9637aa")
+        # Header: @vulkan_headers (vulkan-sdk-1.4.357.0); //tests:vulkan_fixtures_test regenerates the record.
+        self.assertEqual(record["header_sha256"], "a7ac0d7e35e77f642c175af5d36729cfdae2d626d2aaa9145c030a42bd44edc6")
         self.assertEqual((record["size"], record["queryCount"], record["VK_QUERY_TYPE_TIMESTAMP"]), (32, 24, 2))
 
     def test_metrics_reject_bad_outputs_and_separate_default_precision(self):

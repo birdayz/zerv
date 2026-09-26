@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Emit scoped Zig C-ABI declarations from the pinned public Vulkan registry.
-Development only. No header/registry dependency at native build or runtime.
+"""Emit scoped Zig C-ABI declarations (src/gpu/vk.zig) from the pinned public Vulkan registry.
+A Bazel action (//src/gpu:vk_zig, registry from @vulkan_headers); `//src/gpu:vk_zig_test`
+checks the committed file, `bazel run //src/gpu:vk_zig_update` rewrites it. No registry
+dependency at native build or run time.
+
+  generate_vulkan_bindings.py --registry VK_XML --revision TEXT --output FILE
 """
 import argparse
-import hashlib
 from pathlib import Path
 import re
 import sys
@@ -13,7 +16,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests/reference"))
 from vulkan_api import EXTENSION_COMMANDS, OPAQUE, inventory
 
-XML_SHA = "80e7394d0e787d6ec78b67aa324add6f96129fdd042ba640cc336a5481a208ee"
 PRIMITIVES = dict(void="void", char="u8", uint8_t="u8", uint32_t="u32", int32_t="i32", uint64_t="u64", size_t="usize", float="f32")
 
 
@@ -23,13 +25,13 @@ def identifier(name):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--registry", type=Path, required=True, help="vk.xml (pinned: @vulkan_headers)")
+    p.add_argument("--revision", required=True, help="the registry's release, for the file header")
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()
     if a.output.exists():
         p.error("output must be fresh")
-    xml = ROOT / "third_party/vulkan/1.4.354/registry/vk.xml"
-    if hashlib.sha256(xml.read_bytes()).hexdigest() != XML_SHA:
-        raise ValueError("XML identity mismatch")
+    xml = a.registry
     types, functions, constant_names = inventory(xml)
     root = ET.parse(xml).getroot()
     enum_nodes = {e.get("name"): e for e in root.findall(".//enum") if e.get("value") is not None or e.get("bitpos") is not None or e.get("offset") is not None}
@@ -70,7 +72,7 @@ def main():
         return identifier(name), base, depth, original
 
     lines = ['//! Raw system API declarations, generated from Khronos Vulkan-Headers',
-             '//! 01393c3df0e5285b54ee6527466513f9e614be94; see tools/generate_vulkan_bindings.py.',
+             f'//! {a.revision}; see tools/generate_vulkan_bindings.py.',
              '//! No inference code, C import, or third_party build dependency.',
              'const std = @import("std");', '']
     for name in constant_names:

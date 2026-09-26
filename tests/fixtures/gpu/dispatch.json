@@ -1,15 +1,26 @@
 {
-  "schema_version": 1,
-  "generator_sha256": "c4e73f2adbb075e7dd00b08715002d64f6af02394e5ff2d2c9a5905628441a91",
+  "schema_version": 2,
+  "generator_sha256": "4bf966ff0b3f365f0ee845665e13b4660c012fe1082a206e0f98087653adef40",
   "shader_source_sha256": "17c606a7a641f0bbca2cfe3fdcaafecbc3c5ed048ee4830b19b1959d28327dc7",
   "reference_source_sha256": "64d98b6997fda80ed8ce6147792efa7b672f23d20411eb82021bb4d8734118ce",
   "shader_sha256": "6708045a6c97ed0afdf465f4e785cb4908a69d3a9c39faf7d83baa6f202e0570",
-  "reference_sha256": "d90cc75243ba6506be83edb4057bf95b349e761f43f98e1e09a3f40e514a6f54",
-  "tool_driver_sha256": {
-    "/usr/bin/glslc": "4a4743cde357af0949cdbc07668802297327e993e548f80f4e2ee67ba9b6c74d",
-    "/usr/bin/spirv-val": "02fae2475ba0f3cb4987aca3c9eb938e8543cf269244bfcb856d8e0c252c753b",
-    "/usr/lib/libvulkan.so.1": "7d9f8ced1fae1d02ee7953a5a22e4efae74545e83333eedc41c53a50f51ebab6",
-    "/usr/lib/libvulkan_radeon.so": "ddc11778b3e01b73d55028595a6dfc51afd8e3cb5f901fd175a74cdc9ba79248"
+  "reference": {
+    "label": "//tests:oracle_vulkan_driver",
+    "sha256": "e742d95591d24583f48ce082755d0f668173c7076464829184d17e49a102f5a9"
+  },
+  "shader_tools": {
+    "glslc": "@shaderc//:glslc",
+    "spirv_val": "@spirv_tools//:spirv-val",
+    "check": "//tests:vulkan_fixtures_test"
+  },
+  "gpu_runtime": {
+    "label": "//tests:gpu_runtime",
+    "files": {
+      "amdgpu.ids": "ffd2a8f1bfa755f4d90f537b4969fc4676f116e5af051ce2f18ef93a96d8beb6",
+      "libvulkan.so.1": "730c35a97158aa61db944956c256cbee116192708146bffeafab23763a40faec",
+      "libvulkan_radeon.so": "0623459745a34d630f1b69246b1c20648602c56b05828995773b702a82717ba8",
+      "radeon_icd.json": "d654a57cda9eb11eb323c87220dce6d6469bd2076b2ba5284b35fe8537f3c7bd"
+    }
   },
   "device": "device=AMD Radeon RX 7900 XTX (RADV NAVI31) vendor=1002 id=744c api=4211042 driver=109060099 family=1\nallocation kind=affine count=1 bytes=260 allocation_sizes=272,272,272,272 memory_types=5,5,0,0\nallocation kind=affine count=63 bytes=508 allocation_sizes=512,512,512,512 memory_types=5,5,0,0\nallocation kind=affine count=64 bytes=512 allocation_sizes=512,512,512,512 memory_types=5,5,0,0\nallocation kind=affine count=65 bytes=516 allocation_sizes=528,528,528,528 memory_types=5,5,0,0\nallocation kind=affine count=5120 bytes=20736 allocation_sizes=20736,20736,20736,20736 memory_types=5,5,0,0\nallocation kind=affine count=65537 bytes=262404 allocation_sizes=262416,262416,262416,262416 memory_types=5,5,0,0\nallocation kind=affine count=1048576 bytes=4194560 allocation_sizes=4194560,4194560,4194560,4194560 memory_types=5,5,0,0\nallocation kind=roundtrip count=256 bytes=256 allocation_sizes=256,256,256,256 memory_types=5,5,0,0\nallocation kind=roundtrip count=1048576 bytes=1048576 allocation_sizes=1048576,1048576,1048576,1048576 memory_types=5,5,0,0\nallocation kind=roundtrip count=67108864 bytes=67108864 allocation_sizes=67108864,67108864,67108864,67108864 memory_types=5,5,0,0",
   "cases": [

@@ -17,7 +17,8 @@ ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import 
 sys.path.insert(0, str(ROOT / "tools"))
 import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
 sys.path.insert(0, str(ROOT / "tests/reference"))
-from gguf_oracle import Oracle, InitParams
+import gguf_oracle  # noqa: E402
+from gguf_oracle import Oracle, InitParams  # noqa: E402
 
 
 def sha(path):
@@ -74,7 +75,7 @@ def reference_worker(model, library):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--library", type=Path, required=True)
+    p.add_argument("--library", type=Path, help="ggml library; default: built from source (@ggml)")
     p.add_argument("--model", type=Path, required=True)
     p.add_argument("--output", type=Path)
     p.add_argument("--cpu", type=int)
@@ -90,7 +91,8 @@ def main():
     cpu = allowed[0] if args.cpu is None else args.cpu
     if cpu not in allowed:
         raise ValueError("CPU not in allowed affinity")
-    model, library = (x.resolve(strict=True) for x in (args.model, args.library))
+    library, library_build = gguf_oracle.library(args.library)
+    model, library = args.model.resolve(strict=True), library.resolve(strict=True)
     commands = []
 
     def run(command):
@@ -138,7 +140,7 @@ def main():
         saved.parent.mkdir(parents=True, exist_ok=True)
         saved.write_bytes((ROOT / path).read_bytes())
     manifest = dict(model=dict(path=str(model), size=model.stat().st_size, sha256=model_hash),
-                    oracle=oracle.identity, build=zerv_build.provenance(),
+                    oracle=oracle.identity, oracle_build=library_build, build=zerv_build.provenance(),
                     host=platform.uname()._asdict(), python=sys.version, allowed_cpus=allowed, effective_cpu=cpu,
                     warmups=3, trials=7, iterations=10, rounds=3, commands=commands,
                     sources={str(path): sha(ROOT / path) for path in sorted(sources)},

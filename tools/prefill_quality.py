@@ -10,7 +10,8 @@ Metrics, per oracle case:
   logits:   normalized L2 vs FP64 at every position llama computes (all) and at the
             positions zerv's prefill emits logits for; argmax agreement with FP64 where
             the FP64 top-1/top-2 margin exceeds the fixture's near-tie margin.
-llama runs: tests/reference/llama_batch_capture.c (pinned libllama), fresh work dirs.
+llama runs: //tests:oracle_llama_batch_capture (llama.cpp built from source) on the test-only
+GPU runtime (docs/specs/hermetic-build.md, phase 4), fresh work dirs.
 Usage:
   prefill_quality.py llama --config default|fp32-full|nocoopmat|nof16 --fixture F --oracle-dir D --work W --output O.json
   prefill_quality.py zerv --native CASE=DIR [...] --fixture F --oracle-dir D --output O.json
@@ -18,7 +19,6 @@ Usage:
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -31,7 +31,6 @@ from compare_model import load_reference  # noqa: E402
 import model_capture  # noqa: E402
 
 MODEL = ROOT/"models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf"
-CAPTURE_SRC = ROOT/"tests/reference/llama_batch_capture.c"
 CONFIGS = {  # environment + KV type, mirroring bench/run_serving.py engines (FA on, ub512)
     "default": ({}, "f16"),
     "nof16": ({"GGML_VK_DISABLE_F16": "1"}, "f16"),
@@ -42,9 +41,6 @@ CONFIGS = {  # environment + KV type, mirroring bench/run_serving.py engines (FA
     "fp32-kvf16": ({"GGML_VK_DISABLE_MMVQ": "1", "GGML_VK_DISABLE_INTEGER_DOT_PRODUCT": "1", "GGML_VK_DISABLE_COOPMAT": "1",
                     "GGML_VK_DISABLE_F16": "1"}, "f16"),
 }
-PINS = {"/usr/lib/libllama.so.0.4.1": "c352cb4b1f5456dffbc4483ba1e0be7a547b21a0f7e63462ab8fb333f51245e1",
-        "/usr/lib/libggml-base.so.0.24.0": "7d9065538f5df6342613b4fa92e661d5ad8fd811c2dbe16ff0e4b62a77777073",
-        "/usr/lib/ggml/libggml-vulkan.so": "d09aac86141492bdf22daad0c61b5ded720f772b3f18d8167aae1f264532979a"}
 
 
 def sha(path):
@@ -85,16 +81,16 @@ def score(case, oracle_dir, hidden, logits_at):
 
 
 def run_llama(a, fixture):
-    for path, digest in PINS.items():
-        if sha(path) != digest: raise SystemExit("pin mismatch: "+path)
+    sys.path.insert(0, str(ROOT/"tools"))
+    import zerv_build
+    built, oracle = zerv_build.oracle("oracle_llama_batch_capture")
+    gpu_env, runtime = zerv_build.gpu_runtime()
     env_extra, kv = CONFIGS[a.config]
     work = a.work.resolve()
     if work.exists() or not work.is_relative_to(ROOT/"third_party"): raise SystemExit("fresh --work under third_party required")
     work.mkdir(parents=True)
-    tool = work/"llama_batch_capture"
-    subprocess.run(["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", str(CAPTURE_SRC), "-o", str(tool),
-                    "/usr/lib/libllama.so.0.4.1", "/usr/lib/libggml-base.so.0.24.0", "-lm"], check=True)
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("GGML_", "LLAMA_", "RADV_", "MESA_", "VK_"))}
+    tool = work/"llama_batch_capture"; tool.write_bytes(built.read_bytes()); tool.chmod(0o755)
+    env = {k: v for k, v in gpu_env.items() if not k.startswith(("GGML_", "LLAMA_"))}
     env.update(env_extra)
     results = {}
     for case in fixture["cases"]:
@@ -118,7 +114,7 @@ def run_llama(a, fixture):
         results[case["name"]] = score(case, a.oracle_dir, hidden, {t: logits[t] for t in range(T)})
         results[case["name"]]["capture"] = json.loads(r.stdout.strip().splitlines()[-1])
         print(case["name"], json.dumps(results[case["name"]]), flush=True)
-    return dict(engine="llama.cpp b29c606e28 (libllama pinned)", config=a.config, env=env_extra, kv=kv, batch=2048, ubatch=512, flash=True,
+    return dict(engine="llama.cpp b29c606e28 (built from source)", oracle=oracle, gpu_runtime=runtime, config=a.config, env=env_extra, kv=kv, batch=2048, ubatch=512, flash=True,
                 tool_sha256=sha(tool), cases=results)
 
 

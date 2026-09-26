@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
-"""Qwen3.8 execution oracle: pinned libllama intermediate capture + independent FP64 NumPy
-forward on identical token sequences. Large tensors go to a fresh --work-dir (under
-third_party); a small hashed summary fixture goes to --output. Development tool only.
+"""Qwen3.8 execution oracle: libllama intermediate capture + independent FP64 NumPy forward on
+identical token sequences. Large tensors go to a fresh --work-dir (under third_party); a small
+hashed summary fixture goes to --output. Development tool only.
+
+  tools/py tests/reference/generate_model_oracle.py --model GGUF --work-dir DIR --output FILE [--case-set long]
+
+The capture program is //tests:oracle_model (llama.cpp and ggml at the pinned revisions, built
+from source with the Vulkan backend); it runs on the test-only GPU runtime (the Vulkan loader
+and Mesa RADV built from source, docs/specs/hermetic-build.md phase 4). Prompts are rendered by
+render_chat.py under the same pinned interpreter.
 """
 import argparse
 from datetime import datetime, timezone
@@ -10,26 +17,26 @@ import json
 import math
 import os
 from pathlib import Path
-import re
+import shutil
 import subprocess
 import sys
 
-import numpy as np
+# One BLAS thread per process (set before numpy loads OpenBLAS): the FP64 reference runs its
+# row work in a pool of worker processes (qwen35_reference.Projector); OpenBLAS would otherwise
+# start one thread per CPU in each of them (22 workers x 24 threads measured on 2026-09-26).
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+import numpy as np  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import model_capture
 import qwen35_reference as ref
 
 ROOT = Path(__file__).resolve().parents[2]
-PINS = {
-    "/usr/lib/libllama.so.0.4.1": "c352cb4b1f5456dffbc4483ba1e0be7a547b21a0f7e63462ab8fb333f51245e1",
-    "/usr/lib/libggml-base.so.0.24.0": "7d9065538f5df6342613b4fa92e661d5ad8fd811c2dbe16ff0e4b62a77777073",
-    "/usr/lib/ggml/libggml-vulkan.so": "d09aac86141492bdf22daad0c61b5ded720f772b3f18d8167aae1f264532979a",
-    "/usr/include/llama.h": "fedb52ea9291c9900e637ed6ffec339919dd27c3dadc2c8cf216c552e0488dda",
-}
-PINNED_HEADERS = {"/usr/include/ggml.h": "third_party/ggml/456172ec733a135778adcd32d00e576a58232e45/include/ggml.h",
-                  "/usr/include/ggml-backend.h": "third_party/ggml/456172ec733a135778adcd32d00e576a58232e45/include/ggml-backend.h",
-                  "/usr/include/llama.h": "third_party/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/include/llama.h"}
+sys.path.insert(0, str(ROOT / "tools"))
+import host_info  # noqa: E402  (tools/host_info.py)
+import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds, the GPU runtime)
+
 TOKENIZER_CONFIG = ROOT/"third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/tokenizer_config.json"
 FULL = """model.input_embed attn_norm linear_attn_qkv_mixed z beta alpha beta_sigmoid a_softplus gate
 conv_output_raw conv_output_silu q_conv_predelta k_conv_predelta attn_output final_output linear_attn_out
@@ -130,28 +137,23 @@ def main():
     if not work.is_relative_to(ROOT/"third_party"): p.error("work dir must be under third_party")
     if work.exists() or a.output.exists(): p.error("fresh work dir and output required")
     started = datetime.now(timezone.utc).isoformat()
-    for path, digest in PINS.items():
-        if sha(path) != digest: raise ValueError("pin mismatch: "+path)
-    for installed, pinned in PINNED_HEADERS.items():
-        if sha(installed) != sha(ROOT/pinned): raise ValueError("header mismatch: "+installed)
     if sha(a.model) != ref.MODEL_SHA: raise ValueError("model mismatch")
     chat = json.loads((ROOT/"tests/fixtures/chat-template.json").read_text())
     if sha(TOKENIZER_CONFIG) != chat["config_sha256"]: raise ValueError("template config changed")
-    renderer = [str(ROOT/".tools/tokenizer-oracle-venv/bin/python"), str(ROOT/"tests/reference/render_chat.py")]
+    renderer = [sys.executable, str(ROOT/"tests/reference/render_chat.py")]
+    built, oracle = zerv_build.oracle("oracle_model")
+    gpu_env, runtime = zerv_build.gpu_runtime()
     work.mkdir(parents=True)
     binary = work/"model_oracle"
-    build = ["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", str(ROOT/"tests/reference/model_oracle.c"), "-o", str(binary),
-             "/usr/lib/libllama.so.0.4.1", "/usr/lib/libggml-base.so.0.24.0", "-lm"]
-    subprocess.run(build, check=True)
-    deps = subprocess.check_output(["ldd", str(binary)], text=True)
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("GGML_", "LLAMA_", "RADV_", "MESA_", "VK_"))}
+    shutil.copy2(built, binary)
+    env = {k: v for k, v in gpu_env.items() if not k.startswith(("GGML_", "LLAMA_"))}
     env["GGML_VK_DISABLE_MMVQ"] = "1"  # FP32 activations into every matvec
-    fixture = dict(schema_version=1, model_sha256=ref.MODEL_SHA,
+    deps = host_info.library_record(binary, env)
+    fixture = dict(schema_version=2, model_sha256=ref.MODEL_SHA,
                    sources={name: sha(ROOT/"tests/reference"/name) for name in
                             ("generate_model_oracle.py", "qwen35_reference.py", "model_capture.py", "model_oracle.c", "generate_chat_goldens.py", "render_chat.py")},
-                   pins=PINS, tokenizer_config_sha256=chat["config_sha256"], build=build,
-                   compiler=subprocess.check_output(["cc", "--version"], text=True).splitlines()[0],
-                   library_hashes={path: sha(path) for path in re.findall(r"=> (/\S+)", deps)},
+                   oracle=dict(label=oracle["label"], sha256=oracle["sha256"]), gpu_runtime=runtime,
+                   tokenizer_config_sha256=chat["config_sha256"], library_hashes={name: d["sha256"] for name, d in deps.items()},
                    numpy=np.__version__, python=sys.version.split()[0],
                    reference_environment={"GGML_VK_DISABLE_MMVQ": "1", "n_batch": 1, "n_ubatch": 1, "type_k": "F32", "type_v": "F32",
                                           "flash_attn": "disabled", "n_gpu_layers": 999, "greedy": "lowest index on ties"},
@@ -218,4 +220,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     main()

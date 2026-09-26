@@ -21,6 +21,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 LAB_DIR = ROOT / "bench/isa_lab"
 sys.path.insert(0, str(ROOT / "tools"))
 import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
+import host_info  # noqa: E402  (tools/host_info.py: the host, recorded without host tools)
 
 
 def sha(p):
@@ -44,18 +45,14 @@ def main():
     else:
         env = zerv_build.host_vulkan_env()
         driver = "RADV of the host (Mesa 26.2.3 binary layout; valid only where the global key matches)"
-        try:
-            runtime = dict(packages=subprocess.run(["pacman", "-Q", "mesa", "vulkan-radeon"], capture_output=True,
-                                                   text=True, check=True).stdout.strip().splitlines())
-        except (OSError, subprocess.CalledProcessError):
-            runtime = dict(packages=None)
+        runtime = host_info.host_vulkan()
     out.mkdir(parents=True)
     with tempfile.TemporaryDirectory() as tools:
-        # isa_tool.py assembles with `clang` from PATH: the toolchain's Zig.
+        # isa_tool.py assembles with ZERV_CLANG: the toolchain's Zig.
         clang = pathlib.Path(tools) / "clang"
         clang.write_text(f'#!/bin/sh\nexec "{zig}" clang "$@"\n')
         clang.chmod(0o755)
-        env = dict(env, PATH=f"{tools}:{env.get('PATH', '/usr/bin:/bin')}")
+        env = dict(env, ZERV_CLANG=str(clang))
 
         def run(*cmd):
             print("+", " ".join(str(c) for c in cmd), flush=True)

@@ -6,16 +6,16 @@ snapshot, without the needle sentence and the final question), raw tokens, no te
 For each engine and KV type: prefill PREFIX tokens, then decode STEPS tokens one at a
 time, teacher-forced, and keep the next-token logits of positions PREFIX-1 .. PREFIX+STEPS-1.
   zerv:  //bench:zerv-kv-quality (Bazel, --config=release; built by --build)
-  llama: tests/reference/llama_batch_capture.c (pinned libllama, FA on) with LOGITS_FROM,
+  llama: //tests:oracle_llama_batch_capture (llama.cpp built from source, FA on) with LOGITS_FROM,
          so its steps also use its single-token decode path; f16 twice for run-to-run noise.
 Metrics per pair (reference P, candidate Q) over the STEPS + 1 rows: KL(P || Q) mean,
 median, p99, max; top-1 agreement; and each run's mean NLL of the true next tokens.
+Both engines run on the test-only GPU runtime (docs/specs/hermetic-build.md, phase 4).
 Usage: tools/kv_quality.py --output DIR [--prefix 36000] [--steps 256] [--runs zerv-f32,...]"""
 import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -25,11 +25,7 @@ import numpy as np
 ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
 MODEL = ROOT/"models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf"
 WORKLOAD = ROOT/"bench/workloads/long-v1.json"
-CAPTURE_SRC = ROOT/"tests/reference/llama_batch_capture.c"
 VOCAB = 248320
-PINS = {"/usr/lib/libllama.so.0.4.1": "c352cb4b1f5456dffbc4483ba1e0be7a547b21a0f7e63462ab8fb333f51245e1",
-        "/usr/lib/libggml-base.so.0.24.0": "7d9065538f5df6342613b4fa92e661d5ad8fd811c2dbe16ff0e4b62a77777073",
-        "/usr/lib/ggml/libggml-vulkan.so": "d09aac86141492bdf22daad0c61b5ded720f772b3f18d8167aae1f264532979a"}
 RUNS = ["zerv-f32", "zerv-f16", "llama-f32", "llama-f16", "llama-f16-repeat"]
 PAIRS = [("zerv-f32", "zerv-f16"), ("llama-f32", "llama-f16"), ("llama-f16", "llama-f16-repeat"), ("zerv-f32", "llama-f32"), ("zerv-f32", "llama-f16")]
 
@@ -71,17 +67,15 @@ def main():
     out = a.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     work = ROOT/"third_party/kv-quality"/out.name; work.mkdir(parents=True, exist_ok=False)
     if sha(MODEL) != "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d": raise SystemExit("model mismatch")
-    for path, digest in PINS.items():
-        if sha(path) != digest: raise SystemExit("pin mismatch: "+path)
     text = work/"text.txt"; text.write_text(document_text())
     import zerv_build
+    gpu_env, runtime = zerv_build.gpu_runtime()
     built = zerv_build.binary("zerv-kv-quality") if a.build else Path(zerv_build.bazel("info", "--config=release", "bazel-bin", capture=True).stdout.strip())/"bench/zerv-kv-quality"
     tool = work/"zerv-kv-quality"; tool.write_bytes(built.read_bytes()); tool.chmod(0o755)
-    capture = work/"llama_batch_capture"
-    subprocess.run(["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", str(CAPTURE_SRC), "-o", str(capture),
-                    "/usr/lib/libllama.so.0.4.1", "/usr/lib/libggml-base.so.0.24.0", "-lm"], check=True)
+    built, oracle = zerv_build.oracle("oracle_llama_batch_capture")
+    capture = work/"llama_batch_capture"; capture.write_bytes(built.read_bytes()); capture.chmod(0o755)
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, model_sha256=sha(MODEL), workload_sha256=sha(WORKLOAD),
-                    text_sha256=sha(text), zerv_tool_sha256=sha(tool), llama_capture_sha256=sha(capture), llama_pins=PINS,
+                    text_sha256=sha(text), zerv_tool_sha256=sha(tool), llama_capture_sha256=sha(capture), llama_capture=oracle, gpu_runtime=runtime,
                     prefix=a.prefix, steps=a.steps, runs={})
     n = a.prefix + a.steps
     ctx = str((n + 1 + 255) // 256 * 256)
@@ -92,12 +86,12 @@ def main():
         kv = name.split("-")[1]
         if name.startswith("zerv"):
             cmd = [str(tool), str(MODEL), str(text), str(d), str(a.prefix), str(a.steps), kv]
-            env = None
+            env = gpu_env
         else:
             if tokens_json is None: raise SystemExit("a zerv run must come first (it writes the tokens)")
             (d/"names.txt").write_text("")
             cmd = [str(capture), str(MODEL), str(tokens_json), str(d/"names.txt"), str(d), ctx, "2048", "512", "1", kv, str(a.prefix)]
-            env = {k: v for k, v in os.environ.items() if not k.startswith(("GGML_", "LLAMA_", "RADV_", "MESA_", "VK_"))}
+            env = {k: v for k, v in gpu_env.items() if not k.startswith(("GGML_", "LLAMA_"))}
         r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=7200)
         (d/"stderr.txt").write_text(r.stderr)
         if r.returncode: raise SystemExit(f"{name} failed:\n{r.stderr[-3000:]}")

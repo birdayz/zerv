@@ -112,11 +112,15 @@ committed batcher defect (a canceled prompt ran all its remaining chunks; fixed)
 test hang (the packed-chunk test, 5/240 under load; fixed) and two timing flaws in the
 uncommitted 18d.2 shared-pool work of a concurrent session (fixed in place, uncommitted).
 
-Process note (2026-09-26, user: all tooling to Bazel only, branch `bazel`): Bazel builds and
-tests everything; `build.zig` is removed and the required checks are `bazel test //...`
-([report](docs/bench/2026-09-26-bazel-build.md), [commands](docs/development.md)). Open on
-the branch, not a building block: hermetic shader tools
-(LunarG SDK) instead of the declared host packages; a matched cold-build comparison.
+Process note (2026-09-26, user: all tooling to Bazel only, branch `bazel`; then "everything
+must be 100% hermetic", merge to main only once it all is): Bazel builds and tests everything;
+`build.zig` is removed and the required checks are `bazel test //...`
+([report](docs/bench/2026-09-26-bazel-build.md), [commands](docs/development.md),
+[spec](docs/specs/hermetic-build.md)). Done on the branch: source-built shader tools, oracles
+(ggml, llama.cpp), GPU test runtime (Mesa RADV, Vulkan loader), fixtures regenerated with
+them, harnesses without host programs, llama-server built in the graph. Open on the branch,
+not a building block: the GPU tests in the container (`tools/hermetic_check.sh --gpu`), the
+HIP competitor built by its recipe, a matched cold-build comparison.
 
 - [ ] **18 · concurrent sequences: batched decode for several requests** — parked 2026-09-26
   for block 19.

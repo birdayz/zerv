@@ -1,10 +1,19 @@
 load("@rules_zig//zig:defs.bzl", "zig_binary")
-load("//bazel:defs.bzl", "zerv_vk_binary")
+load("//bazel:defs.bzl", "native_cpu_binary", "zerv_vk_binary")
 
 # Executables are visible to the tests (//tests:test_linkage checks how they link).
 package(default_visibility = ["//tests:__pkg__"])
 
 # Component benchmarks and model checks. Measure with `bazel build -c opt` (ReleaseFast).
+
+# The serving competitor llama-server (Vulkan), built in the graph from the pinned llama.cpp
+# and ggml and compiled for this CPU like zerv's release build (docs/specs/hermetic-build.md,
+# phase 5; the A/B against the host package: docs/bench/2026-09-26-bazel-build.md).
+native_cpu_binary(
+    name = "llama-server",
+    binary = "@llama_cpp//:llama-server",
+    tags = ["manual"],
+)
 
 zerv_vk_binary(
     name = "zerv-gpu-driver-bench",

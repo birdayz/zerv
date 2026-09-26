@@ -16,8 +16,7 @@ import sys
 ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
 sys.path.insert(0, str(ROOT / "tools"))
 import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
-sys.path.insert(0, str(ROOT / "tests/reference"))
-from generate_vulkan_goldens import PINS
+import host_info  # noqa: E402  (tools/host_info.py: the host, recorded without host tools)
 
 WORKLOADS = {("affine", 65): 1000, ("affine", 5120): 1000, ("affine", 1048576): 100,
              ("roundtrip", 256): 1000, ("roundtrip", 1048576): 100, ("roundtrip", 67108864): 10}
@@ -115,13 +114,9 @@ def main():
 
     try:
         manifest["gpu_before"] = gpu_snapshot()
-        for path, digest in PINS.items():
-            if sha(path) != digest:
-                raise ValueError("tool/driver identity changed: " + path)
-        manifest["tool_driver_hashes"] = PINS
-        for entry in json.loads((ROOT / "docs/research/2026-09-22/vulkan-sources.json").read_text()):
-            if sha(ROOT / entry["local_path"]) != entry["sha256"]:
-                raise ValueError("research header/spec changed")
+        # Both engines run on the host's Vulkan stack (production; the fixture was checked on
+        # the test-only runtime): record which.
+        manifest["host_vulkan"] = host_info.host_vulkan()
         goldens = json.loads((ROOT / "tests/fixtures/gpu/dispatch.json").read_text())
         if sha(ROOT / "tests/fixtures/gpu/affine.spv") != goldens["shader_sha256"] or sha(ROOT / "tests/reference/vulkan_driver.c") != goldens["reference_source_sha256"]:
             raise ValueError("shader/reference differs from independently validated fixture")
@@ -134,22 +129,18 @@ def main():
         artifact.mkdir(parents=True, exist_ok=False)
         native, reference = artifact / "native", artifact / "reference"
         shutil.copy2(zerv_build.path("zerv-gpu-driver-bench"), native)
-        cc = Path(shutil.which("cc")).resolve(strict=True)
-        manifest["cc_sha256"], manifest["cc_version"] = sha(cc), run([cc, "--version"]).stdout
-        run([cc, "-std=c11", "-O3", "-march=native", "-Wall", "-Wextra", "-Werror",
-             "-I"+str(ROOT / "third_party/vulkan/1.4.354/include"), ROOT / "tests/reference/vulkan_driver.c", "-lvulkan", "-lcrypto", "-o", reference])
+        built, manifest["reference"] = zerv_build.oracle("oracle_vulkan_driver")
+        shutil.copy2(built, reference)
         manifest["native_sha256"], manifest["reference_sha256"] = sha(native), sha(reference)
-        manifest["native_elf"] = run(["readelf", "-d", native]).stdout
-        needed = re.findall(r"Shared library: \[([^]]+)\]", manifest["native_elf"])
-        if not needed or set(needed)-{"libvulkan.so.1", "libc.so.6", "ld-linux-x86-64.so.2"}:
+        needed, run_path = host_info.elf_dynamic(native)
+        manifest["native_needed"] = needed
+        if run_path or not needed or set(needed)-{"libvulkan.so.1", "libc.so.6", "ld-linux-x86-64.so.2"}:
             raise ValueError("native acquired a non-system runtime dependency")
         for engine, binary in (("native", native), ("reference", reference)):
-            deps = run(["ldd", binary]).stdout
-            manifest[engine+"_dependencies"] = deps
-            manifest[engine+"_dependency_hashes"] = {path: sha(path) for path in re.findall(r"=> (/\S+)", deps)}
-        manifest["vulkaninfo"] = run(["vulkaninfo", "--summary"]).stdout
-        (dest / "vulkaninfo.txt").write_text(run(["vulkaninfo"]).stdout)
-        manifest["lscpu"] = run(["lscpu"]).stdout
+            manifest[engine+"_dependencies"] = host_info.library_record(binary)
+        manifest["vulkaninfo"] = host_info.vulkaninfo()
+        (dest / "vulkaninfo.txt").write_text(host_info.vulkaninfo(summary=False))
+        manifest["cpu"] = host_info.cpu()
         sources = zerv_build.build_files()
         for directory in ("src", "bench", "tools", "tests"):
             sources += sorted(p for p in (ROOT / directory).rglob("*") if p.is_file() and p.suffix in (".zig", ".py", ".c", ".json", ".bin", ".gguf", ".txt", ".comp", ".spv"))

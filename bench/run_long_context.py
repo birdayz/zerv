@@ -59,8 +59,8 @@ def main():
     table = rs.engines(a.model, a.port, a.context, zerv_binary)
     prompts = [prompt(i, a.paragraphs) for i in range(a.repeats+1)]
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, host=platform.uname()._asdict(), model_sha256=rs.MODEL_SHA,
-                    zerv_sha256=rs.sha(zerv_binary), llama_server_sha256=rs.sha(rs.LLAMA_SERVER),
-                    llama_version=subprocess.run([rs.LLAMA_SERVER, "--version"], capture_output=True, text=True).stderr.strip(),
+                    zerv_sha256=rs.sha(zerv_binary), llama_server_sha256=rs.sha(rs.llama_server()),
+                    llama_version=subprocess.run([rs.llama_server(), "--version"], capture_output=True, text=True).stderr.strip(),
                     template_sha256=rs.sha(rs.TEMPLATE), context=a.context, repeats=a.repeats, paragraphs=a.paragraphs, max_tokens=a.max_tokens,
                     prompt_sha256=[hashlib.sha256(t.encode()).hexdigest() for t in prompts], engines={}, vram_before=rs.vram_used(),
                     client="python http.client streaming SSE; TTFT = first content delta; decode rate = (completion_tokens-1)/(last_delta-first_delta); "

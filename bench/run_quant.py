@@ -17,6 +17,9 @@ import time
 ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
 sys.path.insert(0, str(ROOT / "tools"))
 import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
+import host_info  # noqa: E402  (tools/host_info.py: the host, recorded without host tools)
+sys.path.insert(0, str(ROOT / "tests/reference"))
+import gguf_oracle  # noqa: E402  (the source-built ggml library)
 VALUES = 5120 * 2048
 ITERATIONS = 16
 TRIALS = 5
@@ -87,7 +90,7 @@ def validate(records, cases):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--reference", type=Path, required=True)
+    parser.add_argument("--reference", type=Path, help="ggml library; default: built from source (@ggml)")
     parser.add_argument("--cpu", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -95,7 +98,8 @@ def main():
         parser.error("requires little-endian IEEE binary32 C floats")
     if args.cpu not in os.sched_getaffinity(0):
         parser.error("CPU is outside this process's allowed affinity")
-    reference = args.reference.resolve(strict=True)
+    reference, reference_build = gguf_oracle.library(args.reference)
+    reference = reference.resolve(strict=True)
     destination = args.output.resolve()
     destination.mkdir(parents=True, exist_ok=False)
     manifest = {"schema_version": 1, "status": "running", "started_at": datetime.now(timezone.utc).isoformat(),
@@ -103,7 +107,7 @@ def main():
                 "cpu": args.cpu, "initial_affinity": sorted(os.sched_getaffinity(0)),
                 "values_per_call": VALUES, "iterations": ITERATIONS, "trials": TRIALS, "rounds": ROUNDS,
                 "warmup_calls": 3, "cache_policy": "reused buffers; warm; no cache flushing", "commands": [],
-                "reference_path": str(reference), "reference_sha256": sha(reference)}
+                "reference_path": str(reference), "reference_sha256": sha(reference), "reference_build": reference_build}
 
     def command(name, argv):
         manifest["commands"].append(argv)
@@ -123,9 +127,8 @@ def main():
         for directory in ("src", "bench", "tests"):
             paths += [p for p in (ROOT / directory).rglob("*") if p.is_file() and "__pycache__" not in p.parts]
         manifest["source_sha256"] = {str(p.relative_to(ROOT)): sha(p) for p in sorted(paths)}
-        command("cpu", ["lscpu"])
-        command("git-status", ["git", "status", "--short"])
-        command("reference-dependencies", ["ldd", str(reference)])
+        manifest["cpu_info"] = host_info.cpu()
+        manifest["reference_dependencies"] = host_info.library_record(reference)
         os.sched_setaffinity(0, {args.cpu})
         manifest["measured_affinity"] = sorted(os.sched_getaffinity(0))
         governor = Path(f"/sys/devices/system/cpu/cpu{args.cpu}/cpufreq/scaling_governor")

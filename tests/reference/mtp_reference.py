@@ -12,10 +12,15 @@ Development/test oracle only; never part of zerv.
 """
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
-import numpy as np
+# One BLAS thread per process (set before numpy loads OpenBLAS): qwen35_reference.Projector
+# parallelizes over worker processes (see qwen35_reference.py).
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+import numpy as np  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import qwen35_reference as ref
@@ -141,4 +146,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+        sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
     main()

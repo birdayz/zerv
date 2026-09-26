@@ -24,14 +24,13 @@ def _native_code_impl(ctx):
         progress_message = "Generating %{output}",
     )
 
-    # isa_tool.py runs `clang` from PATH: the wrapper, then the system directories for the
-    # Python launcher's shell.
+    # isa_tool.py runs the assembler ZERV_CLANG names (the wrapper); nothing from PATH.
     ctx.actions.run(
         executable = ctx.executable.isa_tool,
         arguments = ["asm", asm.path, code.path],
         inputs = [asm, clang, zig.zig_exe.file, zig.zig_lib.file],
         outputs = [code],
-        env = {"PATH": clang.dirname + ":/usr/bin:/bin"},
+        env = {"ZERV_CLANG": clang.path},
         mnemonic = "IsaAssemble",
         progress_message = "Assembling %{input}",
     )

@@ -1,5 +1,5 @@
 //! Raw system API declarations, generated from Khronos Vulkan-Headers
-//! 01393c3df0e5285b54ee6527466513f9e614be94; see tools/generate_vulkan_bindings.py.
+//! vulkan-sdk-1.4.357.0 (@vulkan_headers); see tools/generate_vulkan_bindings.py.
 //! No inference code, C import, or third_party build dependency.
 const std = @import("std");
 

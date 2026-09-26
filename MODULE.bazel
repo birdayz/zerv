@@ -93,6 +93,16 @@ http_archive(
     urls = ["https://github.com/KhronosGroup/Vulkan-Loader/archive/refs/tags/vulkan-sdk-1.4.357.0.tar.gz"],
 )
 
+# vulkaninfo (Vulkan-Tools, the SDK of the headers): what benchmark manifests record about the
+# Vulkan device and driver they ran on (a development tool, never part of zerv).
+http_archive(
+    name = "vulkan_tools",
+    build_file = "//bazel/third_party:vulkan_tools.BUILD",
+    sha256 = "6c94b86c850808aba316d999dd6742133d6197ae2135248d3a8aed9b32ebd1f7",
+    strip_prefix = "Vulkan-Tools-vulkan-sdk-1.4.357.0",
+    urls = ["https://github.com/KhronosGroup/Vulkan-Tools/archive/refs/tags/vulkan-sdk-1.4.357.0.tar.gz"],
+)
+
 http_archive(
     name = "libdrm",
     build_file = "//bazel/third_party:libdrm.BUILD",

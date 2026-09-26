@@ -10,6 +10,12 @@ exports_files(
     visibility = ["//tests:__pkg__"],
 )
 
+filegroup(
+    name = "bzl_files",
+    srcs = glob(["*.bzl"]),
+    visibility = ["//tests:__pkg__"],
+)
+
 # Runs a meson project's build in one action (meson.bzl), with the packages Mesa's build uses.
 py_binary(
     name = "meson_build",

@@ -149,3 +149,71 @@ wrapped by `env_test` (`bazel/defs.bzl`), which sets `GPU_ENV`.
 **Result (host, 2026-09-26):** `//tests:gpu` 41/41, `//tests:gpu_release_fast` 41/41 (native
 kernel run and bitwise equal, no skip), `//tests:gpu_spills` pass, all on the source-built
 runtime; `bazel test //...` 65/65.
+
+## Phase 3 — tools and fixtures without host programs (2026-09-26)
+
+**Rule.** Harnesses and generators execute only the pinned interpreter (`tools/py`), programs
+built in the graph, and the execution platform (glibc's dynamic linker, a POSIX shell). What a
+benchmark records about the host it reads from the kernel and from files, never by running a
+host program. `test_build_lists` enforces the host-Python guard on every script of `bench/`,
+`tools/` and `tests/reference/`.
+
+| host program | replacement |
+| --- | --- |
+| `cc` (reference C programs) | `cc_binary` oracles: `oracle_vulkan_driver` (BoringSSL SHA-256), `oracle_model`, `oracle_llama_batch_capture` (llama.cpp with the Vulkan backend: `@llama_cpp//:llama_vulkan`, statically registered, so no backend is loaded from the file system), plus 3b's |
+| `/usr/lib` libllama, libggml, headers, hash pins | the source-built libraries (`gguf_oracle.library()`, `zerv_build.oracle()`) |
+| `ldd` | `host_info.loaded_libraries()`: `ld.so --list` (the platform's dynamic linker; the program is not run) |
+| `readelf -d` | `host_info.elf_dynamic()` (ELF parser; also used by `test_linkage`) |
+| `lscpu` | `host_info.cpu()` (`/proc/cpuinfo`, sysfs) |
+| `vulkaninfo` | `@vulkan_tools//:vulkaninfo` (Vulkan-Tools 1.4.357.0, no WSI; dlopens the loader of the environment) |
+| `pacman -Q mesa` | `host_info.host_vulkan()`: loader, ICD manifests and driver libraries with hashes |
+| `pgrep -a -f` | `host_info.processes()` (`/proc/*/cmdline`) |
+| `taskset` | CPU affinity set in the child (`os.sched_setaffinity`) |
+| `git status/rev-parse` | `zerv_build.source_revision()` (reads `.git`; manifests hash the sources) |
+| `curl` | `fetch_hf.download()` (urllib, resume, retries) |
+| host `clang` (isa_tool) | `ZERV_CLANG` (required) = the toolchain's `zig clang` |
+| `.tools/tokenizer-oracle-venv` | the pinned interpreter (Jinja2 3.1.6 / MarkupSafe 3.0.3 files byte-identical) |
+
+**Fixtures regenerated** (the data identical unless noted):
+
+- Vulkan C ABI (`abi.json`, `timing-abi.json`) and the diagnostic shader (`affine.spv`) are now
+  Bazel actions with a drift test (`//tests:vulkan_fixtures_test`): headers from
+  `@vulkan_headers` (1.4.357.0 instead of the research copy of 1.4.354; the 64 scoped
+  structures, 86 constants and the generated C source are identical, only header hashes
+  changed), compiled by the hermetic toolchain; `affine.spv` byte-identical.
+- `dispatch.json` (real device): the source-built C program on the test runtime; cases and
+  device/allocation metadata identical.
+- `gpu/matvec.json`: ggml-vulkan on the test runtime; all 48 cases bitwise identical to the
+  host driver's.
+- `chat-template.json`: all 100 renderings identical under the pinned interpreter.
+- Model oracle (`qwen38-oracle*.json`): the source-built llama.cpp on the test runtime. Its
+  captured tensors and logits are **byte-identical** to the host package's on the host driver;
+  the FP64 reference changed by <= 7e-13 (top-1 logits; summation order, below).
+
+**Negative result (performance of a generator):** the FP64 reference forks 22 worker
+processes; under the pinned numpy wheel each started 24 OpenBLAS threads (528 runnable
+threads on 24 CPUs, load average 394). The reference now sets one BLAS thread per process
+before numpy loads (`qwen35_reference.py`, `generate_model_oracle.py`, `mtp_reference.py`).
+The whole default-set run (captures and FP64) took 7.7 min (run-manifest 19:15:27–19:23:10
+UTC) against 31.0 min for the 2026-09-23 run (host numpy); the aborted oversubscribed run
+had not finished the FP64 pass of the first case after 4 minutes.
+
+**GPU correctness tools use the test runtime** (`verify_model.py --runtime test` default,
+`kv_quality.py`, `prefill_quality.py`, the fixture generators); production benchmarks use the
+host driver and record it.
+
+## Phase 5 — competitors (2026-09-26)
+
+- **llama-server (Vulkan)**: `@llama_cpp//:llama-server`, built in the graph from the pinned
+  llama.cpp (b29c606e, the host package's commit) and ggml (456172ec) with upstream's Linux
+  defaults, except no OpenSSL (HTTPS downloads) and no embedded web UI (npm); reports
+  `version: 0.4.1 (build 10964, commit b29c606e28)` like the host binary. The harnesses use
+  `//bench:llama-server`: the same build compiled for this CPU (`-march=native` through a
+  configuration transition, `native_cpu_binary`; zerv's release build is `-mcpu=native` too),
+  which serves identical outputs at the host package's speed within noise (decode −0.4% mean;
+  the generic build was −1.0%): A/B in docs/bench/2026-09-26-bazel-build.md.
+  `/usr/bin/llama-server` is referenced only as an explicit `--llama-server` comparison.
+- **llama.cpp-RDNA3-7900xtx-opt (HIP)**: `tools/build_competitor_rdna3.py` builds it from the
+  pinned source archive (commit 15995a12, sha256 952679df…) in the pinned vLLM ROCm image
+  (digest), network off, with the fork's README configuration.
+- **vLLM**: the pinned image digest and model revision (unchanged).

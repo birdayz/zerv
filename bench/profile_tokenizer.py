@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -90,17 +91,18 @@ def main():
     build = zerv_build.build_command("zerv-tokenizer-bench")
     subprocess.run(build, cwd=dest, check=True)
     bench = zerv_build.path("zerv-tokenizer-bench", root=dest)
-    commands = [build, ["taskset", "-c", str(a.cpu), str(bench), str(a.model.resolve()), str(ROOT / "tests/fixtures/tokenizer/manifest.json"), "--bench"]]
+    # The benchmark runs pinned to --cpu (its affinity is set in the child before exec).
+    commands = [build, [str(bench), str(a.model.resolve()), str(ROOT / "tests/fixtures/tokenizer/manifest.json"), "--bench"]]
     # The copy's Bazel server is not needed after its one build.
     subprocess.run([zerv_build.BAZEL, "shutdown"], cwd=dest, check=True)
     for i, command in enumerate(commands[1:], 1):
-        result = subprocess.run(command, cwd=dest, capture_output=True, text=True)
+        result = subprocess.run(command, cwd=dest, capture_output=True, text=True, preexec_fn=lambda: os.sched_setaffinity(0, {a.cpu}))
         (dest / f"{i}.stdout").write_text(result.stdout)
         (dest / f"{i}.stderr").write_text(result.stderr)
         if result.returncode:
             print(result.stderr)
         result.check_returncode()
-    (dest / "manifest.json").write_text(json.dumps(dict(commands=commands, original_bpe_sha256=original_sha,
+    (dest / "manifest.json").write_text(json.dumps(dict(commands=commands, cpu_affinity=[a.cpu], original_bpe_sha256=original_sha,
         stages=["total", "validation", "added", "nfc", "split", "bpe"], length_bins=["1", "2-4", "5-8", "9-16", "17-32", ">32"],
         caveat="Instrumented stage-clock overhead, especially per split/piece; not a speed comparison. Total includes all clock probes; stage times include closing timer cost. Full checker still runs."), indent=2) + "\n")
     print((dest / "1.stderr").read_text())

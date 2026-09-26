@@ -19,11 +19,30 @@ weights, with integrity and safety checks (docs/bench/2026-09-25-vllm.md).
 - Files go to DEST/REPO/REVISION/; MANIFEST.json there records every file, size, sha256 and
   the source URL. Existing verified files are skipped.
 """
-import argparse, hashlib, json, pathlib, re, subprocess, sys, urllib.request
+import argparse, hashlib, json, pathlib, re, shutil, sys, time, urllib.error, urllib.request
 
 ALLOWED = (".safetensors", ".json", ".txt", ".jinja", ".yaml", ".yml", ".md", ".gitattributes")
 API = "https://huggingface.co/api/models/{repo}/revision/{rev}?blobs=true"
 URL = "https://huggingface.co/{repo}/resolve/{rev}/{name}"
+
+
+def download(url, path, retries=5):
+    """GET `url` (redirects followed) into `path`, resuming a partial file with an HTTP Range
+    request, retrying transient failures with backoff (what `curl -L --fail --retry -C -` did)."""
+    for attempt in range(retries + 1):
+        have = path.stat().st_size if path.exists() else 0
+        request = urllib.request.Request(url, headers={"Range": f"bytes={have}-"} if have else {})
+        try:
+            with urllib.request.urlopen(request, timeout=60) as r:
+                with path.open("ab" if have and r.status == 206 else "wb") as f:
+                    shutil.copyfileobj(r, f, 8 << 20)
+            return
+        except urllib.error.HTTPError as e:
+            if e.code == 416: return  # nothing left to fetch; the hash check decides
+            if e.code < 500 and e.code != 429 or attempt == retries: raise
+        except (urllib.error.URLError, OSError):
+            if attempt == retries: raise
+        time.sleep(min(60, 2 ** attempt))
 
 
 def file_hashes(path):
@@ -101,7 +120,7 @@ def main():
         if not ok and a.verify: raise SystemExit(f"missing or mismatching: {name}")
         if not ok:
             print(f"downloading {name} ({s.get('size')} bytes)", flush=True)
-            subprocess.run(["curl", "-L", "--fail", "--retry", "5", "--retry-all-errors", "-C", "-", "-o", str(path), url], check=True)
+            download(url, path)
             h256, h1 = file_hashes(path)
             if (want256 and h256 != want256) or (not want256 and h1 != s["blobId"]):
                 raise SystemExit(f"hash mismatch: {name}")

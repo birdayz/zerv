@@ -28,6 +28,8 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import run_serving as rs  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
+import host_info  # noqa: E402  (tools/host_info.py: the host, recorded without host tools)
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -45,9 +47,9 @@ def ancestors():
 
 
 def gpu_busy():
-    out = subprocess.run(["pgrep", "-a", "-f", r"(^|/)(zerv(-[a-z0-9-]+)?|llama-server)( |$)|vllm serve|VLLM::"], capture_output=True, text=True).stdout
+    found = host_info.processes(r"(^|/)(zerv(-[a-z0-9-]+)?|llama-server)( |$)|vllm serve|VLLM::")
     mine = ancestors()
-    return [l for l in out.splitlines() if l.split()[0] not in mine]
+    return [l for l in found if l.split()[0] not in mine]
 
 
 def percentile(xs, q):
@@ -133,7 +135,7 @@ def main():
     names = a.engines.split(";") if "@" in a.engines else a.engines.split(",")
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, host=dict(zip(("sysname", "nodename", "release", "version", "machine"), os.uname())),
                     model_sha256=rs.sha(a.model), workload_sha256=rs.sha(a.workload), zerv_sha256=rs.sha(zerv_binary),
-                    llama_server_sha256=rs.sha(rs.LLAMA_SERVER), vllm_image=rs.VLLM_IMAGE, vllm_model=str(rs.VLLM_MODEL.relative_to(rs.ROOT)), levels=levels, parallel=parallel, max_tokens=a.max_tokens,
+                    llama_server_sha256=rs.sha(rs.llama_server()), vllm_image=rs.VLLM_IMAGE, vllm_model=str(rs.VLLM_MODEL.relative_to(rs.ROOT)), levels=levels, parallel=parallel, max_tokens=a.max_tokens,
                     requests_per_client=a.requests_per_client, context_per_slot=a.context_per_slot, engines={},
                     client="closed loop, python http.client streaming SSE (run_serving.stream_request)")
     raw = (out / "raw.jsonl").open("w")
@@ -142,7 +144,7 @@ def main():
     for name in names:
         spec = dict(rs.resolve_engine(table, name, zerv_binary))
         cmd = list(spec["cmd"])
-        if cmd[0] == str(rs.LLAMA_SERVER) or "/llama/bin/llama-server" in cmd:
+        if cmd[0] == rs.llama_server() or "/llama/bin/llama-server" in cmd:
             cmd[cmd.index("-np") + 1] = str(parallel)
         elif "--parallel" in cmd:
             cmd[cmd.index("--context") + 1] = str(a.context_per_slot)

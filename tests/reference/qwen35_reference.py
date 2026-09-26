@@ -16,7 +16,12 @@ from multiprocessing import shared_memory
 import os
 from pathlib import Path
 
-import numpy as np
+# One BLAS thread per process (set before numpy loads OpenBLAS): the FP64 reference runs its
+# row work in a pool of worker processes (qwen35_reference.Projector); OpenBLAS would otherwise
+# start one thread per CPU in each of them (22 workers x 24 threads measured on 2026-09-26).
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+import numpy as np  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 INVENTORY = ROOT/"docs/bench/data/2026-09-22-gguf-qwen38/container.json"

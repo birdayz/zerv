@@ -15,10 +15,10 @@ import signal
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 
 ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
-PIECES = ROOT/"third_party/tokenizer-oracle/2026-09-22/pieces.bin"
 EOS = {248046, 248044}
 THINK_END = 248069
 # GGUF token type 3 (control): rendered as nothing with special=false.
@@ -54,8 +54,19 @@ def sha(path):
     with Path(path).open("rb") as f: return hashlib.file_digest(f, "sha256").hexdigest()
 
 
-def pieces():
-    raw = PIECES.read_bytes()
+def pieces_file(model, directory):
+    """llama.cpp's raw token pieces of the model (the source-built adapter,
+    //tests:oracle_tokenizer_pieces), written into `directory`; checked against the tokenizer
+    fixture's hash by the caller."""
+    import zerv_build
+    adapter, _ = zerv_build.oracle("oracle_tokenizer_pieces")
+    path = directory/"pieces.bin"
+    subprocess.run([str(adapter), str(model), str(path)], check=True, stdout=subprocess.DEVNULL)
+    return path
+
+
+def pieces(path):
+    raw = path.read_bytes()
     count, = struct.unpack_from("<I", raw); at = 4; out = []
     for _ in range(count):
         n, = struct.unpack_from("<I", raw, at); out.append(raw[at+4:at+4+n]); at += 4+n
@@ -86,8 +97,9 @@ def main():
     p.add_argument("--port", type=int, default=18095)
     a = p.parse_args()
     if a.output.exists(): p.error("fresh output required")
-    table = pieces()
-    if sha(PIECES) != json.loads((ROOT/"tests/fixtures/tokenizer/manifest.json").read_text())["raw_pieces_sha256"]: raise SystemExit("pieces changed")
+    pieces_path = pieces_file(a.model, Path(tempfile.mkdtemp()))
+    table = pieces(pieces_path)
+    if sha(pieces_path) != json.loads((ROOT/"tests/fixtures/tokenizer/manifest.json").read_text())["raw_pieces_sha256"]: raise SystemExit("pieces changed")
     if table[THINK_END] != b"</think>": raise SystemExit("unexpected </think> id")
     fixture = json.loads((ROOT/"tests/fixtures/model/qwen38-oracle.json").read_text())
     import zerv_build
@@ -96,7 +108,7 @@ def main():
     log = open(str(a.output)+".server.log", "w")
     proc = subprocess.Popen([str(binary), "--model", str(a.model), "--port", str(a.port), "--context", "4096"], stdout=log, stderr=subprocess.STDOUT)
     report = dict(started_at=datetime.now(timezone.utc).isoformat(), server_sha256=sha(binary), fixture_sha256=sha(ROOT/"tests/fixtures/model/qwen38-oracle.json"),
-                  pieces_sha256=sha(PIECES), cases=[], passed=True)
+                  pieces_sha256=sha(pieces_path), cases=[], passed=True)
     try:
         for _ in range(600):
             try:

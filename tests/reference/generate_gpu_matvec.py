@@ -103,8 +103,10 @@ def build_oracle(directory):
     return binary, identity
 
 
-def run_oracle(binary, case_path, output, iterations=0, default=False):
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GGML_VK_")}
+def run_oracle(binary, case_path, output, iterations=0, default=False, base_env=None):
+    """Runs the oracle on the Vulkan stack of `base_env` (default os.environ): the generator
+    passes the test-only GPU runtime's, benchmarks the host's."""
+    env = {k: v for k, v in (os.environ if base_env is None else base_env).items() if not k.startswith("GGML_VK_")}
     if not default: env["GGML_VK_DISABLE_MMVQ"] = "1"
     proc = subprocess.run([str(binary), str(case_path), str(output), str(iterations)], env=env, text=True, capture_output=True, timeout=300)
     output.with_suffix(".stdout").write_text(proc.stdout)
@@ -129,8 +131,10 @@ def main():
     binary, identity = build_oracle(a.work_dir.resolve())
     lib, built = library()
     oracle = Oracle(lib)
+    import zerv_build  # (on the path since build_oracle)
+    gpu_env, gpu_runtime = zerv_build.gpu_runtime()  # the source-built Vulkan loader and RADV
     result = dict(schema_version=1, model_sha256=MODEL_SHA, oracle=dict(identity, ggml=dict(oracle.identity, build=built)),
-                  oracle_binary_sha256=sha(binary), sources={}, cases=[])
+                  oracle_binary_sha256=sha(binary), gpu_runtime=gpu_runtime, sources={}, cases=[])
     for name in ("generate_gpu_matvec.py", "gpu_matvec.c", "gguf_oracle.py", "generate_q4_1_goldens.py", "generate_q5_k_goldens.py", "generate_q6_k_goldens.py"):
         result["sources"][name] = sha(Path(__file__).with_name(name))
 
@@ -139,7 +143,7 @@ def main():
         raw = encode_case(case, packed, x)
         path = a.work_dir/(case["name"]+".case"); path.write_bytes(raw)
         case["input_sha256"] = hashlib.sha256(raw).hexdigest()
-        ideal, sums, gpu = run_oracle(binary, path, a.work_dir/(case["name"]+".output"))
+        ideal, sums, gpu = run_oracle(binary, path, a.work_dir/(case["name"]+".output"), base_env=gpu_env)
         if len(ideal) != case["rows"]: raise ValueError("oracle row mismatch")
         if expected_half is not None:
             if tuple(expected_half) != ideal or tuple(abs(x) for x in expected_half) != sums: raise ValueError("half-domain scalar mismatch")

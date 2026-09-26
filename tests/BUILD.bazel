@@ -1,5 +1,7 @@
 load("@rules_zig//zig:defs.bzl", "zig_configure_test", "zig_library", "zig_test")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_library.bzl", "py_library")
 load("@rules_python//python:py_test.bzl", "py_test")
 load("//bazel:defs.bzl", "env_test", "zerv_test")
 
@@ -303,10 +305,10 @@ py_test(
     name = "test_gpu_driver_bench",
     srcs = ["test_gpu_driver_bench.py"],
     data = [
+        "//tools:host_info.py",
         "//tools:zerv_build.py",
         "//bench:run_gpu_driver.py",
         "fixtures/gpu/dispatch.json",
-        "reference/generate_vulkan_goldens.py",
     ],
 )
 
@@ -314,6 +316,7 @@ py_test(
     name = "test_gpu_matvec",
     srcs = ["test_gpu_matvec.py"],
     data = [
+        "//tools:host_info.py",
         "//tools:zerv_build.py",
         "//bench:run_gpu_driver.py",
         "//bench:run_gpu_matvec.py",
@@ -379,6 +382,7 @@ py_test(
     name = "test_model_quant_bench",
     srcs = ["test_model_quant_bench.py"],
     data = [
+        "//tools:host_info.py",
         "//tools:zerv_build.py",
         "//bench:run_model_quant.py",
         "fixtures/q4_1.json",
@@ -417,8 +421,10 @@ py_test(
     name = "test_quant_bench",
     srcs = ["test_quant_bench.py"],
     data = [
+        "//tools:host_info.py",
         "//tools:zerv_build.py",
         "//bench:run_quant.py",
+        "reference/gguf_oracle.py",
     ],
 )
 
@@ -489,10 +495,141 @@ py_test(
     name = "test_tokenizer_matched_bench",
     srcs = ["test_tokenizer_matched_bench.py"],
     data = [
+        "//tools:host_info.py",
         "//tools:zerv_build.py",
         "//bench:run_tokenizer.py",
         "//bench:run_tokenizer_matched.py",
     ],
+)
+
+# Generated Vulkan fixtures (docs/specs/hermetic-build.md): the C ABI of the scoped Vulkan API
+# and of the timestamp queries as the hermetic C compiler sees the pinned headers
+# (@vulkan_headers), and the diagnostic shader compiled by the source-built glslc. Committed
+# in fixtures/gpu/; vulkan_fixtures_test checks them, `bazel run //tests:vulkan_fixtures_update`
+# rewrites them.
+# The scoped Vulkan API inventory (tests/reference/vulkan_api.py): the ABI fixture here and
+# zerv's bindings (//src/gpu:vk_zig, tools/generate_vulkan_bindings.py).
+py_library(
+    name = "vulkan_api",
+    srcs = ["reference/vulkan_api.py"],
+    imports = ["reference"],
+    visibility = ["//tools:__pkg__"],
+)
+
+py_binary(
+    name = "generate_vulkan_abi",
+    srcs = [
+        "reference/generate_vulkan_abi.py",
+        "reference/vulkan_api.py",
+    ],
+    imports = ["reference"],
+)
+
+py_binary(
+    name = "generate_gpu_timing_abi",
+    srcs = ["reference/generate_gpu_timing_abi.py"],
+)
+
+genrule(
+    name = "vulkan_abi_c",
+    srcs = ["@vulkan_headers//:registry/vk.xml"],
+    outs = ["vulkan_abi/abi.c"],
+    cmd = "$(execpath :generate_vulkan_abi) source $(location @vulkan_headers//:registry/vk.xml) $@",
+    tools = [":generate_vulkan_abi"],
+)
+
+genrule(
+    name = "timing_abi_c",
+    outs = ["vulkan_abi/timing_abi.c"],
+    cmd = "$(execpath :generate_gpu_timing_abi) source $@",
+    tools = [":generate_gpu_timing_abi"],
+)
+
+[
+    (
+        cc_binary(
+            name = name + "_probe",
+            srcs = [":" + name + "_c"],
+            copts = [
+                "-std=c11",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+            ],
+            deps = ["@vulkan_headers"],
+        ),
+        genrule(
+            name = name + "_probe_json",
+            outs = ["vulkan_abi/%s.probe.json" % name],
+            cmd = "$(execpath :%s_probe) > $@" % name,
+            tools = [":" + name + "_probe"],
+        ),
+    )
+    for name in [
+        "vulkan_abi",
+        "timing_abi",
+    ]
+]
+
+genrule(
+    name = "vulkan_fixtures",
+    srcs = [
+        "@vulkan_headers//:registry/vk.xml",
+        "@vulkan_headers//:include/vulkan/vulkan_core.h",
+        "fixtures/gpu/affine.comp",
+        ":vulkan_abi_c",
+        ":vulkan_abi_probe_json",
+        ":timing_abi_c",
+        ":timing_abi_probe_json",
+    ],
+    outs = [
+        "vulkan_fixtures/abi.json",
+        "vulkan_fixtures/affine.spv",
+        "vulkan_fixtures/timing-abi.json",
+    ],
+    cmd = """
+set -e
+xml=$(location @vulkan_headers//:registry/vk.xml)
+header=$(location @vulkan_headers//:include/vulkan/vulkan_core.h)
+$(execpath :generate_vulkan_abi) record $$xml $$header $(location :vulkan_abi_c) $(location :vulkan_abi_probe_json) $(location vulkan_fixtures/abi.json)
+$(execpath :generate_gpu_timing_abi) record $$header $(location :timing_abi_c) $(location :timing_abi_probe_json) $(location vulkan_fixtures/timing-abi.json)
+$(execpath @shaderc//:glslc) --target-env=vulkan1.1 -O $(location fixtures/gpu/affine.comp) -o $(location vulkan_fixtures/affine.spv)
+$(execpath @spirv_tools//:spirv-val) --target-env vulkan1.1 $(location vulkan_fixtures/affine.spv)
+""",
+    tools = [
+        ":generate_gpu_timing_abi",
+        ":generate_vulkan_abi",
+        "@shaderc//:glslc",
+        "@spirv_tools//:spirv-val",
+    ],
+)
+
+py_test(
+    name = "vulkan_fixtures_test",
+    srcs = ["//tools:check_generated.py"],
+    main = "//tools:check_generated.py",
+    args = [
+        "tests/vulkan_fixtures",
+        "tests/fixtures/gpu",
+        "--subset",
+        "--hint",
+        "'bazel run //tests:vulkan_fixtures_update'",
+    ],
+    data = [":vulkan_fixtures"] + glob(["fixtures/gpu/*"]),
+    size = "small",
+)
+
+py_binary(
+    name = "vulkan_fixtures_update",
+    srcs = ["//tools:check_generated.py"],
+    main = "//tools:check_generated.py",
+    args = [
+        "tests/vulkan_fixtures",
+        "tests/fixtures/gpu",
+        "--subset",
+        "--update",
+    ],
+    data = [":vulkan_fixtures"],
 )
 
 py_test(
@@ -525,9 +662,7 @@ py_test(
         "//:BUILD.bazel",
         "//:MODULE.bazel",
         "//bazel:BUILD.bazel",
-        "//bazel:defs.bzl",
-        "//bazel:native.bzl",
-        "//bazel:shaders.bzl",
+        "//bazel:bzl_files",
         "//bazel/third_party:BUILD.bazel",
         "//bazel/third_party:build_files",
         "//bench:BUILD.bazel",
@@ -593,7 +728,7 @@ py_test(
     name = "test_linkage",
     srcs = ["test_linkage.py"],
     args = ["$(rootpaths %s)" % label for label in EXECUTABLES],
-    data = EXECUTABLES,
+    data = EXECUTABLES + ["//tools:host_info.py"],
 )
 
 # External test oracles (docs/specs/hermetic-build.md, phase 3): the reference programs of
@@ -639,6 +774,54 @@ cc_binary(
     deps = [
         "@boringssl//:crypto",
         "@ggml//:ggml_base",
+    ],
+)
+
+# The Qwen3.8 model oracle and batch capture (tests/reference/generate_model_oracle.py,
+# tools/kv_quality.py, tools/prefill_quality.py): llama.cpp with ggml's Vulkan backend,
+# registered statically (no backend is loaded from the file system).
+[
+    cc_binary(
+        name = name,
+        srcs = ["reference/%s.c" % source],
+        copts = [
+            "-std=c11",
+            "-O2",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+        ],
+        linkopts = ["-lm"],
+        tags = ORACLE_TAGS,
+        deps = ["@llama_cpp//:llama_vulkan"],
+    )
+    for name, source in [
+        ("oracle_model", "model_oracle"),
+        ("oracle_llama_batch_capture", "llama_batch_capture"),
+    ]
+]
+
+# Independent C Vulkan transfer/dispatch program (tests/reference/generate_vulkan_goldens.py,
+# bench/run_gpu_driver.py): SHA-256 from the source-built BoringSSL; the Vulkan loader chosen at
+# run time (linked against the stub, like the Zig executables). -march=native as zerv's release
+# build (the harness times it against zerv).
+cc_binary(
+    name = "oracle_vulkan_driver",
+    srcs = ["reference/vulkan_driver.c"],
+    additional_linker_inputs = ["//src/gpu:vulkan"],
+    copts = [
+        "-std=c11",
+        "-O3",
+        "-march=native",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+    ],
+    linkopts = ["$(location //src/gpu:vulkan)"],
+    tags = ORACLE_TAGS,
+    deps = [
+        "@boringssl//:crypto",
+        "@vulkan_headers",
     ],
 )
 

@@ -17,12 +17,11 @@ import sys
 ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
 sys.path.insert(0, str(ROOT / "tools"))
 import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
+import host_info  # noqa: E402  (tools/host_info.py: the host, recorded without host tools)
 sys.path.insert(0, str(ROOT))
 from bench import run_tokenizer as common
 
-REV = "b29c606e28a01b1bc8c1351026a0fa6e616bf6c4"
-LIBRARY = Path("/usr/lib/libllama.so.0.4.1")
-LIBRARY_SHA = "c352cb4b1f5456dffbc4483ba1e0be7a547b21a0f7e63462ab8fb333f51245e1"
+REV = "b29c606e28a01b1bc8c1351026a0fa6e616bf6c4"  # @llama_cpp (MODULE.bazel), the llama-server competitor's source
 MODEL_SHA = "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d"
 
 
@@ -145,14 +144,7 @@ def main():
                           (common.FIXTURE.parent / "model.bin", "model_data_sha256")]:
             if common.sha(path) != corpus[key]:
                 raise ValueError(f"fixture provenance mismatch: {path}")
-        header = Path("/usr/include/llama.h")
-        if header.read_bytes() != (ROOT / f"third_party/llama.cpp/{REV}/include/llama.h").read_bytes():
-            raise ValueError("reference header mismatch")
-        if common.sha(LIBRARY) != LIBRARY_SHA:
-            raise ValueError("reference library differs from actual llama-server")
-        manifest["reference_version"] = run(["llama-server", "--version"], combined=True).strip()
-        manifest["reference_library_sha256"] = common.sha(LIBRARY)
-        manifest["reference_header_sha256"] = common.sha(header)
+        manifest["reference_version"] = f"llama.cpp 0.4.1 ({REV}), built from source (@llama_cpp)"
         manifest["model_sha256"] = common.sha(model)
         manifest["model_bytes"] = model.stat().st_size
         if manifest["model_sha256"] != MODEL_SHA:
@@ -168,23 +160,18 @@ def main():
         native = artifacts / "native-bench"
         manifest["native_binary"] = str(native)
         manifest["native_binary_sha256"] = common.sha(native)
-        manifest["native_elf"] = run(["readelf", "-d", native])
-        if "NEEDED" in manifest["native_elf"]:
+        if host_info.elf_dynamic(native) is not None:
             raise ValueError("native benchmark acquired a dynamic dependency")
-        compiler = Path(shutil.which("cc")).resolve(strict=True)
-        manifest["cc_sha256"] = common.sha(compiler)
-        manifest["cc_version"] = run([compiler, "--version"])
+        # The reference adapter with libllama (and ggml) of the pinned revision linked in.
+        built, manifest["reference_build"] = zerv_build.oracle("oracle_tokenizer_bench")
         reference = artifacts / "llama-bench"
+        shutil.copy2(built, reference)
         manifest["reference_adapter"] = str(reference)
-        run([compiler, "-std=c11", "-O3", "-march=native", "-Wall", "-Wextra", "-Werror",
-             ROOT / "tests/reference/tokenizer_bench.c", LIBRARY, "-o", reference])
         manifest["reference_adapter_sha256"] = common.sha(reference)
-        manifest["reference_dependencies"] = run(["ldd", reference])
-        # Confirm what the dynamic loader actually selects, not only the link input.
-        resolved = re.search(r"libllama\.so[^ ]* => (\S+)", manifest["reference_dependencies"])
-        if resolved is None or common.sha(Path(resolved[1])) != LIBRARY_SHA:
-            raise ValueError("dynamic loader selected a different libllama")
-        manifest["cpu_info"] = run(["lscpu"])
+        manifest["reference_dependencies"] = host_info.library_record(reference)
+        if any(name.startswith(("libllama", "libggml")) for name in manifest["reference_dependencies"]):
+            raise ValueError("the reference loads a llama/ggml library")
+        manifest["cpu_info"] = host_info.cpu()
         packages, hf = common.oracle(config)
         manifest["hf_version"] = packages.__version__
         data, changed = corpus_bytes(corpus, hf)

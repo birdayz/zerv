@@ -32,9 +32,15 @@ TARGETS = {
     "oracle_tokenizer_bench": "//tests:oracle_tokenizer_bench",
     "oracle_model_quant_bench": "//tests:oracle_model_quant_bench",
     "oracle_gpu_matvec": "//tests:oracle_gpu_matvec",
+    "oracle_vulkan_driver": "//tests:oracle_vulkan_driver",
+    "oracle_model": "//tests:oracle_model",
+    "oracle_llama_batch_capture": "//tests:oracle_llama_batch_capture",
     # Development tool (bench/isa_lab): RADV pipeline binaries of native kernels.
     "pipeline_binary_lab": "//bench/isa_lab:pipeline_binary_lab",
     "glslc": "@shaderc//:glslc",
+    "vulkaninfo": "@vulkan_tools//:vulkaninfo",
+    # Serving competitor (docs/specs/hermetic-build.md, phase 5).
+    "llama-server": "//bench:llama-server",
     "spirv-val": "@spirv_tools//:spirv-val",
     "zerv-model-capture": "//tools:zerv-model-capture",
     "zerv-inspect": "//tools:zerv-inspect",
@@ -164,14 +170,38 @@ def build_files():
     return fixed + sorted((ROOT / "bazel").glob("*.bzl")) + sorted(builds)
 
 
+def source_revision(root=ROOT):
+    """The checked-out commit and ref, read from the repository's files (no git executable;
+    worktrees and packed refs handled). Uncommitted changes are not visible here: manifests
+    hash the sources themselves. None outside a git checkout."""
+    dot = root / ".git"
+    if dot.is_file():
+        gitdir = (root / dot.read_text().split("gitdir:", 1)[1].strip()).resolve()
+    elif dot.is_dir():
+        gitdir = dot
+    else:
+        return None
+    common = (gitdir / (gitdir / "commondir").read_text().strip()).resolve() if (gitdir / "commondir").exists() else gitdir
+    head = (gitdir / "HEAD").read_text().strip()
+    if not head.startswith("ref: "): return dict(commit=head, ref=None)
+    ref = head[5:]
+    for d in (gitdir, common):
+        if (d / ref).exists(): return dict(commit=(d / ref).read_text().strip(), ref=ref)
+    packed = common / "packed-refs"
+    for line in packed.read_text().splitlines() if packed.exists() else []:
+        parts = line.split()
+        if len(parts) == 2 and parts[1] == ref: return dict(commit=parts[0], ref=ref)
+    return dict(commit=None, ref=ref)
+
+
 def provenance():
-    """Build identity for a manifest: Bazel's version, the Zig toolchain (version, hash) and
-    the hash of every build definition file."""
+    """Build identity for a manifest: Bazel's version, the Zig toolchain (version, hash), the
+    checked-out revision and the hash of every build definition file."""
     zig = binary("zig", config=None)
     version = subprocess.run([zig, "version"], check=True, text=True, capture_output=True).stdout.strip()
     label = bazel("version", capture=True).stdout
     return dict(bazel_version=next(l.split(": ", 1)[1] for l in label.splitlines() if l.startswith("Build label")),
-                zig_version=version, zig_sha256=sha(zig.resolve()),
+                zig_version=version, zig_sha256=sha(zig.resolve()), source_revision=source_revision(),
                 build_files={str(p.relative_to(ROOT)): sha(p) for p in build_files()})
 
 

@@ -5,6 +5,7 @@ settings. Records raw per-request timings, output hashes/texts, VRAM and RSS.
 Engines run one at a time; nothing else should use the GPU meanwhile."""
 import argparse
 from datetime import datetime, timezone
+import functools
 import hashlib
 import http.client
 import json
@@ -22,7 +23,23 @@ import time
 ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
 MODEL_SHA = "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d"
 TEMPLATE = ROOT/"third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/official-template.jinja"
-LLAMA_SERVER = "/usr/bin/llama-server"
+
+
+LLAMA_SERVER_OVERRIDE = None  # --llama-server: another build to compare (recorded by hash)
+
+
+def llama_server():
+    """llama-server with the Vulkan backend, built in the graph from the pinned llama.cpp and
+    ggml (@llama_cpp//:llama-server; docs/specs/hermetic-build.md phase 5): the path of the
+    built executable (Bazel builds it on first use), unless --llama-server names another."""
+    return LLAMA_SERVER_OVERRIDE or _built_llama_server()
+
+
+@functools.cache
+def _built_llama_server():
+    sys.path.insert(0, str(ROOT/"tools"))
+    import zerv_build
+    return str(zerv_build.binary("llama-server", config=None))
 
 
 def sha(path):
@@ -66,11 +83,11 @@ def vllm_engine(port, context, extra=()):
 
 
 # llama.cpp-RDNA3-7900xtx-opt (github.com/nasone32/llama.cpp-RDNA3-7900xtx-opt @ 15995a12, MIT):
-# built from source for gfx1100 in the pinned vLLM ROCm image (no network, our uid; source
-# and binaries ClamAV-scanned, the fork's diff over upstream reviewed; docs/bench/2026-09-26-competitors.md).
-# Run in that image with the same restrictions as vLLM: our uid, no capabilities, GPU device
-# nodes only, build and model read-only, API on 127.0.0.1.
-RDNA3_BUILD = ROOT/"third_party/research-serving/llama-rdna3-build"
+# built from source for gfx1100 in the pinned vLLM ROCm image by tools/build_competitor_rdna3.py
+# (pinned source archive and image digest, no network, our uid). Run in that image with the
+# same restrictions as vLLM: our uid, no capabilities, GPU device nodes only, build and model
+# read-only, API on 127.0.0.1.
+RDNA3_BUILD = ROOT/"third_party/competitors/rdna3-15995a12"
 
 
 def rdna3_engine(model, port, context, extra):
@@ -86,7 +103,7 @@ def rdna3_engine(model, port, context, extra):
 
 
 def engines(model, port, context, zerv_binary):
-    common = [LLAMA_SERVER, "-m", str(model), "--host", "127.0.0.1", "--port", str(port), "-c", str(context), "-np", "1", "-ngl", "99",
+    common = [llama_server(), "-m", str(model), "--host", "127.0.0.1", "--port", str(port), "-c", str(context), "-np", "1", "-ngl", "99",
               "--spec-type", "none", "--no-context-shift", "--no-webui", "--jinja", "--chat-template-file", str(TEMPLATE),
               "--reasoning-format", "deepseek", "--cache-ram", "0", "-a", "qwen3.8-27b"]
     return {
@@ -266,10 +283,13 @@ def main():
     p.add_argument("--context", type=int, default=8192)
     p.add_argument("--port", type=int, default=18090)
     p.add_argument("--zerv-binary", type=Path, help="reuse a previously benchmarked zerv binary (no rebuild; its hash is recorded)")
+    p.add_argument("--llama-server", type=Path, help="another llama-server build to run (default: built in the graph; its hash is recorded)")
     p.add_argument("--no-prompt-cache", action="store_true", help="cold prefill every request: zerv --prefix-cache-slots 0, llama cache_prompt=false")
     p.add_argument("--stall-timeout", type=float, default=STALL_S, help="fail a request after this many seconds without data")
     p.add_argument("--request-timeout", type=float, default=LIMIT_S, help="fail a request after this many seconds in total")
     a = p.parse_args()
+    global LLAMA_SERVER_OVERRIDE
+    if a.llama_server: LLAMA_SERVER_OVERRIDE = str(a.llama_server.resolve(strict=True))
     out = a.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     if sha(a.model) != MODEL_SHA: raise SystemExit("model mismatch")
     workload = json.loads(a.workload.read_text())
@@ -288,8 +308,8 @@ def main():
         for spec in table.values():
             if spec["cmd"][0] == str(zerv_binary): spec["cmd"] = spec["cmd"]+["--prefix-cache-slots", "0"]
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, host=platform.uname()._asdict(), model_sha256=MODEL_SHA,
-                    workload_sha256=sha(a.workload), zerv_sha256=sha(zerv_binary), llama_server_sha256=sha(LLAMA_SERVER), vllm_image=VLLM_IMAGE, vllm_model=str(VLLM_MODEL.relative_to(ROOT)),
-                    llama_version=subprocess.run([LLAMA_SERVER, "--version"], capture_output=True, text=True).stderr.strip(),
+                    workload_sha256=sha(a.workload), zerv_sha256=sha(zerv_binary), llama_server_sha256=sha(llama_server()), vllm_image=VLLM_IMAGE, vllm_model=str(VLLM_MODEL.relative_to(ROOT)),
+                    llama_version=subprocess.run([llama_server(), "--version"], capture_output=True, text=True).stderr.strip(),
                     template_sha256=sha(TEMPLATE), build=build, context=a.context, repeats=a.repeats, engines={}, vram_before=vram_used(),
                     client="python http.client streaming SSE; TTFT = first reasoning/content delta; decode rate = (completion_tokens-1)/(last_delta-first_delta)")
     raw = (out/"raw.jsonl").open("w")

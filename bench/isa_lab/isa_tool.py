@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """ISA lab helper (research tool; docs/research/native-isa-via-vulkan.md).
 
-  asm  IN.s OUT.code         assemble gfx1100 assembly with clang, write the raw .text
+  asm  IN.s OUT.code         assemble gfx1100 assembly with the clang named by ZERV_CLANG (the
+                             toolchain's `zig clang`: bazel/native.bzl, tools/build_native_gemm.py),
+                             write the raw .text
   dis2s IN.dis OUT.s         turn a RADV/ACO disassembly listing (RADV_DEBUG=shaders) into
                              assembler source (comments with encodings dropped)
   splice BLOB CODE OUT [--vgprs N] [--sgprs N] [--lds N]
@@ -29,7 +31,9 @@ def text_section(obj):
 def assemble(src, out):
     with tempfile.TemporaryDirectory() as t:
         obj = os.path.join(t, "a.o")
-        subprocess.run(["clang", "-target", "amdgcn-mesa-mesa3d", "-mcpu=gfx1100", "-c", "-x", "assembler", src, "-o", obj], check=True)
+        clang = os.environ.get("ZERV_CLANG")
+        if not clang: raise SystemExit("ZERV_CLANG must name the assembler (the toolchain's zig clang), never a host clang")
+        subprocess.run([clang, "-target", "amdgcn-mesa-mesa3d", "-mcpu=gfx1100", "-c", "-x", "assembler", src, "-o", obj], check=True)
         open(out, "wb").write(text_section(obj))
 
 def dis2s(src, out):

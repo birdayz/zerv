@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import platform
-import re
 import shutil
 import statistics
 import struct
@@ -20,7 +19,7 @@ import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenan
 sys.path.insert(0, str(ROOT/"tests/reference"))
 from generate_gpu_matvec import TYPES, MODEL_SHA, Oracle, build_oracle, encode_case, library, metrics, run_oracle, sha
 from run_gpu_driver import gpu_snapshot
-from generate_vulkan_goldens import PINS as DRIVER_PINS
+import host_info  # noqa: E402  (tools/host_info.py: the host, recorded without host tools)
 
 
 def timings(text, iterations):
@@ -59,9 +58,8 @@ def main():
     try:
         if sha(a.model) != MODEL_SHA: raise ValueError("model mismatch")
         manifest["model"] = dict(path=str(a.model.resolve()), sha256=MODEL_SHA)
-        for path, digest in DRIVER_PINS.items():
-            if sha(Path(path)) != digest: raise ValueError("pin mismatch: "+path)
-        manifest["pins"] = DRIVER_PINS
+        # Both engines run on the host's Vulkan stack (production): record which.
+        manifest["host_vulkan"] = host_info.host_vulkan()
         fixture = json.loads((ROOT/"tests/fixtures/gpu/matvec.json").read_text())
         for name, digest in fixture["sources"].items():
             if sha(ROOT/"tests/reference"/name) != digest: raise ValueError("fixture source changed")
@@ -88,13 +86,11 @@ def main():
         reference, manifest["reference_build"] = build_oracle(artifact)
         shutil.copyfile(artifact/"build.json", dest/"reference-build.json")
         for name, binary in (("native", native), ("reference", reference)):
-            deps = run(["ldd", binary]).stdout
-            manifest[name] = dict(path=str(binary), sha256=sha(binary), dependencies=deps,
-                                  dependency_hashes={path: sha(Path(path)) for path in re.findall(r"=> (/\S+)", deps)})
-        needed = re.findall(r"Shared library: \[([^]]+)\]", run(["readelf", "-d", native]).stdout)
-        if not needed or set(needed)-{"libvulkan.so.1", "libc.so.6", "ld-linux-x86-64.so.2"}: raise ValueError("non-system native dependency")
-        manifest["vulkaninfo"] = run(["vulkaninfo", "--summary"]).stdout
-        manifest["lscpu"] = run(["lscpu"]).stdout
+            manifest[name] = dict(path=str(binary), sha256=sha(binary), dependencies=host_info.library_record(binary))
+        needed, run_path = host_info.elf_dynamic(native)
+        if run_path or not needed or set(needed)-{"libvulkan.so.1", "libc.so.6", "ld-linux-x86-64.so.2"}: raise ValueError("non-system native dependency")
+        manifest["vulkaninfo"] = host_info.vulkaninfo()
+        manifest["cpu"] = host_info.cpu()
         sources = zerv_build.build_files()
         for directory in ("src", "bench", "tools", "tests"):
             sources += sorted(p for p in (ROOT/directory).rglob("*") if p.is_file() and p.suffix in (".zig", ".py", ".c", ".json", ".bin", ".gguf", ".txt", ".comp", ".spv"))

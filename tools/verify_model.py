@@ -38,6 +38,9 @@ def main():
     p.add_argument("--tool", type=Path,
                    help="archived zerv-model-capture binary (e.g. a previous work dir's copy) run instead of rebuilding; "
                         "for baseline reruns (the manifest's source hashes then describe the tree, not the tool)")
+    p.add_argument("--runtime", choices=("test", "host"), default="test",
+                   help="Vulkan stack of the native runs: the test-only GPU runtime built from source (default; "
+                        "docs/specs/hermetic-build.md phase 4) or the host's installed driver (what production runs on)")
     p.add_argument("--fixture", type=Path, default=ROOT/"tests/fixtures/model/qwen38-oracle.json",
                    help="oracle summary fixture (qwen38-oracle-long.json for the >512-token case)")
     a = p.parse_args()
@@ -46,8 +49,9 @@ def main():
     a.report.parent.mkdir(parents=True, exist_ok=True)
     if sha(a.model) != MODEL_SHA: raise SystemExit("model mismatch")
     work.mkdir(parents=True)
+    import zerv_build
+    env, runtime = zerv_build.gpu_runtime() if a.runtime == "test" else (zerv_build.host_vulkan_env(), "host")
     if a.tool is None:
-        import zerv_build
         build = zerv_build.build_command("zerv-model-capture")
         source = zerv_build.binary("zerv-model-capture")
     else:
@@ -58,7 +62,7 @@ def main():
     fixture = json.loads(a.fixture.read_text())
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, model_sha256=MODEL_SHA, tool_sha256=sha(tool),
                     sources={str(f.relative_to(ROOT)): sha(f) for d in ("src/model", "src/matvec", "src/gpu") for f in sorted((ROOT/d).rglob("*")) if f.is_file()},
-                    fixture_sha256=sha(a.fixture), commands=[build], cases={})
+                    fixture_sha256=sha(a.fixture), runtime=runtime, commands=[build], cases={})
     passed = True
     outputs = []
     for mode_arg in a.modes.split(","):
@@ -75,7 +79,7 @@ def main():
             # Capture MiB: all intermediates are ~34.5 MB per row (host-visible buffer).
             if mode > 0: cmd += [mode_arg, "3000" if mode >= 256 else str(max(1800, 36*mode))] + ([a.precision + (f"@{a.gemm_code}" if a.gemm_code != "spirv" else "") + ("@small=off" if a.f16_small_tile == "off" else "")] if a.precision != "fp32" else [])
             manifest["commands"].append(cmd)
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600, env=env)
             (d/"stderr.txt").write_text(r.stderr)
             if r.returncode: raise SystemExit(case["name"]+f" native capture (mode {mode_arg}) failed:\n"+r.stderr[-2000:])
             manifest["cases"][f"{case['name']}-{mode_arg}"] = r.stderr.strip().splitlines()[-1]

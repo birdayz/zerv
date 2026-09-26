@@ -4,7 +4,10 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 package(default_visibility = ["//visibility:public"])
 
-exports_files(["registry/vk.xml"])
+exports_files([
+    "include/vulkan/vulkan_core.h",
+    "registry/vk.xml",
+])
 
 cc_library(
     name = "vulkan_headers",

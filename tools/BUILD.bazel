@@ -44,6 +44,13 @@ py_binary(
 )
 
 py_binary(
+    name = "generate_vulkan_bindings",
+    srcs = ["generate_vulkan_bindings.py"],
+    visibility = ["//src/gpu:__pkg__"],
+    deps = ["//tests:vulkan_api"],
+)
+
+py_binary(
     name = "vulkan_stub",
     srcs = ["vulkan_stub.py"],
     visibility = ["//src/gpu:__pkg__"],

@@ -130,6 +130,30 @@ env_test = rule(
     test = True,
 )
 
+def _native_cpu_transition_impl(settings, _attr):
+    return {"//command_line_option:copt": settings["//command_line_option:copt"] + ["-march=native"]}
+
+_native_cpu_transition = transition(
+    implementation = _native_cpu_transition_impl,
+    inputs = ["//command_line_option:copt"],
+    outputs = ["//command_line_option:copt"],
+)
+
+def _native_cpu_binary_impl(ctx):
+    built = ctx.attr.binary[0][DefaultInfo]
+    out = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.symlink(output = out, target_file = built.files_to_run.executable, is_executable = True)
+    return [DefaultInfo(executable = out, files = depset([out]), runfiles = ctx.runfiles(files = [out]).merge(built.default_runfiles))]
+
+native_cpu_binary = rule(
+    implementation = _native_cpu_binary_impl,
+    doc = """A C/C++ executable (and everything it links) compiled for this machine's CPU
+    (`-march=native`) in a configuration of its own: for competitors, tuned like zerv's release
+    build (-mcpu=native), without changing any other build of the same targets (the oracles).""",
+    attrs = {"binary": attr.label(executable = True, cfg = _native_cpu_transition, mandatory = True)},
+    executable = True,
+)
+
 CcRulesInfo = provider(doc = "C/C++ rule targets in the transitive dependencies.", fields = ["labels"])
 
 def _cc_rules_aspect_impl(target, ctx):

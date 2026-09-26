@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import sys
 
+if "/bazel-out/" not in sys.executable:  # hermetic (docs/specs/hermetic-build.md)
+    sys.exit(f"run it with tools/py {sys.argv[0]}: the pinned Python and packages, not {sys.executable}")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from generate_chat_goldens import environment
 

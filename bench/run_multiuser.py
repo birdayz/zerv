@@ -232,7 +232,7 @@ def main():
     zb = a.zerv_binary.resolve()
     table = rs.engines(a.model, a.port, a.context_per_slot * a.parallel, zb)
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, host=dict(zip(("sysname", "nodename", "release", "version", "machine"), os.uname())),
-                    model_sha256=rs.sha(a.model), zerv_sha256=rs.sha(zb), llama_server_sha256=rs.sha(rs.LLAMA_SERVER), vllm_image=rs.VLLM_IMAGE, vllm_model=str(rs.VLLM_MODEL.relative_to(rs.ROOT)),
+                    model_sha256=rs.sha(a.model), zerv_sha256=rs.sha(zb), llama_server_sha256=rs.sha(rs.llama_server()), vllm_image=rs.VLLM_IMAGE, vllm_model=str(rs.VLLM_MODEL.relative_to(rs.ROOT)),
                     workloads={str(SHORT.relative_to(ROOT)): rs.sha(SHORT), str(LONG.relative_to(ROOT)): rs.sha(LONG)},
                     parallel=a.parallel, context_per_slot=a.context_per_slot, reps=a.reps, rounds=a.rounds, prompt_cache=a.prompt_cache, engines={})
     raw = (out / "raw.jsonl").open("w")
@@ -241,7 +241,7 @@ def main():
     for rnd, name in [(r, n) for r in range(a.rounds) for n in (names if r % 2 == 0 else names[::-1])]:
         spec = dict(rs.resolve_engine(table, name, zb))
         cmd = list(spec["cmd"])
-        if cmd[0] == str(rs.LLAMA_SERVER) or "/llama/bin/llama-server" in cmd:
+        if cmd[0] == rs.llama_server() or "/llama/bin/llama-server" in cmd:
             cmd[cmd.index("-np") + 1] = str(a.parallel)
         elif "--max-num-seqs" in cmd:  # vLLM: shared paged KV pool, per-request context
             cmd[cmd.index("--max-num-seqs") + 1] = str(a.parallel)

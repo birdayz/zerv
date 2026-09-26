@@ -1,0 +1,86 @@
+{
+ "started_at": "2026-09-26T19:59:46.722138+00:00",
+ "argv": [
+  "/home/USER/projects/zerv-bazel/bench/run_serving.py",
+  "--model",
+  "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+  "--engines",
+  "llama-fa-ub512",
+  "--output",
+  "docs/bench/data/2026-09-26-llama-server-ab/graph-1"
+ ],
+ "host": {
+  "system": "Linux",
+  "node": "benchmark-host",
+  "release": "7.2.6-arch2-1",
+  "version": "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000",
+  "machine": "x86_64",
+  "processor": ""
+ },
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "workload_sha256": "9ac7b1e8c519ef3055866f266d95dcbb67e0d307caf267c70495eb76c81babe8",
+ "zerv_sha256": "8742672aaa39974cff783f0da4e25b02bdc4df7e8e6067b3f566c0268236067d",
+ "llama_server_sha256": "f691135df9e75c2dee35fa928663570cef853ebd482eb98fa0cc6c178541b7ef",
+ "vllm_image": "vllm/vllm-openai-rocm@sha256:2e7da1ad1c66836802072588adea75f9f4991da5f9545b4318e91d422c22ce6a",
+ "vllm_model": "models/RedHatAI/Qwen3.8-27B-INT4/c063053e004e9783631651df95cf55d0bbf88b32",
+ "llama_version": "version: 0.4.1 (build 10964, commit b29c606e28)\nbuilt with Clang (Zig, hermetic_cc_toolchain) for x86_64-linux-gnu",
+ "template_sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041",
+ "build": [
+  "bazelisk",
+  "build",
+  "--config=release",
+  "//src:zerv"
+ ],
+ "context": 8192,
+ "repeats": 3,
+ "engines": {
+  "llama-fa-ub512": {
+   "cmd": [
+    "/home/USER/projects/zerv-bazel/bazel-out/k8-fastbuild/bin/external/+http_archive+llama_cpp/llama-server",
+    "-m",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "18090",
+    "-c",
+    "8192",
+    "-np",
+    "1",
+    "-ngl",
+    "99",
+    "--spec-type",
+    "none",
+    "--no-context-shift",
+    "--no-webui",
+    "--jinja",
+    "--chat-template-file",
+    "/home/USER/projects/zerv-bazel/third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/official-template.jinja",
+    "--reasoning-format",
+    "deepseek",
+    "--cache-ram",
+    "0",
+    "-a",
+    "qwen3.8-27b",
+    "-fa",
+    "on",
+    "-b",
+    "2048",
+    "-ub",
+    "512"
+   ],
+   "env": {},
+   "load_s": 8.385379582992755,
+   "vram_idle_before": 1853251584,
+   "vram_loaded": 17772597248,
+   "vram_peak": 17872900096,
+   "host_memory": {
+    "VmHWM": "15827592 kB",
+    "VmRSS": "1198024 kB"
+   }
+  }
+ },
+ "vram_before": 1853251584,
+ "client": "python http.client streaming SSE; TTFT = first reasoning/content delta; decode rate = (completion_tokens-1)/(last_delta-first_delta)",
+ "finished_at": "2026-09-26T20:00:51.954543+00:00"
+}

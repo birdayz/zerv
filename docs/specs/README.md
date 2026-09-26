@@ -29,6 +29,7 @@ alternatives, and measurements live elsewhere under `docs/` and are linked here.
 - [Complete Qwen tokenizer](tokenizer.md): implemented owned BPE/added-token tables, bounded encoding/raw decoding and actual-GGUF adapter; independent HF/raw-piece and actual llama-server comparisons.
 - [Matched tokenizer benchmark](tokenizer-matched-benchmark.md): direct libllama comparison, allocation control, paired baseline and correctness-gated short-piece/byte-pair optimization.
 - [External reference bring-up](reference-bringup.md): completed compatibility smoke experiment, not native serving.
+- [Hermetic build](hermetic-build.md) (branch `bazel`): every build, test, oracle and harness input pinned by content or built in the graph; source-built shader tools, oracles, GPU test runtime (Mesa RADV, Vulkan loader) and competitors.
 
 User requirements are settled constraints. Serving/API details are **draft** until
 feature research resolves the open questions and a concrete schema/test suite is

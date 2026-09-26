@@ -156,8 +156,8 @@ def main():
     names = a.engines.split(",")
     report = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, workload_sha256=serving.sha(a.workload),
                   model_sha256=serving.MODEL_SHA, zerv_sha256=serving.sha(binary) if binary.exists() else None,
-                  llama_server_sha256=serving.sha(serving.LLAMA_SERVER),
-                  llama_version=subprocess.run([serving.LLAMA_SERVER, "--version"], capture_output=True, text=True).stderr.strip(),
+                  llama_server_sha256=serving.sha(serving.llama_server()),
+                  llama_version=subprocess.run([serving.llama_server(), "--version"], capture_output=True, text=True).stderr.strip(),
                   engines={}, cases=[])
     results = {}
     if a.reference_raw:

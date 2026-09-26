@@ -8,7 +8,6 @@ import json
 import os
 from pathlib import Path
 import platform
-import re
 import shutil
 import statistics
 import subprocess
@@ -17,8 +16,10 @@ import sys
 ROOT = Path(__file__).absolute().parents[1]  # not resolved: Bazel tests import it from their runfiles
 sys.path.insert(0, str(ROOT / "tools"))
 import zerv_build  # noqa: E402  (tools/zerv_build.py: Bazel builds and provenance)
+import host_info  # noqa: E402  (tools/host_info.py: the host, recorded without host tools)
 sys.path.insert(0, str(ROOT / "tests/reference"))
-from gguf_oracle import Oracle
+import gguf_oracle  # noqa: E402
+from gguf_oracle import Oracle  # noqa: E402
 
 ROWS = {1: 10000, 64: 256, 5120: 4}
 PROFILES = {
@@ -26,7 +27,6 @@ PROFILES = {
     "q5_k": dict(type=13, columns=6144, block_elements=256, block_bytes=176, tensor="blk.0.ssm_out.weight", decoder="dequantize_row_q5_K"),
     "q6_k": dict(type=14, columns=5120, block_elements=256, block_bytes=210, tensor="output.weight", decoder="dequantize_row_q6_K", tensor_rows=248320, workloads={1: 10000, 64: 256, 4096: 4}),
 }
-LIB_SHA = "7d9065538f5df6342613b4fa92e661d5ad8fd811c2dbe16ff0e4b62a77777073"
 MODEL_SHA = "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d"
 
 
@@ -59,7 +59,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model", type=Path, required=True)
     p.add_argument("--format", choices=PROFILES, default="q4_1")
-    p.add_argument("--library", type=Path, default=Path("/usr/lib/libggml-base.so.0.24.0"))
+    p.add_argument("--library", type=Path, help="ggml library for the Python oracle; default: built from source (@ggml)")
     p.add_argument("--cpu", type=int, default=10)
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()
@@ -86,16 +86,13 @@ def main():
         return result.stdout
 
     try:
-        model, library = [p.resolve(strict=True) for p in (a.model, a.library)]
+        model = a.model.resolve(strict=True)
+        library, manifest["library_build"] = gguf_oracle.library(a.library)
         if sys.byteorder != "little" or C.sizeof(C.c_float) != 4:
             raise ValueError("unsupported oracle host")
         manifest["model_sha256"], manifest["library_sha256"] = sha(model), sha(library)
-        if manifest["model_sha256"] != MODEL_SHA or manifest["library_sha256"] != LIB_SHA:
-            raise ValueError("model/library identity mismatch")
-        header = Path("/usr/include/ggml.h")
-        if header.read_bytes() != (ROOT / "third_party/research/2026-09-22/oracle-ggml.h").read_bytes():
-            raise ValueError("ggml header differs from pinned source")
-        manifest["header_sha256"] = sha(header)
+        if manifest["model_sha256"] != MODEL_SHA:
+            raise ValueError("model identity mismatch")
         manifest.update(zerv_build.provenance())
         run(zerv_build.test_command())
         run(zerv_build.build_command("zerv-model-quant-bench"))
@@ -104,21 +101,17 @@ def main():
         native = artifacts / "native"
         shutil.copy2(zerv_build.path("zerv-model-quant-bench"), native)
         manifest["native_sha256"] = sha(native)
-        manifest["native_elf"] = run(["readelf", "-d", native])
-        if "NEEDED" in manifest["native_elf"]:
+        if host_info.elf_dynamic(native) is not None:
             raise ValueError("native acquired a dynamic dependency")
-        cc = Path(shutil.which("cc")).resolve(strict=True)
-        manifest["cc_version"], manifest["cc_sha256"] = run([cc, "--version"]), sha(cc)
+        # The reference: ggml (the same pinned source as the library) linked in statically.
+        built, manifest["reference"] = zerv_build.oracle("oracle_model_quant_bench")
         reference = artifacts / "reference"
-        run([cc, "-std=c11", "-O3", "-march=native", "-Wall", "-Wextra", "-Werror",
-             ROOT / "tests/reference/model_quant_bench.c", library, "-lcrypto", "-o", reference])
+        shutil.copy2(built, reference)
         manifest["reference_sha256"] = sha(reference)
-        manifest["reference_dependencies"] = run(["ldd", reference])
-        loaded = re.search(r"libggml-base\.so[^ ]* => (\S+)", manifest["reference_dependencies"])
-        if loaded is None or sha(loaded[1]) != LIB_SHA:
-            raise ValueError("loader selected another ggml")
-        manifest["dependency_hashes"] = {path: sha(path) for path in re.findall(r"=> (/\S+)", manifest["reference_dependencies"])}
-        manifest["cpu_info"] = run(["lscpu"])
+        manifest["reference_dependencies"] = host_info.library_record(reference)
+        if any(name.startswith("libggml") for name in manifest["reference_dependencies"]):
+            raise ValueError("the reference loads a ggml library")
+        manifest["cpu_info"] = host_info.cpu()
         oracle = Oracle(library)
         manifest["oracle"] = oracle.identity
         inventory = oracle.inspect(model, samples=False)
