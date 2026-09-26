@@ -1,5 +1,5 @@
 const std = @import("std");
-const gpu = @import("zerv").gpu;
+const gpu = @import("gpu");
 const vk = gpu.testing.abi;
 const t = std.testing;
 

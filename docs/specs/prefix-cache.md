@@ -66,7 +66,41 @@ For a request with prompt T (n ≥ 1 tokens), let `d = LCP(H, T)`:
      token is appended only after its step has succeeded.
 
 The cache is per process, so the model, weights and prefill precision are fixed. Only
-tokens are compared: the chat template, tools and sampling do not affect reuse.
+tokens and media spans are compared: the chat template, tools and sampling do not affect
+reuse.
+
+## Media spans (2026-09-26, before image input)
+
+A prompt row can take its model input from something other than its token's embedding (an
+image's encoder output, [vision research](../research/vision-qwen38.md)). Such rows form a
+**media span** `(start, len, id, positions)` (`session.Media`):
+
+- The rows carry a placeholder token id in the prompt (for Qwen3.8 every image row is
+  `<|image_pad|>`), so **token equality says nothing about their inputs**: two different
+  images of equal size give identical token sequences. Comparing tokens alone would reuse
+  the state of one image for another (found in the vision research; no image path existed
+  yet).
+- `id` is a 32-byte identity of the rows' inputs, chosen by the producer (for images: a
+  SHA-256 over the preprocessed pixels, the grid and the preprocessing settings). Equal ids
+  mean equal inputs for every row.
+- `positions` is how far the span advances the RoPE position (Qwen M-RoPE: `max(gh', gw')`
+  for an image of `gh' × gw'` rows); after the span, position = KV index minus
+  `Σ (len − positions)` of the spans before. Plain rows advance by one.
+- Spans are sorted, disjoint, inside the prompt, `len ≥ 1`, `1 ≤ positions ≤ len`.
+  Invalid spans are rejected before the cache is touched (`error.InvalidMedia`).
+
+Rules, in addition to the ones above:
+
+1. **LCP with media:** `d` is the token LCP, then cut at the start of the first span that
+   is not in both H and T with equal `(start, len, id, positions)`. So `d` never lies inside
+   a span that differs, and a span inside `[0, d)` is identical on both sides.
+2. **Snapshot points never lie inside a span** (a boundary token inside a span is skipped;
+   with placeholder rows it cannot occur, the check is defensive). Segments therefore
+   contain whole spans, and H always holds whole spans.
+3. **The backend's position offset is part of its state:** `saveSnapshot` stores it with
+   the recurrent state, `loadSnapshot` restores it, `reset` zeroes it. The cache stores no
+   positions.
+4. A backend without media support rejects a request with spans (`error.MediaUnsupported`).
 
 ## Numerics
 
@@ -117,6 +151,10 @@ prompt boundary snapshot). This will be decided from the benchmark.
    - a randomized differential test in which a fake backend's logits depend on the whole
      KV content and the recurrent state. Cached request sequences must produce exactly
      the output of uncached runs, and every restore must satisfy the KV guarantee.
+   - media: the same differential test with image-like spans (one placeholder id, ids from
+     a small set so equal-size different spans are frequent, positions < len); the fake's
+     KV rows hold the span input and the position. The token-only LCP must fail this test
+     (planted mutant, checked when the test is written).
 4. **Serving:** real-model multi-turn requests with the cache on and off. The response
    texts are compared and cached_tokens is checked.
 5. **Benchmark against llama-server:** a replay of a recorded bruh session (full tool

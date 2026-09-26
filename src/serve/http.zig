@@ -4,7 +4,7 @@
 //! transfer encoding.
 const std = @import("std");
 const api = @import("api.zig");
-const session = @import("../session/root.zig");
+const session = @import("session");
 
 pub const Event = session.Event;
 pub const Finish = session.Finish;

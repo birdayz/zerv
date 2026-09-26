@@ -3,23 +3,44 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const core = b.addModule("zerv", .{
-        .root_source_file = b.path("src/root.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tests/root.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{.{ .name = "zerv", .module = core }},
-        }),
-    });
-    const run_tests = b.addRunArtifact(tests);
+    // One module per src/ package (`packages`), and the `zerv` umbrella over all of them.
+    const pkgs = addPackages(b, target, optimize);
+    const core = pkgs.umbrella;
+    b.modules.put(b.allocator, "zerv", core) catch @panic("OOM");
+    // One test binary per file: the Zig 0.16 test runner runs a binary's tests one at a time
+    // (ziglang/zig#15953), the build runner runs binaries in parallel
+    // (docs/development.md, "Tests in parallel").
     const test_step = b.step("test", "Run native component and independent golden tests");
-    test_step.dependOn(&run_tests.step);
+    // Test support compiled in ReleaseFast whatever the test mode: the golden fingerprints'
+    // SHA-256 (tests/support/fast_sha256.zig).
+    const support = b.addObject(.{
+        .name = "zerv-test-support",
+        .root_module = b.createModule(.{ .root_source_file = b.path("tests/support/fast_sha256.zig"), .target = target, .optimize = .ReleaseFast }),
+    });
+    // Optimized test binaries without debug info by default: DWARF doubles their LLVM time
+    // (an empty ReleaseFast test: 14.4 s -> 6.4 s). Failures still print; Debug keeps traces.
+    const symbols = b.option(bool, "test-symbols", "Keep debug info in optimized test binaries (stack traces; slower builds)") orelse false;
+    // A fixed test seed makes a test run a cached result of its binary: an unchanged test is
+    // not run again (the build runner's own `--seed` is random per invocation and would be
+    // passed to every test binary). The CPU unit tests read no files at run time.
+    const seed = b.option(u32, "test-seed", "Seed passed to the unit test binaries (default 0; results are cached per seed)") orelse 0;
+    const opts: TestOptions = .{ .target = target, .support = support, .symbols = symbols, .seed = seed };
+    addUnitTests(b, test_step, optimize, pkgs, opts);
+    // The same binaries installed to zig-out/tests (tools/test_profile.py runs them alone).
+    addTestInstall(b, b.step("test-install", "Install the unit test binaries to zig-out/tests (for tools/test_profile.py)"), optimize, pkgs, opts);
     b.default_step = test_step;
+
+    // Every required check of AGENTS.md in one parallel build graph: zig fmt, the unit tests
+    // in Debug and ReleaseFast, and the Python tests.
+    const check_step = b.step("check", "Run all required checks (fmt, Debug and ReleaseFast tests, Python tests) in parallel");
+    const fmt = b.addFmt(.{ .paths = &.{ "build.zig", "src", "bench", "tools", "tests" }, .check = true });
+    check_step.dependOn(&fmt.step);
+    for ([_]std.builtin.OptimizeMode{ .Debug, .ReleaseFast }) |mode| {
+        addUnitTests(b, check_step, mode, if (mode == optimize) pkgs else addPackages(b, target, mode), opts);
+    }
+    const python = b.addSystemCommand(&.{ "python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py" });
+    python.has_side_effects = true;
+    check_step.dependOn(&python.step);
 
     const gpu_tests = b.addTest(.{
         .use_llvm = true,
@@ -28,7 +49,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tests/gpu.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{.{ .name = "zerv", .module = core }},
+            .imports = &.{ .{ .name = "zerv", .module = core }, .{ .name = "gpu", .module = pkgs.get("gpu") }, .{ .name = "matvec", .module = pkgs.get("matvec") } },
         }),
     });
     // The system Vulkan loader/ICD needs the OS libc startup/TLS contract.
@@ -65,7 +86,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("tests/matvec_workload.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{.{ .name = "zerv", .module = core }},
+        .imports = &.{ .{ .name = "gpu", .module = pkgs.get("gpu") }, .{ .name = "matvec", .module = pkgs.get("matvec") } },
     });
     const matvec_benchmark = b.addExecutable(.{
         .name = "zerv-gpu-matvec-bench",
@@ -407,4 +428,113 @@ pub fn build(b: *std.Build) void {
     const install_benchmark = b.addInstallArtifact(benchmark, .{});
     b.step("bench-build", "Build the standalone quant component benchmark")
         .dependOn(&install_benchmark.step);
+}
+
+/// The src/ packages, one module each (`src/NAME/root.zig`), with the packages they import;
+/// listed in dependency order (a package's dependencies come before it). Directional: no
+/// cycles, as docs/architecture.md requires. The `zerv` umbrella (`src/root.zig`) re-exports
+/// them all for executables that use several.
+const Package = struct { name: []const u8, deps: []const []const u8 };
+const packages = [_]Package{
+    .{ .name = "quant", .deps = &.{} },
+    .{ .name = "gpu", .deps = &.{} },
+    .{ .name = "artifact", .deps = &.{} },
+    .{ .name = "text", .deps = &.{} },
+    .{ .name = "chat", .deps = &.{} },
+    .{ .name = "matvec", .deps = &.{"gpu"} },
+    .{ .name = "tokenizer", .deps = &.{ "text", "artifact" } },
+    .{ .name = "model", .deps = &.{ "artifact", "gpu", "matvec" } },
+    .{ .name = "session", .deps = &.{"chat"} },
+    .{ .name = "serve", .deps = &.{ "chat", "session", "model", "tokenizer" } },
+};
+
+const Packages = struct {
+    modules: [packages.len]*std.Build.Module,
+    umbrella: *std.Build.Module,
+
+    fn get(self: *const Packages, name: []const u8) *std.Build.Module {
+        for (packages, 0..) |p, i| if (std.mem.eql(u8, p.name, name)) return self.modules[i];
+        std.debug.panic("build.zig: unknown package '{s}'", .{name});
+    }
+};
+
+fn addPackages(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) Packages {
+    var result: Packages = undefined;
+    for (packages, 0..) |p, i| {
+        const m = b.createModule(.{ .root_source_file = b.path(b.fmt("src/{s}/root.zig", .{p.name})), .target = target, .optimize = optimize });
+        for (p.deps) |d| {
+            const at = for (packages[0..i], 0..) |q, j| {
+                if (std.mem.eql(u8, q.name, d)) break j;
+            } else std.debug.panic("build.zig: package '{s}' imports '{s}', which is not listed before it", .{ p.name, d });
+            m.addImport(d, result.modules[at]);
+        }
+        result.modules[i] = m;
+    }
+    result.umbrella = b.createModule(.{ .root_source_file = b.path("src/root.zig"), .target = target, .optimize = optimize });
+    for (packages, result.modules) |p, m| result.umbrella.addImport(p.name, m);
+    return result;
+}
+
+/// Unit test files (CPU only), each its own binary, with the packages it imports (only
+/// those: an edit rebuilds and reruns the tests of its dependents). `tests/test_build_lists.py`
+/// checks that every test file is here or in the GPU aggregate (`tests/gpu.zig`).
+const UnitTest = struct { name: []const u8, deps: []const []const u8 };
+const unit_tests = [_]UnitTest{
+    .{ .name = "quant", .deps = &.{"quant"} },
+    .{ .name = "q4_1", .deps = &.{"quant"} },
+    .{ .name = "q5_k", .deps = &.{"quant"} },
+    .{ .name = "q6_k", .deps = &.{"quant"} },
+    .{ .name = "gguf", .deps = &.{"artifact"} },
+    .{ .name = "nfc", .deps = &.{"text"} },
+    .{ .name = "chat", .deps = &.{"chat"} },
+    .{ .name = "tokenizer_split", .deps = &.{"tokenizer"} },
+    .{ .name = "tokenizer", .deps = &.{ "artifact", "tokenizer" } },
+    .{ .name = "gpu_abi", .deps = &.{"gpu"} },
+    .{ .name = "matvec", .deps = &.{ "gpu", "matvec" } },
+    .{ .name = "model", .deps = &.{ "artifact", "matvec", "model" } },
+    .{ .name = "session", .deps = &.{"session"} },
+    .{ .name = "sampler", .deps = &.{"session"} },
+    .{ .name = "sampler_nucleus", .deps = &.{"session"} },
+    .{ .name = "prefix", .deps = &.{"session"} },
+    .{ .name = "serve", .deps = &.{ "chat", "serve" } },
+    .{ .name = "batcher", .deps = &.{"serve"} },
+    .{ .name = "tools", .deps = &.{ "chat", "serve", "session" } },
+};
+
+const TestOptions = struct { target: std.Build.ResolvedTarget, support: *std.Build.Step.Compile, symbols: bool, seed: u32 };
+
+fn unitTest(b: *std.Build, u: UnitTest, optimize: std.builtin.OptimizeMode, pkgs: Packages, opts: TestOptions) *std.Build.Step.Compile {
+    const root = b.createModule(.{
+        .root_source_file = b.path(b.fmt("tests/{s}.zig", .{u.name})),
+        .target = opts.target,
+        .optimize = optimize,
+        .strip = optimize != .Debug and !opts.symbols,
+    });
+    for (u.deps) |d| root.addImport(d, pkgs.get(d));
+    const t = b.addTest(.{ .name = b.fmt("test-{s}-{s}", .{ u.name, @tagName(optimize) }), .root_module = root });
+    t.root_module.addObject(opts.support);
+    return t;
+}
+
+fn addUnitTests(b: *std.Build, step: *std.Build.Step, optimize: std.builtin.OptimizeMode, pkgs: Packages, opts: TestOptions) void {
+    for (unit_tests) |u| {
+        const run = b.addRunArtifact(unitTest(b, u, optimize, pkgs, opts));
+        var replaced = false;
+        for (run.argv.items) |*arg| switch (arg.*) {
+            .bytes => |bytes| if (std.mem.startsWith(u8, bytes, "--seed=")) {
+                arg.* = .{ .bytes = b.fmt("--seed=0x{x}", .{opts.seed}) };
+                replaced = true;
+            },
+            else => {},
+        };
+        if (!replaced) @panic("test runner arguments changed: no --seed to fix (build.zig addUnitTests)");
+        step.dependOn(&run.step);
+    }
+}
+
+fn addTestInstall(b: *std.Build, step: *std.Build.Step, optimize: std.builtin.OptimizeMode, pkgs: Packages, opts: TestOptions) void {
+    for (unit_tests) |u| {
+        const install = b.addInstallArtifact(unitTest(b, u, optimize, pkgs, opts), .{ .dest_dir = .{ .override = .{ .custom = "tests" } } });
+        step.dependOn(&install.step);
+    }
 }

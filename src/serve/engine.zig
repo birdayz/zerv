@@ -2,10 +2,10 @@
 const std = @import("std");
 const api = @import("api.zig");
 const http = @import("http.zig");
-const chat = @import("../chat/qwen38.zig");
-const bpe = @import("../tokenizer/bpe.zig");
-const model = @import("../model/root.zig");
-const session = @import("../session/root.zig");
+const chat = @import("chat").qwen38;
+const bpe = @import("tokenizer").bpe;
+const model = @import("model");
+const session = @import("session");
 const batcher = @import("batcher.zig");
 
 pub const eos = [_][]const u8{ "<|im_end|>", "<|endoftext|>" };
@@ -229,6 +229,10 @@ pub const Native = struct {
             sr.spec_policy = null;
             const slot = try b.join();
             defer b.leave(slot);
+            // Shared KV pool (docs/specs/concurrent.md, "18d.2 design"): memory for the prompt
+            // plus the output limit (the generation's own `limit`), admitted before it starts.
+            const context = self.model.state_layout.context;
+            if (prepared.tokens.len < context) b.reserve(slot, prepared.tokens.len + @min(r.max_tokens, context - @as(u32, @intCast(prepared.tokens.len))));
             break :slot try SlotGeneration.run(self.io, arena, .{ .b = b, .slot = slot, .m = self.model }, self.tokenizer, special, sr, sink);
         } else try Generation.run(self.io, arena, .{ .m = self.model }, self.tokenizer, special, r, sink);
         if (self.cache != null) std.log.info("prefix cache: {s}, reused {d} of {d} prompt tokens", .{ @tagName(result.cache_outcome), result.cached_tokens, result.prompt_tokens });
@@ -258,6 +262,25 @@ pub const ModelBackend = struct {
     pub fn reset(self: *ModelBackend, slot: u32) !void {
         self.m.select(slot) catch |e| return self.check(e);
         self.m.reset() catch |e| return self.check(e);
+        // Shared pool: a new sequence starts without memory (`admit` maps it).
+        if (self.m.options.kv_share) self.m.releasePages(slot) catch |e| return self.check(e);
+    }
+    /// Shared pool: map pages for positions below `tokens` (false: too few free pages now;
+    /// a static pool always holds them).
+    pub fn admit(self: *ModelBackend, slot: u32, tokens: usize) bool {
+        if (!self.m.options.kv_share) return true;
+        const want: u32 = @intCast(@min(tokens, self.m.state_layout.context));
+        self.m.ensurePages(slot, want) catch |e| {
+            if (e != error.PoolExhausted) _ = self.check(e);
+            return false;
+        };
+        return true;
+    }
+    pub fn release(self: *ModelBackend, slot: u32) void {
+        if (!self.m.options.kv_share) return;
+        self.m.releasePages(slot) catch |e| {
+            _ = self.check(e);
+        };
     }
     /// Whether these prompts' next chunks fit one packed chunk (docs/specs/concurrent.md,
     /// "18d.1 design"): always for one; several need the model's packed commands.

@@ -1,7 +1,8 @@
 const std = @import("std");
 const t = std.testing;
-const nfc = @import("zerv").text.nfc;
-const Sha256 = std.crypto.hash.sha2.Sha256;
+const nfc = @import("text").nfc;
+const Sha256 = @import("fast_sha256.zig").Sha256; // hashing in the ReleaseFast support object
+const parallel = @import("parallel.zig");
 const Manifest = struct {
     generator_sha256: []const u8,
     golden_sha256: []const u8,
@@ -23,7 +24,7 @@ test "Unicode-9 NFC all independent normative cases and long runs" {
     const m = try manifest();
     defer m.deinit();
     try t.expectEqualStrings(m.value.generator_sha256, &hex(@embedFile("reference/generate_nfc.py")));
-    try t.expectEqualStrings(m.value.data_sha256, &nfc.table_sha256);
+    try t.expectEqualStrings(m.value.data_sha256, &nfc.tableSha256());
     const data = @embedFile("fixtures/nfc9/cases.bin");
     try t.expectEqualStrings(m.value.golden_sha256, &hex(data));
     var cursor: usize = 0;
@@ -56,31 +57,38 @@ test "NFC exhaustive scalar and combining-context fingerprints" {
     const m = try manifest();
     defer m.deinit();
     for ([_]bool{ false, true }) |context| {
+        // Every scalar in order; chunks of 0x4400 run concurrently, hashed in order.
         var digest = Sha256.init(.{});
-        var input: [16]u8 = undefined;
-        var output: [32]u8 = undefined;
-        var scratch: [32]u21 = undefined;
-        for (0..0x110000) |value| {
-            if (value >= 0xd800 and value <= 0xdfff) continue;
-            var len: usize = 0;
-            if (context) {
-                @memcpy(input[0..3], "[\xcc\x81");
-                len = 3;
-            }
-            len += try std.unicode.utf8Encode(@intCast(value), input[len..]);
-            if (context) {
-                @memcpy(input[len..][0..2], "\xcc\xa3");
-                len += 2;
-            }
-            const size = try nfc.normalize(input[0..len], &output, &scratch);
-            var encoded: [4]u8 = undefined;
-            std.mem.writeInt(u32, &encoded, @intCast(size), .little);
-            digest.update(&encoded);
-            digest.update(output[0..size]);
-        }
+        try parallel.hashChunks(&digest, 0x110000 / 0x4400, context, scalarChunk);
         var hash: [32]u8 = undefined;
         digest.final(&hash);
         try t.expectEqualStrings(if (context) m.value.fingerprints.mark_context else m.value.fingerprints.scalar, &std.fmt.bytesToHex(hash, .lower));
+    }
+}
+
+/// Scalars c * 0x4400 + 0..0x4400 (no surrogates), alone or between U+0301 and U+0323:
+/// each output's length (u32 LE) and bytes.
+fn scalarChunk(context: bool, c: usize, out: *std.ArrayList(u8)) !void {
+    var input: [16]u8 = undefined;
+    var output: [32]u8 = undefined;
+    var scratch: [32]u21 = undefined;
+    for (c * 0x4400..(c + 1) * 0x4400) |value| {
+        if (value >= 0xd800 and value <= 0xdfff) continue;
+        var len: usize = 0;
+        if (context) {
+            @memcpy(input[0..3], "[\xcc\x81");
+            len = 3;
+        }
+        len += try std.unicode.utf8Encode(@intCast(value), input[len..]);
+        if (context) {
+            @memcpy(input[len..][0..2], "\xcc\xa3");
+            len += 2;
+        }
+        const size = try nfc.normalize(input[0..len], &output, &scratch);
+        var encoded: [4]u8 = undefined;
+        std.mem.writeInt(u32, &encoded, @intCast(size), .little);
+        try out.appendSlice(t.allocator, &encoded);
+        try out.appendSlice(t.allocator, output[0..size]);
     }
 }
 

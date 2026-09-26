@@ -1,7 +1,7 @@
 const std = @import("std");
 const t = std.testing;
-const split = @import("zerv").tokenizer.qwen_split;
-const Sha256 = std.crypto.hash.sha2.Sha256;
+const split = @import("tokenizer").qwen_split;
+const Sha256 = @import("fast_sha256.zig").Sha256; // hashing in the ReleaseFast support object
 const Manifest = struct {
     generator_sha256: []const u8,
     data_sha256: []const u8,
@@ -22,7 +22,7 @@ test "Qwen split independent exhaustive short strings, Unicode folds, mixed text
     const m = try manifest();
     defer m.deinit();
     try t.expectEqualStrings(m.value.generator_sha256, &hex(@embedFile("reference/generate_split_goldens.py")));
-    try t.expectEqualStrings(m.value.data_sha256, &split.table_sha256);
+    try t.expectEqualStrings(m.value.data_sha256, &split.tableSha256());
     const data = @embedFile("fixtures/tokenizer-split/cases.bin");
     try t.expectEqualStrings(m.value.golden_sha256, &hex(data));
     var cursor: usize = 0;

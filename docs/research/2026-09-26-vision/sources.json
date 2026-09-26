@@ -1,0 +1,276 @@
+{
+ "created_at": "2026-09-26",
+ "purpose": "Qwen3.8-27B vision support research (docs/research/vision-qwen38.md)",
+ "revisions": {
+  "llama.cpp": "b29c606e28a01b1bc8c1351026a0fa6e616bf6c4 (same as the installed build 10964 and the block-09 oracle)",
+  "transformers": "87d34bfa80aa884bca90c4da79cca18feed90ff6 (same as the block-09 modeling file; modeling_qwen3_5.py byte-identical to third_party/research/2026-09-22/qwen35-modeling.py)",
+  "Qwen/Qwen3.8-27B": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+ },
+ "failed_retrievals": [
+  {
+   "url": "https://raw.githubusercontent.com/huggingface/transformers/87d34bfa80aa884bca90c4da79cca18feed90ff6/src/transformers/models/qwen2_vl/image_processing_qwen2_vl_fast.py",
+   "result": "404: at this revision the torchvision processor lives in image_processing_qwen2_vl.py (class Qwen2VLImageProcessor(TorchvisionBackend))"
+  },
+  {
+   "url": "https://huggingface.co/Qwen/Qwen3.8-27B/raw/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/processor_config.json",
+   "result": "404: the upstream repo has preprocessor_config.json and video_preprocessor_config.json"
+  }
+ ],
+ "artifacts": [
+  {
+   "local": "models/qwen3.8-27b/mmproj-BF16.gguf",
+   "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/4ca720788d1e01f1bff70c033e0d0028fd02e502/mmproj-BF16.gguf",
+   "bytes": 931146432,
+   "sha256": "83ee4f4f205fa514161778c41df1ea14144faa0f713510893b63c2395f5c2d53",
+   "downloaded": "2026-09-26, explicit, .part then sha256 --check against the pinned manifest (docs/research/2026-09-22/quant-artifacts.json)"
+  },
+  {
+   "local": "models/RedHatAI/Qwen3.8-27B-INT4/c063053e004e9783631651df95cf55d0bbf88b32/model.safetensors",
+   "note": "already present (vLLM competitor, docs/bench/2026-09-25-vllm.md); its 333 model.visual.* tensors are BF16 and unquantized (quantization_config.ignore)"
+  }
+ ],
+ "files": [
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/conversion/qwen3vl.py",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/conversion/qwen3vl.py",
+   "bytes": 16818,
+   "sha256": "52bffac93e923d57cba2792eb109aa65d09c2a8bb34bf9bc72c922910b1241ad"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/conversion/qwenvl.py",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/conversion/qwenvl.py",
+   "bytes": 9152,
+   "sha256": "ec8fb850a2ebf19191893a861f18f9db4cfc23ff059543036b7227e5feda73ea"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/ggml/src/ggml-cpu/ops.cpp",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/ggml/src/ggml-cpu/ops.cpp",
+   "bytes": 417140,
+   "sha256": "dbffc3df9816cc3f7e5428f9fb9afa13db4ac2979899605a057121bb031ba136"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/ggml/src/ggml-vulkan/vulkan-shaders/rope_funcs.glsl",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/ggml/src/ggml-vulkan/vulkan-shaders/rope_funcs.glsl",
+   "bytes": 8229,
+   "sha256": "485fc1e30f6aa9e6cd202b0108484f2302a759fb5bb55e73bcfba60d9ec30b7c"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/ggml/src/ggml-vulkan/vulkan-shaders/rope_head.glsl",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/ggml/src/ggml-vulkan/vulkan-shaders/rope_head.glsl",
+   "bytes": 587,
+   "sha256": "2752f8806aadd21c32c30f125e09f10da11f82cdaf805a16522cfec66fdfee10"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/README.md",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/README.md",
+   "bytes": 5627,
+   "sha256": "5821ef525780b71085f68da7e4ea1dd9b90241fbba91cb928519b06eb2f76c42"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/clip-graph.h",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/clip-graph.h",
+   "bytes": 5430,
+   "sha256": "0c04795e22939263ff613226428096fbc0f0739cef34a00c3aa675856b4ba4aa"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/clip-impl.h",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/clip-impl.h",
+   "bytes": 45065,
+   "sha256": "5946bc4c9a575fdfb2b9858b8762edd10d3630fda90c306568b807acb2eed109"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/clip-model.h",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/clip-model.h",
+   "bytes": 33475,
+   "sha256": "f4df467f21eb5ac4954010a3be30f26586ebe7fa77f6000e65a943215be011e2"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/clip.cpp",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/clip.cpp",
+   "bytes": 318648,
+   "sha256": "73015c97b683c741bcdd99d8aace3e056e075674b9b6b0eba7c2b0993a0ea7b9"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/clip.h",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/clip.h",
+   "bytes": 4938,
+   "sha256": "07b67b04559cd203e389efa9a0399e61abf2a134d8ba14b194b12adaf3aba21a"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/models/models.h",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/models/models.h",
+   "bytes": 18231,
+   "sha256": "d1468dd2543233d6ddd85305363f5bd6f7a960bdeacb428793e804f6fb40c1f5"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/models/qwen2vl.cpp",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/models/qwen2vl.cpp",
+   "bytes": 7828,
+   "sha256": "06661c5dd008f1603678eb9def84cf8b566852728c2f8fe4fcd9b003dd1a23af"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/models/qwen3vl.cpp",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/models/qwen3vl.cpp",
+   "bytes": 6702,
+   "sha256": "5a248956cc965ec1229538585f66a0010fa03a5d5dd164bd495c522ecede0c7b"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/mtmd-helper.cpp",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/mtmd-helper.cpp",
+   "bytes": 35736,
+   "sha256": "bf84fc80bf501e5ac00c4372293d8a318e08aa83b0ab64802799b6a982074a4b"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/mtmd-helper.h",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/mtmd-helper.h",
+   "bytes": 13142,
+   "sha256": "a4f69e73bf7a4e93fdaac8052ca315e8b8f2c16942dc26f0d2e69238f3b5eb4b"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/mtmd-image.cpp",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/mtmd-image.cpp",
+   "bytes": 72884,
+   "sha256": "7dc760e4f85e38e11d11268ae412c3b6c0a32389c6c584ca34dd7b4a679f950b"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/mtmd-image.h",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/mtmd-image.h",
+   "bytes": 12121,
+   "sha256": "7605fb3c8f43e1ce9a31c6ff71a56ccc9ef57e3030eef16394f8ae3561734c08"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/mtmd.cpp",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/mtmd.cpp",
+   "bytes": 106954,
+   "sha256": "b5f5660650d5abd1b8e23b6e4246f33eedc73b79fc904c2ff521796060bd56bb"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/mtmd.h",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/mtmd.h",
+   "bytes": 22390,
+   "sha256": "b0f1ba884e8688980789f0547147d2b7330d65772ebac8f36c0dbb8ece7cf7d0"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/test-1.jpeg",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/test-1.jpeg",
+   "bytes": 124071,
+   "sha256": "2dff664c0c8aaea18aff8cbe7e868845b775e90cdd7a0bac98df709b131deaa3"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/tests.sh",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/mtmd/tests.sh",
+   "bytes": 8013,
+   "sha256": "23952bf10d6fcb6b0bd5662718e870dee79d273031e5ea85d2ca38a9b4baf390"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/server/server-common.cpp",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/server/server-common.cpp",
+   "bytes": 69693,
+   "sha256": "de3a89422f67b97eb385041fae17e553dc677aac6b67f2e98e9f0beff672b4e0"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/llama.cpp/tools/server/server-context.cpp",
+   "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4/tools/server/server-context.cpp",
+   "bytes": 226101,
+   "sha256": "2f5d65ce6ef0504b5c8cf55a74c68d3959c49784ba380ef836566b7a7d5fa12b"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/qwen/chat_template.jinja",
+   "url": "https://huggingface.co/Qwen/Qwen3.8-27B/raw/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/chat_template.jinja",
+   "bytes": 8952,
+   "sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/qwen/model.safetensors.index.json",
+   "url": "https://huggingface.co/Qwen/Qwen3.8-27B/raw/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/model.safetensors.index.json",
+   "bytes": 112216,
+   "sha256": "77042094076611b69791a610065f28b7013b8c621795fa86ddccc8bac7d1b9df"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/qwen/preprocessor_config.json",
+   "url": "https://huggingface.co/Qwen/Qwen3.8-27B/raw/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/preprocessor_config.json",
+   "bytes": 390,
+   "sha256": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/qwen/video_preprocessor_config.json",
+   "url": "https://huggingface.co/Qwen/Qwen3.8-27B/raw/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/video_preprocessor_config.json",
+   "bytes": 385,
+   "sha256": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/transformers/configuration_utils.py",
+   "url": "https://raw.githubusercontent.com/huggingface/transformers/87d34bfa80aa884bca90c4da79cca18feed90ff6/src/transformers/configuration_utils.py",
+   "bytes": 73676,
+   "sha256": "75075265ee026d4c022dcb95a521139bd012272fb4e5f20048e117848e245a1e"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/transformers/image_processing_backends.py",
+   "url": "https://raw.githubusercontent.com/huggingface/transformers/87d34bfa80aa884bca90c4da79cca18feed90ff6/src/transformers/image_processing_backends.py",
+   "bytes": 26094,
+   "sha256": "539d3001944fa7d51e43336a86e800f2e3c5dd6512709f26e2d39884a052f18a"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/transformers/image_transforms.py",
+   "url": "https://raw.githubusercontent.com/huggingface/transformers/87d34bfa80aa884bca90c4da79cca18feed90ff6/src/transformers/image_transforms.py",
+   "bytes": 46135,
+   "sha256": "260fd1b2d3b23811f6be81da20777105d522c0213030580e6cf717a34492ef3b"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/transformers/image_utils.py",
+   "url": "https://raw.githubusercontent.com/huggingface/transformers/87d34bfa80aa884bca90c4da79cca18feed90ff6/src/transformers/image_utils.py",
+   "bytes": 41789,
+   "sha256": "61dfb55f493761bc2770884ecc59d11dc49e0af626b545deacbb94adb49f779b"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/transformers/modeling_rope_utils.py",
+   "url": "https://raw.githubusercontent.com/huggingface/transformers/87d34bfa80aa884bca90c4da79cca18feed90ff6/src/transformers/modeling_rope_utils.py",
+   "bytes": 61743,
+   "sha256": "a9919bb9585d194801c18cb7f48ae7c6db1046796edf56d66c3f2e67974e8ff3"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/transformers/models/qwen2_vl/image_processing_qwen2_vl.py",
+   "url": "https://raw.githubusercontent.com/huggingface/transformers/87d34bfa80aa884bca90c4da79cca18feed90ff6/src/transformers/models/qwen2_vl/image_processing_qwen2_vl.py",
+   "bytes": 11694,
+   "sha256": "64a7b1d519089e7e0ff382467212506cef0ecc6f30c123cdb07d3543145adc19"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/transformers/models/qwen3_5/configuration_qwen3_5.py",
+   "url": "https://raw.githubusercontent.com/huggingface/transformers/87d34bfa80aa884bca90c4da79cca18feed90ff6/src/transformers/models/qwen3_5/configuration_qwen3_5.py",
+   "bytes": 8281,
+   "sha256": "2f26c4bb911772d42a5f16e82bdea4b9ba1ac07872df527ec228622d35f3c30e"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/transformers/models/qwen3_5/modeling_qwen3_5.py",
+   "url": "https://raw.githubusercontent.com/huggingface/transformers/87d34bfa80aa884bca90c4da79cca18feed90ff6/src/transformers/models/qwen3_5/modeling_qwen3_5.py",
+   "bytes": 95320,
+   "sha256": "832e14a5c8d193f0904cf0f41f891a121eddeffd46201ccc044d0f86d527ce30"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/transformers/models/qwen3_vl/modeling_qwen3_vl.py",
+   "url": "https://raw.githubusercontent.com/huggingface/transformers/87d34bfa80aa884bca90c4da79cca18feed90ff6/src/transformers/models/qwen3_vl/modeling_qwen3_vl.py",
+   "bytes": 71312,
+   "sha256": "91e5864b5729d52f766b27f1c4cc37efcf8376822935534ebfc8e3b87bf47fc3"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/transformers/models/qwen3_vl/processing_qwen3_vl.py",
+   "url": "https://raw.githubusercontent.com/huggingface/transformers/87d34bfa80aa884bca90c4da79cca18feed90ff6/src/transformers/models/qwen3_vl/processing_qwen3_vl.py",
+   "bytes": 9573,
+   "sha256": "02d50224d9dc9ce38690cfa6a0106be897f619444ebe3ff7ba38cbcdda9e3ef2"
+  },
+  {
+   "local": "third_party/research/2026-09-26-vision/transformers/vision_utils.py",
+   "url": "https://raw.githubusercontent.com/huggingface/transformers/87d34bfa80aa884bca90c4da79cca18feed90ff6/src/transformers/vision_utils.py",
+   "bytes": 19192,
+   "sha256": "bcecd5a92b3266b9926272a549d2b1a0f1fe7646c698c0fa19bd96f976085356"
+  }
+ ],
+ "observed_runs": [
+  {
+   "what": "llama-mtmd-cli feasibility (installed build 10964, Vulkan)",
+   "command": "llama-mtmd-cli -m models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf --mmproj models/qwen3.8-27b/mmproj-BF16.gguf --image third_party/research/2026-09-26-vision/llama.cpp/tools/mtmd/test-1.jpeg -p 'Describe this image in one sentence.' -n 300 --temp 0 -ngl 99 -c 8192",
+   "logs": "third_party/vision-feasibility/mtmd-cli-test1.{out,err}",
+   "result": "correct description; 'mtmd batch encoding done in 291 ms' (single first run)"
+  }
+ ]
+}

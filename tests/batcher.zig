@@ -3,8 +3,8 @@
 //! alone, while generations join and leave, hold rows, pause, get canceled, see errors
 //! and prefill in packed chunks.
 const std = @import("std");
-const zerv = @import("zerv");
-const batcher = zerv.serve.batcher;
+const serve = @import("serve");
+const batcher = serve.batcher;
 const t = std.testing;
 
 const V = 16;
@@ -46,11 +46,17 @@ const Fake = struct {
     segments: u32 = 1,
     /// The chunk in flight: its slots, their chunk tokens, and their remaining lengths.
     flight: ?usize = null,
+    /// `flight` for other threads (0: none).
+    members: std.atomic.Value(usize) = .init(0),
     fslots: [batcher.max_pack]u32 = undefined,
     fcount: [batcher.max_pack]usize = undefined,
     ftotal: [batcher.max_pack]usize = undefined,
     ftokens: [batcher.max_pack][3]u32 = undefined,
     pack_cap: usize = 1,
+    pool: usize = 0,
+    page: usize = 4,
+    held: [max_slots]usize = @splat(0),
+    admits: u32 = 0,
     packs: u32 = 0,
     seg: u32 = 0,
     no_batch_in_chunk: bool = false,
@@ -61,9 +67,19 @@ const Fake = struct {
     done_count: usize = 0,
     /// A row whose token is `bad_token` cannot run (as a slot the model refuses).
     bad_token: u32 = std.math.maxInt(u32),
+    /// The reset of this slot waits for `resume_reset` (it signals `in_reset` first): holds
+    /// the scheduler inside a backend call while a test queues operations.
+    block_reset: ?u32 = null,
+    in_reset: std.atomic.Value(bool) = .init(false),
+    resume_reset: std.Io.Event = .unset,
 
     pub fn reset(self: *Fake, slot: u32) !void {
         if (self.flight != null) self.violations += 1;
+        if (self.block_reset != null and self.block_reset.? == slot) {
+            self.in_reset.store(true, .release);
+            self.resume_reset.waitUncancelable(self.io);
+        }
+        self.held[slot] = 0;
         self.hist[slot] = 7;
     }
     pub fn packFits(self: *Fake, remaining: []const usize) bool {
@@ -78,6 +94,10 @@ const Fake = struct {
                 return error.FakeBadPack;
             }
             self.flight = items.len;
+            self.members.store(items.len, .release);
+            for (items) |item| if (self.pool != 0 and self.held[item.slot] == 0) {
+                self.violations += 1; // a prompt started without its memory
+            };
             for (items, 0..) |item, i| {
                 for (item.tokens) |token| if (token == poison) {
                     self.violations += 1;
@@ -96,6 +116,7 @@ const Fake = struct {
         self.seg = 0;
         const k = self.flight.?;
         self.flight = null;
+        self.members.store(0, .release);
         var unit: batcher.Unit = .{ .done = true, .logits = self.prefill_out[0 .. k * V] };
         for (0..k) |i| {
             const slot = self.fslots[i];
@@ -114,12 +135,29 @@ const Fake = struct {
         for (self.fslots[0..k]) |s| if (s == slot) return true;
         return false;
     }
+    /// Memory: `pool` pages of `page` positions (0 pool = unlimited); a slot holds the pages
+    /// it was admitted for until `release` or its reset.
+    pub fn admit(self: *Fake, slot: u32, tokens: usize) bool {
+        if (self.pool == 0) return true;
+        const want = (tokens + self.page - 1) / self.page;
+        if (want <= self.held[slot]) return true;
+        var used: usize = 0;
+        for (self.held) |h| used += h;
+        if (used + want - self.held[slot] > self.pool) return false;
+        self.held[slot] = want;
+        self.admits += 1;
+        return true;
+    }
+    pub fn release(self: *Fake, slot: u32) void {
+        self.held[slot] = 0;
+    }
     pub fn checkRow(self: *Fake, row: batcher.Row) !void {
         if (row.token == self.bad_token) return error.FakeBadRow;
     }
     pub fn abortChunk(self: *Fake) void {
         self.aborts += 1;
         self.flight = null;
+        self.members.store(0, .release);
         self.seg = 0;
     }
     pub fn decodeBatch(self: *Fake, rows: []const batcher.Row) ![]const f32 {
@@ -437,7 +475,7 @@ test "batcher: a canceled generation's prompt is never read after its submit ret
         const a = try b.join();
         try b.reset(a);
         var fut = try io.concurrent(prefillOwned, .{ &b, a, @as([]const u32, prompt) });
-        while (fake.flight == null) try io.sleep(.fromMicroseconds(200), .awake);
+        while (chunkMembers(&fake) == 0) try io.sleep(.fromMicroseconds(200), .awake);
         const t0 = std.Io.Clock.awake.now(io).nanoseconds;
         try t.expectError(error.Canceled, fut.cancel(io));
         const waited: u64 = @intCast(std.Io.Clock.awake.now(io).nanoseconds - t0);
@@ -457,7 +495,12 @@ test "batcher: a canceled generation's prompt is never read after its submit ret
         task.await(io);
         stopped = true;
         try t.expectEqual(@as(u32, 0), fake.violations);
-        // The cancel waited at most for the running unit (5 ms), not for the whole prompt.
+        // The cancel waited at most for the running unit, not for the whole prompt: of its 10
+        // chunks at most 2 ran (the running one, and one begun as the cancel landed), plus the
+        // other generation's chunk. Load-independent; before 2026-09-26 a canceled prompt
+        // with one-unit chunks ran all 10 (the check ran only for a chunk in flight).
+        try t.expect(b.stats.prefill_chunks <= 3);
+        // The same in time (5 ms units; a generous bound for a loaded machine).
         try t.expect(waited < 50 * std.time.ns_per_ms);
         if (segments > 1) try t.expect(b.stats.aborted_chunks <= 1);
     }
@@ -538,7 +581,7 @@ test "batcher: pending prompts pack into one chunk; each gets its solo logits; a
     // with its solo logits, the chunk is not aborted, and the canceled slot is reused.
     {
         var fake: Fake = .{ .io = io, .segments = 8, .unit_delay_ns = 2_000_000, .pack_cap = 2 };
-        var b = try B.init(io, &fake, .{ .slots = 2, .vocab = V, .stall = .{ .ns = 0 }, .order = .shortest, .pack = 2 });
+        var b = try B.init(io, &fake, .{ .slots = 3, .vocab = V, .stall = .{ .ns = 0 }, .order = .shortest, .pack = 2 });
         var task = try io.concurrent(B.run, .{&b});
         const a = try b.join();
         const c = try b.join();
@@ -547,9 +590,19 @@ test "batcher: pending prompts pack into one chunk; each gets its solo logits; a
         var long: [9]u32 = undefined;
         for (&long, 0..) |*x, i| x.* = @intCast(i + 1);
         const short = [_]u32{ 40, 41, 42 };
+        // Both prompts must be queued when the scheduler forms the chunk, whatever the thread
+        // timing (before 2026-09-26 the short one could run alone first, and the wait below
+        // never ended): a third slot's reset holds the scheduler until both are queued.
+        const x = try b.join();
+        fake.block_reset = x;
+        var fx = try io.concurrent(B.reset, .{ &b, x });
+        while (!fake.in_reset.load(.acquire)) try io.sleep(.fromMicroseconds(200), .awake);
         var fa = try io.concurrent(longPrefill, .{ &b, a, @as([]const u32, &long) });
         var fc = try io.concurrent(shortPrefill, .{ &b, c, @as([]const u32, &short) });
-        while (fake.flight == null or fake.flight.? < 2) try io.sleep(.fromMicroseconds(200), .awake);
+        while (queued(&b, .prefill) < 2) try io.sleep(.fromMicroseconds(200), .awake);
+        fake.resume_reset.set(io);
+        try fx.await(io); // `x` stays joined, so the next join must reuse the canceled slot
+        while (chunkMembers(&fake) < 2) try io.sleep(.fromMicroseconds(200), .awake);
         try t.expectError(error.Canceled, fa.cancel(io));
         b.leave(a);
         const logits = try fc.await(io);
@@ -568,8 +621,10 @@ test "batcher: pending prompts pack into one chunk; each gets its solo logits; a
         const l2 = try b.prefill(again, &.{9});
         logitsFor(mix(7, 9), &want);
         try t.expectEqualSlices(f32, &want, l2);
+        try t.expectEqual(a, again);
         b.leave(again);
         b.leave(c);
+        b.leave(x);
         b.stop();
         task.await(io);
         try t.expectEqual(@as(u64, 0), b.stats.aborted_chunks);
@@ -580,4 +635,83 @@ test "batcher: pending prompts pack into one chunk; each gets its solo logits; a
 fn shortPrefill(b: *B, slot: u32, prompt: []const u32) anyerror![V]f32 {
     const logits = try b.prefill(slot, prompt);
     return logits[0..V].*;
+}
+
+/// Slots whose operation `op` is queued or running (read under the batcher's lock).
+fn queued(b: *B, op: anytype) usize {
+    b.mutex.lockUncancelable(b.io);
+    defer b.mutex.unlock(b.io);
+    var n: usize = 0;
+    for (b.slot[0..b.options.slots]) |s| {
+        if (s.used and s.op == op) n += 1;
+    }
+    return n;
+}
+
+/// Members of the chunk in flight (0: none), for a test thread (units run on the scheduler).
+fn chunkMembers(fake: *const Fake) usize {
+    return fake.members.load(.acquire);
+}
+
+fn pooledGeneration(b: *B, prompt: []const u32, steps: u32, out: *anyerror!void) void {
+    out.* = pooled(b, prompt, steps);
+}
+fn pooled(b: *B, prompt: []const u32, steps: u32) !void {
+    const slot = while (true) break b.join() catch |e| switch (e) {
+        error.NoSlot => {
+            try b.io.sleep(.fromMilliseconds(1), .awake);
+            continue;
+        },
+        else => return e,
+    };
+    defer b.leave(slot);
+    b.reserve(slot, prompt.len + steps);
+    try b.reset(slot);
+    var h: u64 = 7;
+    for (prompt) |token| h = mix(h, token);
+    var logits = try b.prefill(slot, prompt);
+    var want: [V]f32 = undefined;
+    for (0..steps) |_| {
+        logitsFor(h, &want);
+        if (!std.mem.eql(f32, &want, logits)) return error.WrongLogits;
+        const token = pick(logits);
+        b.sampled(slot);
+        h = mix(h, token);
+        logits = try b.step(slot, token);
+    }
+    b.sampled(slot);
+}
+
+test "batcher: shared memory pool: prompts wait for memory, a large prompt is not starved, memory comes back" {
+    const io = t.io;
+    // 6 slots over a pool of 10 pages of 4 positions (40): each request reserves prompt +
+    // steps. The large one (6 + 20 = 26 positions, 7 pages) arrives second; with shortest-
+    // first ordering the small ones (3 pages each) would keep overtaking it without the
+    // oldest-waiter rule.
+    var fake: Fake = .{ .io = io, .segments = 2, .unit_delay_ns = 100_000, .pool = 10, .page = 4, .pack_cap = 3 };
+    var b = try B.init(io, &fake, .{ .slots = 6, .vocab = V, .stall = .{ .ns = 0 }, .order = .shortest, .pack = 3 });
+    var prompts: [12][6]u32 = undefined;
+    for (&prompts, 0..) |*pr, i| for (pr, 0..) |*x, j| {
+        x.* = @intCast(1000 * i + j + 1);
+    };
+    var results: [12]anyerror!void = undefined;
+    var group: std.Io.Group = .init;
+    defer group.cancel(io);
+    for (0..12) |i| {
+        const big = i == 1;
+        try group.concurrent(io, pooledGeneration, .{ &b, if (big) prompts[i][0..6] else prompts[i][0..2], if (big) @as(u32, 20) else 8, &results[i] });
+        try io.sleep(.fromMicroseconds(300), .awake);
+    }
+    // The pool must really be a constraint, independent of timing: the scheduler starts only
+    // when every slot's generation (the large one among them) is waiting in its reset, so 6
+    // sequences (5 x 3 + 7 pages) compete for 10 pages.
+    while (queued(&b, .reset) < 6) try io.sleep(.fromMicroseconds(200), .awake);
+    var task = try io.concurrent(B.run, .{&b});
+    try group.await(io);
+    b.stop();
+    task.await(io);
+    for (results) |r| try r;
+    try t.expectEqual(@as(u32, 0), fake.violations);
+    try t.expect(b.stats.admission_waits > 0); // the pool was really a constraint
+    for (fake.held) |h| try t.expectEqual(@as(usize, 0), h); // every page came back
 }

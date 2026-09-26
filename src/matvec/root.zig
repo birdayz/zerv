@@ -1,6 +1,6 @@
 //! Resident packed-weight, FP32-input single-vector projections. No model/session logic.
 const std = @import("std");
-const gpu = @import("../gpu/root.zig");
+const gpu = @import("gpu");
 
 pub const Error = gpu.Error || error{ InvalidShape, InvalidWeights, NonFiniteWeight, UnsupportedSubnormal, AliasedOutput, UnsupportedDevice };
 pub const Format = enum(u32) {

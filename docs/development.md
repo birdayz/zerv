@@ -54,6 +54,56 @@ zig build test -Doptimize=ReleaseFast --summary all
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
+All four at once, in one parallel build graph (the same checks; 2026-09-26):
+
+```sh
+zig build check        # fmt, Debug and ReleaseFast unit tests, Python tests
+```
+
+### Tests in parallel (2026-09-26)
+
+Zig 0.16 runs the tests of one binary one at a time ([ziglang/zig#15953](https://github.com/ziglang/zig/issues/15953),
+open); the build runner runs independent steps on every core. So:
+
+- **One test binary per file.** `build.zig` lists the CPU unit test files (`unit_tests`); each
+  is its own compile and run step. `tests/test_build_lists.py` fails if a `tests/*.zig` file is
+  neither listed, nor imported by a listed file, nor part of the GPU aggregate
+  (`tests/gpu.zig`, which stays one serial binary: the device is shared).
+- **Independent rounds run concurrently** inside a test through `tests/parallel.zig`:
+  `parallel.rounds(n, ctx, f)` (each round seeds its own generator, `parallel.seed`), and
+  `parallel.hashChunks` for golden fingerprints (chunks produced concurrently, hashed in
+  order: the same digest). `std.testing.io` has one thread per CPU.
+- **Golden SHA-256 in ReleaseFast.** Debug `std.crypto` SHA-256 runs at ~134 MB/s here
+  (ReleaseFast 1.75 GB/s); the quant goldens hash up to 390 MB. The hashing lives in a
+  ReleaseFast object (`tests/support/fast_sha256.zig`, drop-in `tests/fast_sha256.zig`) linked
+  into every unit test; the code under test keeps the test's mode.
+- **Optimized test binaries are stripped** (debug info doubles their LLVM time:
+  an empty ReleaseFast test compiles in 14.4 s with it, 6.4 s without). Failures still print
+  their messages; `-Dtest-symbols` keeps symbols for stack traces.
+- **Keep a binary's run near 2 s or less** and do not let correctness depend on timing: a
+  test that waits for a state must arrange it (see the batcher tests), not sleep and hope.
+  Split a file when one binary dominates (`sampler_nucleus.zig`).
+- **Test results are cached.** The build runner passes its per-invocation random `--seed` to
+  every test binary, which made every run a cache miss; `build.zig` fixes it (`-Dtest-seed`,
+  default 0), so an unchanged test binary is not run again: a no-change `zig build test` takes
+  ~0.1 s. The CPU unit tests read no files at run time, so the binary is the whole input.
+- **Only dependents rebuild.** Packages are modules and each unit test declares its packages
+  ("Package and interface discipline" below), so an edit rebuilds and reruns only the tests
+  that depend on the edited package; before the split any `src/` edit rebuilt all 19.
+- `tools/test_profile.py [--optimize Debug|ReleaseFast] [name ...]`: per-test and per-binary
+  times (each binary run alone), to find the next one to split or parallelize.
+
+Measured on this machine (Ryzen 9 3900X, 12 cores / 24 threads;
+[report](bench/2026-09-26-test-parallelism.md)): `zig build test` 9.4 s cold, ~4.1 s warm,
+~4–7 s after a `src/` edit (was ~96 s every time); `zig build check` 22.6 s cold, ~19–22 s after
+a `src/` edit (the ReleaseFast LLVM compiles, ~12 s each in parallel, are the critical path).
+Build system decision (user, 2026-09-26): **`zig build` only, no Bazel for now.** If Bazel
+comes later, it builds **everything** in one graph (Zig packages and tests, GLSL shaders and
+their manifests, the native RDNA3 kernels, the Python goldens/oracles), not only the non-Zig
+parts. The package modules above map one-to-one onto Bazel targets.
+The warm run uses 64 s of CPU in 4 s: it is at the machine's throughput. Not usable:
+`-fincremental` (0.16 produced a test binary that aborts).
+
 Both modes pass the same independent goldens and malformed-input tests. Test
 allocations use the testing allocator; implementation decoding allocates nothing.
 See [quant validation](research/2026-09-22-quant-validation.md) for evidence and scope.
@@ -105,8 +155,31 @@ native tests need only the committed JSON, not Python or the oracle library.
 
 ## Package and interface discipline
 
-- The current `src/quant.zig` owns only quant block decoding; its public API is
-  exposed through `src/root.zig`. Tests exercise that public API from `tests/`.
+- **Packages are Zig modules (2026-09-26).** Each `src/NAME/` directory is one module rooted
+  at `src/NAME/root.zig`, declared in `build.zig` `packages` with the packages it imports
+  (like a Bazel `go_library` and its deps). Dependencies are directional:
+
+  ```
+  quant   gpu   artifact   text   chat          (std only)
+  matvec    → gpu
+  tokenizer → text, artifact
+  model     → artifact, gpu, matvec
+  session   → chat
+  serve     → chat, session, model, tokenizer
+  ```
+
+  - Across packages import the module (`@import("gpu")`, `@import("artifact").gguf`), never
+    a path (`../gpu/…`); within a package, relative files. Zig resolves imports lazily, so
+    an unreferenced import of an undeclared package would compile: `tests/test_build_lists.py`
+    checks that each package imports only what it declares, and that the directories and
+    the list agree.
+  - `src/root.zig` is the `zerv` umbrella re-exporting every package, for executables that use
+    several (server, benchmarks, tools, GPU tests). Packages never import it.
+  - A unit test declares the packages it imports (`unit_tests` in `build.zig`), so an edit
+    rebuilds and reruns only the tests of the edited package's dependents (measured: a
+    `session` edit rebuilds session, sampler, sampler_nucleus, prefix, serve, batcher, tools;
+    a `quant` edit only the four quant tests).
+  - Tests exercise each package's public API from `tests/`.
 - Keep artifact parsing, model semantics, backend/device management, state/scheduling,
   generation, and HTTP as cohesive boundaries as they become real functionality.
 - Core tensor/quant math must not depend on HTTP, configuration parsing, global

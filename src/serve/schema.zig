@@ -3,7 +3,7 @@
 //! (docs/research/tool-calling.md) for the schema of each top-level property.
 //! Values must be parsed with `parse_numbers = false`. Driver-free, allocation-free.
 const std = @import("std");
-const tools = @import("../session/tools.zig");
+const tools = @import("session").tools;
 
 pub const Types = tools.Types;
 pub const Error = error{InvalidSchema};

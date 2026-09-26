@@ -1,6 +1,6 @@
 //! Strict Qwen3.8 artifact adapter. Generic byte-BPE tables own their data afterwards.
 const std = @import("std");
-const gguf = @import("../artifact/gguf.zig");
+const gguf = @import("artifact").gguf;
 const bpe = @import("bpe.zig");
 pub const Error = bpe.Error || gguf.ParseError || error{UnsupportedProfile};
 const additions = [_][]const u8{

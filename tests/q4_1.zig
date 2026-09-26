@@ -1,7 +1,7 @@
 const std = @import("std");
-const quant = @import("zerv").quant;
+const quant = @import("quant");
 const t = std.testing;
-const Sha256 = std.crypto.hash.sha2.Sha256;
+const Sha256 = @import("fast_sha256.zig").Sha256; // hashing in the ReleaseFast support object
 const Goldens = struct {
     schema_version: u32,
     generator_sha256: []const u8,

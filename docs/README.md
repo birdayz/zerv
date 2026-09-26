@@ -277,3 +277,11 @@ finish independent tests and benchmark gates before advancing.
 91. [Big-model serving TODOs](research/2026-09-26-big-model-serving-todos.md): Qwen3.5-397B-A17B, Qwen3.8-2.4T-A95B and
     GLM-5.3-Flash on MI3xx (KDA, MLA+DSA, mHC, MoE, 4-bit quality gates, memory fits); no official Qwen 3.9 exists
     (`QwennAI/Qwen3.9-*` is a fake repository).
+92. [Qwen3.8-27B image input (vision)](research/vision-qwen38.md) (block 19a, research first pass): HF vs llama.cpp
+    semantics (encoder, erf vs tanh GELU in the merger, 2-D RoPE, interleaved M-RoPE positions, preprocessing:
+    stretch vs pad, 64–16,384 vs 8–4,096 tokens), the verified `mmproj-BF16.gguf` (all 334 tensors bit-equal to
+    the RedHat BF16 tower, `tools/vision_artifacts.py`), oracle design, cost estimates, open questions.
+    Sources: [ledger](research/2026-09-26-vision/sources.json).
+93. [Tests in parallel](bench/2026-09-26-test-parallelism.md): one test binary per file, concurrent rounds, golden SHA-256 in a
+    ReleaseFast object, no TLS in the server test, stripped optimized tests; `zig build test` ~96 s → 9.4 s cold / ~4 s warm,
+    `zig build check` (all required checks) 22.6 s cold; under load: a batcher cancel defect (fixed) and a test hang (fixed).

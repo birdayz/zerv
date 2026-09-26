@@ -2,10 +2,10 @@
 //! Jinja oracle, Python json.dumps numbers, the output call parser, and the
 //! between-call sampling constraint.
 const std = @import("std");
-const zerv = @import("zerv");
-const api = zerv.serve.api;
-const chat = zerv.chat;
-const session = zerv.session;
+const serve = @import("serve");
+const api = serve.api;
+const chat = @import("chat");
+const session = @import("session");
 const text = session.text;
 const tools = session.tools;
 const t = std.testing;

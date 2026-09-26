@@ -1,7 +1,8 @@
 const std = @import("std");
 const t = std.testing;
-const bpe = @import("zerv").tokenizer.bpe;
-const Sha256 = std.crypto.hash.sha2.Sha256;
+const bpe = @import("tokenizer").bpe;
+const Sha256 = @import("fast_sha256.zig").Sha256; // hashing in the ReleaseFast support object
+const parallel = @import("parallel.zig");
 const data = @embedFile("fixtures/tokenizer/model.bin");
 const EncodeCase = struct { text: []const u8, ids: []const u32, raw_hex: []const u8 };
 const Manifest = struct {
@@ -190,10 +191,10 @@ test "BPE rejects duplicate roots/additions/pairs and enforces limits across spa
     const ids = try tokenizer.encode(t.allocator, "a<x>b", .{ .max_normalized_bytes = 5, .max_tokens = 3 });
     defer t.allocator.free(ids);
     try t.expectEqualSlices(u32, &.{ 'a', 256, 'b' }, ids);
-    const artifact = @import("zerv").artifact;
+    const artifact = @import("artifact");
     var container = try artifact.gguf.Container.parse(t.allocator, @embedFile("fixtures/gguf/default.gguf"), .{});
     defer container.deinit();
-    try t.expectError(error.UnsupportedProfile, @import("zerv").tokenizer.fromGGUF(t.allocator, &container, .{}));
+    try t.expectError(error.UnsupportedProfile, @import("tokenizer").fromGGUF(t.allocator, &container, .{}));
 }
 
 test "independent ASCII pairs, seeded short-piece boundaries and long workloads" {
@@ -204,15 +205,31 @@ test "independent ASCII pairs, seeded short-piece boundaries and long workloads"
     try t.expectEqual(@as(usize, 17793), parsed.value.cases.len);
     var tokenizer = try load(t.allocator);
     defer tokenizer.deinit();
-    for ([_][]const EncodeCase{ parsed.value.cases, parsed.value.workloads }) |cases| {
+    // Cases in 64 groups and each long workload on its own, concurrently (encode and decode
+    // read the tokenizer only).
+    const groups = 64;
+    const all = EncodeGroups{ .tokenizer = &tokenizer, .cases = parsed.value.cases, .workloads = parsed.value.workloads, .groups = groups };
+    try parallel.rounds(groups + parsed.value.workloads.len, all, EncodeGroups.run);
+}
+
+const EncodeGroups = struct {
+    tokenizer: *const bpe.Tokenizer,
+    cases: []const EncodeCase,
+    workloads: []const EncodeCase,
+    groups: usize,
+    fn run(self: EncodeGroups, i: usize) !void {
+        const cases = if (i < self.groups)
+            self.cases[i * self.cases.len / self.groups .. (i + 1) * self.cases.len / self.groups]
+        else
+            self.workloads[i - self.groups ..][0..1];
         for (cases) |case| {
-            const ids = try tokenizer.encode(t.allocator, case.text, .{});
+            const ids = try self.tokenizer.encode(t.allocator, case.text, .{});
             defer t.allocator.free(ids);
             try t.expectEqualSlices(u32, case.ids, ids);
-            try checkDecode(&tokenizer, ids, case.raw_hex);
+            try checkDecode(self.tokenizer, ids, case.raw_hex);
         }
     }
-}
+};
 
 test "rank scan and heap retain forward ranks, leftmost ties and output limits" {
     var bytes: [256]u8 = undefined;

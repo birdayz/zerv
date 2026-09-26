@@ -1,8 +1,8 @@
 const std = @import("std");
-const zerv = @import("zerv");
-const api = zerv.serve.api;
-const chat_mod = zerv.chat.qwen38;
-const http = zerv.serve.http;
+const serve = @import("serve");
+const api = serve.api;
+const chat_mod = @import("chat").qwen38;
+const http = serve.http;
 const t = std.testing;
 
 const ids = [_][]const u8{"qwen3.8-27b"};
@@ -223,10 +223,83 @@ fn serveTask(server: *http.Server, listener: *std.Io.net.Server) std.Io.Cancelab
     };
 }
 
-fn post(client: *std.http.Client, url: []const u8, body: []const u8, out: *std.Io.Writer.Allocating) !std.http.Status {
-    out.clearRetainingCapacity();
-    const result = try client.fetch(.{ .location = .{ .url = url }, .method = .POST, .payload = body, .response_writer = &out.writer, .headers = .{ .content_type = .{ .override = "application/json" } } });
-    return result.status;
+/// A minimal HTTP/1.1 client for the server tests: one kept-alive connection (reopened when
+/// the server answers `connection: close`), Content-Length and chunked bodies.
+/// `std.http.Client` would compile the TLS stack: ~30 s of LLVM for the ReleaseFast test
+/// binary (docs/bench/2026-09-26-test-parallelism.md).
+const Client = struct {
+    io: std.Io,
+    port: u16,
+    stream: ?std.Io.net.Stream = null,
+    in_buf: [16384]u8 = undefined,
+    out_buf: [4096]u8 = undefined,
+    reader: std.Io.net.Stream.Reader = undefined,
+    writer: std.Io.net.Stream.Writer = undefined,
+    /// Connections opened (1 while the server keeps the connection alive).
+    connects: u32 = 0,
+
+    fn deinit(self: *Client) void {
+        if (self.stream) |st| st.close(self.io);
+        self.stream = null;
+    }
+
+    fn request(self: *Client, method: []const u8, path: []const u8, body: ?[]const u8, out: *std.Io.Writer.Allocating) !std.http.Status {
+        out.clearRetainingCapacity();
+        if (self.stream == null) {
+            const target = try std.Io.net.IpAddress.parse("127.0.0.1", self.port);
+            self.stream = try target.connect(self.io, .{ .mode = .stream });
+            self.reader = self.stream.?.reader(self.io, &self.in_buf);
+            self.writer = self.stream.?.writer(self.io, &self.out_buf);
+            self.connects += 1;
+        }
+        const w = &self.writer.interface;
+        try w.print("{s} {s} HTTP/1.1\r\nhost: 127.0.0.1\r\n", .{ method, path });
+        if (body) |b| try w.print("content-type: application/json\r\ncontent-length: {d}\r\n", .{b.len});
+        try w.writeAll("\r\n");
+        if (body) |b| try w.writeAll(b);
+        try w.flush();
+        const r = &self.reader.interface;
+        const status_line = std.mem.trimEnd(u8, try r.takeDelimiterExclusive('\n'), "\r");
+        r.toss(1);
+        if (!std.mem.startsWith(u8, status_line, "HTTP/1.1 ") or status_line.len < 12) return error.BadResponse;
+        const code = try std.fmt.parseInt(u10, status_line[9..12], 10);
+        var length: ?usize = null;
+        var chunked = false;
+        var close = false;
+        while (true) {
+            const line = std.mem.trimEnd(u8, try r.takeDelimiterExclusive('\n'), "\r");
+            r.toss(1);
+            if (line.len == 0) break;
+            const colon = std.mem.indexOfScalar(u8, line, ':') orelse return error.BadResponse;
+            const name = line[0..colon];
+            const value = std.mem.trim(u8, line[colon + 1 ..], " ");
+            if (std.ascii.eqlIgnoreCase(name, "content-length")) length = try std.fmt.parseInt(usize, value, 10);
+            if (std.ascii.eqlIgnoreCase(name, "transfer-encoding") and std.ascii.eqlIgnoreCase(value, "chunked")) chunked = true;
+            if (std.ascii.eqlIgnoreCase(name, "connection") and std.ascii.eqlIgnoreCase(value, "close")) close = true;
+        }
+        if (chunked) {
+            while (true) {
+                const line = std.mem.trimEnd(u8, try r.takeDelimiterExclusive('\n'), "\r");
+                r.toss(1);
+                const hex = if (std.mem.indexOfScalar(u8, line, ';')) |i| line[0..i] else line;
+                const size = try std.fmt.parseInt(usize, hex, 16);
+                if (size == 0) {
+                    // Trailer section, then the empty line.
+                    while (std.mem.trimEnd(u8, try r.takeDelimiterExclusive('\n'), "\r").len > 0) r.toss(1);
+                    r.toss(1);
+                    break;
+                }
+                try r.streamExact(&out.writer, size);
+                if (!std.mem.eql(u8, try r.take(2), "\r\n")) return error.BadResponse;
+            }
+        } else try r.streamExact(&out.writer, length orelse return error.BadResponse);
+        if (close) self.deinit();
+        return @enumFromInt(code);
+    }
+};
+
+fn post(client: *Client, path: []const u8, body: []const u8, out: *std.Io.Writer.Allocating) !std.http.Status {
+    return client.request("POST", path, body, out);
 }
 
 test "HTTP server: real sockets, JSON and SSE framing, errors, keep-alive" {
@@ -242,12 +315,11 @@ test "HTTP server: real sockets, JSON and SSE framing, errors, keep-alive" {
     try group.concurrent(io, serveTask, .{ &server, &listener });
     defer group.cancel(io);
 
-    var client: std.http.Client = .{ .allocator = t.allocator, .io = io };
+    var client: Client = .{ .io = io, .port = port };
     defer client.deinit();
     var out: std.Io.Writer.Allocating = .init(t.allocator);
     defer out.deinit();
-    var url_buf: [128]u8 = undefined;
-    const chat = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/v1/chat/completions", .{port});
+    const chat = "/v1/chat/completions";
 
     // Non-streaming with reasoning.
     try t.expectEqual(std.http.Status.ok, try post(&client, chat, "{\"model\":\"qwen3.8-27b\",\"messages\":[{\"role\":\"user\",\"content\":\"four\"}]}", &out));
@@ -312,22 +384,11 @@ test "HTTP server: real sockets, JSON and SSE framing, errors, keep-alive" {
     try t.expect(std.mem.indexOf(u8, out.written(), "No user query found in messages.") != null);
     try t.expectEqual(std.http.Status.not_found, try post(&client, chat, "{\"model\":\"other\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}]}", &out));
     try t.expectEqual(std.http.Status.bad_request, try post(&client, chat, "{", &out));
-    var models_buf: [128]u8 = undefined;
-    const models = try std.fmt.bufPrint(&models_buf, "http://127.0.0.1:{d}/v1/models", .{port});
-    out.clearRetainingCapacity();
-    const listed = try client.fetch(.{ .location = .{ .url = models }, .response_writer = &out.writer });
-    try t.expectEqual(std.http.Status.ok, listed.status);
+    try t.expectEqual(std.http.Status.ok, try client.request("GET", "/v1/models", null, &out));
     try t.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"qwen3.8-27b\"") != null);
-    var missing_buf: [128]u8 = undefined;
-    const missing = try std.fmt.bufPrint(&missing_buf, "http://127.0.0.1:{d}/v1/completions", .{port});
-    try t.expectEqual(std.http.Status.not_found, try post(&client, missing, "{}", &out));
-    out.clearRetainingCapacity();
-    const wrong_method = try client.fetch(.{ .location = .{ .url = chat }, .response_writer = &out.writer });
-    try t.expectEqual(std.http.Status.method_not_allowed, wrong_method.status);
-    var metrics_buf: [128]u8 = undefined;
-    const metrics = try std.fmt.bufPrint(&metrics_buf, "http://127.0.0.1:{d}/metrics", .{port});
-    out.clearRetainingCapacity();
-    _ = try client.fetch(.{ .location = .{ .url = metrics }, .response_writer = &out.writer });
+    try t.expectEqual(std.http.Status.not_found, try post(&client, "/v1/completions", "{}", &out));
+    try t.expectEqual(std.http.Status.method_not_allowed, try client.request("GET", chat, null, &out));
+    try t.expectEqual(std.http.Status.ok, try client.request("GET", "/metrics", null, &out));
     // 2 plain + 3 tool requests generated; 3 rejected.
     try t.expect(std.mem.indexOf(u8, out.written(), "zerv_requests_total 8\n") != null);
     try t.expect(std.mem.indexOf(u8, out.written(), "zerv_rejected_total 3\n") != null);
@@ -338,6 +399,8 @@ test "HTTP server: real sockets, JSON and SSE framing, errors, keep-alive" {
     try t.expect(std.mem.indexOf(u8, out.written(), "zerv_spec_draft_tokens_total{stage=\"drafted\"} 9\n") != null);
     try t.expect(std.mem.indexOf(u8, out.written(), "zerv_spec_draft_tokens_total{stage=\"verified\"} 6\n") != null);
     try t.expect(std.mem.indexOf(u8, out.written(), "zerv_spec_draft_tokens_total{stage=\"accepted\"} 3\n") != null);
+    // Keep-alive: every request above went over one connection (none answered `close`).
+    try t.expectEqual(@as(u32, 1), client.connects);
 }
 
 const Gated = struct {
@@ -779,12 +842,12 @@ test "HTTP server: an unusable engine fails health checks and requests, and ends
 test "listener: exclusive port, immediate rebind after connections close" {
     const io = t.io;
     const any = try std.Io.net.IpAddress.parse("127.0.0.1", 0);
-    var first = try zerv.serve.listen.listen(any, 16);
+    var first = try serve.listen.listen(any, 16);
     const port = first.socket.address.getPort();
     const same = try std.Io.net.IpAddress.parse("127.0.0.1", port);
     // A second listener on the same address is refused, whether it asks for port
     // sharing (std's reuse_address sets SO_REUSEPORT) or not.
-    try t.expectError(error.AddressInUse, zerv.serve.listen.listen(same, 16));
+    try t.expectError(error.AddressInUse, serve.listen.listen(same, 16));
     try t.expectError(error.AddressInUse, same.listen(io, .{ .reuse_address = true }));
     // Server-side close first leaves the port's connection in TIME_WAIT; closing the
     // listener then re-listening at once must still work (SO_REUSEADDR).
@@ -796,7 +859,7 @@ test "listener: exclusive port, immediate rebind after connections close" {
     _ = reader.interface.peekGreedy(1) catch {}; // wait for the server's FIN
     client.close(io);
     first.deinit(io);
-    var again = try zerv.serve.listen.listen(same, 16);
+    var again = try serve.listen.listen(same, 16);
     defer again.deinit(io);
     try t.expectEqual(port, again.socket.address.getPort());
 }

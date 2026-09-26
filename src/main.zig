@@ -20,6 +20,8 @@ const usage =
     \\            [--f16-small-tile on]  (f16 prefill: short chunks whose 128-row tiles would leave the GPU idle use a 32-row tile; same values; off: previous kernels)
     \\            [--prefill-stall-ms 100]  (--parallel > 1: while a prompt prefills, running requests get a token at least every N ms plus one 4-layer segment; chunk: only between 512-token chunks)
     \\            [--prefill-order shortest]  (--parallel > 1: pending prompt with the fewest remaining tokens next; fifo: arrival order)
+    \\            [--kv-pool static]  (--parallel > 1: static = each request owns --context tokens of KV; shared = one pool, memory admitted per request for prompt + max_tokens, --context is the per-request maximum (max: the whole pool))
+    \\            [--kv-pool-pages 0]  (shared pool size in 128-token pages; 0: all memory left)
     \\            [--prefill-pack 8]  (--parallel > 1, f16 prefill: up to N pending prompts prefill together in one chunk, each bit-identical to alone; 1: one at a time)
     \\            [--f16-split shape]  (f16 prefill: split-K of the small FP32 projections fixed per shape, as packing needs; plan: per chunk size, the rule before 2026-09-26)
     \\            [--kv-page-tokens 128]  (KV page size, a multiple of 128; context: one page, the layout before paging; same values)
@@ -65,6 +67,8 @@ pub fn main(init: std.process.Init) !void {
     var stall: zerv.serve.batcher.Stall = .{ .ns = 100 * std.time.ns_per_ms };
     var prefill_order: zerv.serve.batcher.Order = .shortest;
     var prefill_pack: u32 = 8;
+    var kv_share = false;
+    var kv_pool_pages: u32 = 0;
     var f16_split: zerv.model.F16Split = .shape;
     var decode_fusion = true;
     var verify_fusion = true;
@@ -108,6 +112,8 @@ pub fn main(init: std.process.Init) !void {
         else if (std.mem.eql(u8, arg, "--prefill-stall-ms")) stall = if (std.mem.eql(u8, value, "chunk")) .chunk else .{ .ns = try std.fmt.parseInt(u64, value, 10) * std.time.ns_per_ms } //
         else if (std.mem.eql(u8, arg, "--prefill-order")) prefill_order = std.meta.stringToEnum(zerv.serve.batcher.Order, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--prefill-pack")) prefill_pack = try std.fmt.parseInt(u32, value, 10) //
+        else if (std.mem.eql(u8, arg, "--kv-pool")) kv_share = if (std.mem.eql(u8, value, "shared")) true else if (std.mem.eql(u8, value, "static")) false else return error.InvalidArguments //
+        else if (std.mem.eql(u8, arg, "--kv-pool-pages")) kv_pool_pages = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--f16-split")) f16_split = std.meta.stringToEnum(zerv.model.F16Split, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--kv-page-tokens")) kv_page = if (std.mem.eql(u8, value, "context")) 0 else try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--embedding-memory")) embedding_memory = std.meta.stringToEnum(zerv.gpu.Location, value) orelse return error.InvalidArguments //
@@ -170,7 +176,7 @@ pub fn main(init: std.process.Init) !void {
     const context_name = if (context == zerv.model.context_max) "max" else std.fmt.bufPrint(&context_text, "{d}", .{context}) catch unreachable;
     std.debug.print("zerv: loading {s} on {s} (context {s}, prefill chunk {d}, prefill precision {s}, KV {s}, prefix cache slots {d} = {d} MiB of {s} memory, speculative drafts {d}, {s})\n", .{ path, device.name(), context_name, prefill_chunk, @tagName(precision), @tagName(kv_type), snapshot_slots, snapshot_slots * zerv.model.snapshot_bytes / (1024 * 1024), @tagName(snapshot_memory), spec_draft, if (spec_adaptive) "adaptive" else "fixed" });
     var model: zerv.model.Model = undefined;
-    model.init(&device, &container, .{ .context = context, .prefill_rows = prefill_chunk, .prefill_precision = precision, .snapshots = snapshot_slots, .snapshot_memory = snapshot_memory, .embedding_memory = embedding_memory, .context_reserve = reserve_mib * 1024 * 1024, .kv_type = kv_type, .kv_page_tokens = kv_page, .decode_fusion = decode_fusion, .verify_fusion = verify_fusion, .delta_state_out = delta_state_out, .gemm_code = gemm_code, .matvec_accumulation = accumulation, .verify_rows = if (spec_draft > 0) spec_draft + 1 else 0, .mtp = spec_draft > 0, .draft_vocab = draft_vocab, .slots = parallel, .batch_rows = if (parallel > 1) parallel else 0, .f16_small_tile = f16_small_tile, .f16_split = f16_split }) catch |e| {
+    model.init(&device, &container, .{ .context = context, .prefill_rows = prefill_chunk, .prefill_precision = precision, .snapshots = snapshot_slots, .snapshot_memory = snapshot_memory, .embedding_memory = embedding_memory, .context_reserve = reserve_mib * 1024 * 1024, .kv_type = kv_type, .kv_page_tokens = kv_page, .decode_fusion = decode_fusion, .verify_fusion = verify_fusion, .delta_state_out = delta_state_out, .gemm_code = gemm_code, .matvec_accumulation = accumulation, .verify_rows = if (spec_draft > 0) spec_draft + 1 else 0, .mtp = spec_draft > 0, .draft_vocab = draft_vocab, .slots = parallel, .batch_rows = if (parallel > 1) parallel else 0, .f16_small_tile = f16_small_tile, .f16_split = f16_split, .kv_share = kv_share and parallel > 1, .kv_pages = kv_pool_pages }) catch |e| {
         if (e == error.InvalidKvPage) std.debug.print("zerv: --kv-page-tokens must be context or a positive multiple of {d} up to {d}\n", .{ zerv.model.layout.kv_page_quantum, zerv.model.layout.max_kv_page });
         if (e == error.InvalidDraftVocab) std.debug.print("zerv: --spec-draft-vocab must be full or 1..{d}\n", .{zerv.model.config.vocab});
         if (e == error.InvalidContext) std.debug.print("zerv: --context must be positive and even (the attention kernels read key pairs), and with --prefill-chunk > 0 a multiple of 32 (e.g. {d})\n", .{if (prefill_chunk > 0) context / 32 * 32 else context / 2 * 2});
@@ -185,7 +191,7 @@ pub fn main(init: std.process.Init) !void {
     };
     if (context == zerv.model.context_max) std.debug.print("zerv: context max = {d} tokens\n", .{model.state_layout.context});
     std.debug.print("zerv: gemm_f16x: {s}\n", .{model.gemmCodeStatus()});
-    std.debug.print("zerv: KV cache: {d} pages of {d} tokens\n", .{ model.state_layout.pages, model.state_layout.page });
+    std.debug.print("zerv: KV cache: {d} pages of {d} tokens{s}\n", .{ model.state_layout.pages, model.state_layout.page, if (model.options.kv_share) " (shared pool, admitted per request)" else "" });
     if (parallel > 1) {
         std.debug.print("zerv: parallel: {d} sequences of up to {d} tokens, batched decode, prefill order {s}, ", .{ parallel, model.state_layout.context, @tagName(prefill_order) });
         switch (stall) {
@@ -216,7 +222,7 @@ pub fn main(init: std.process.Init) !void {
         task.await(io);
         const st = batch.stats;
         const span: f64 = @floatFromInt(@max(st.last_ns - st.first_ns, 1));
-        std.debug.print("zerv: batcher: {d} batches ({d} rows, {d} partial, {d} inside prefill chunks), {d} prefill chunks ({d} packed, {d} units, {d} aborted); GPU busy {d:.1}% (decode {d:.1}%, prefill {d:.1}%) over {d:.1} s; batches by rows:", .{ st.batches, st.batch_rows, st.partial_batches, st.batches_in_chunk, st.prefill_chunks, st.packed_chunks, st.prefill_units, st.aborted_chunks, 100 * @as(f64, @floatFromInt(st.batch_ns + st.prefill_ns)) / span, 100 * @as(f64, @floatFromInt(st.batch_ns)) / span, 100 * @as(f64, @floatFromInt(st.prefill_ns)) / span, span / 1e9 });
+        std.debug.print("zerv: batcher: {d} batches ({d} rows, {d} partial, {d} inside prefill chunks), {d} prefill chunks ({d} packed, {d} units, {d} aborted, {d} admission waits); GPU busy {d:.1}% (decode {d:.1}%, prefill {d:.1}%) over {d:.1} s; batches by rows:", .{ st.batches, st.batch_rows, st.partial_batches, st.batches_in_chunk, st.prefill_chunks, st.packed_chunks, st.prefill_units, st.aborted_chunks, st.admission_waits, 100 * @as(f64, @floatFromInt(st.batch_ns + st.prefill_ns)) / span, 100 * @as(f64, @floatFromInt(st.batch_ns)) / span, 100 * @as(f64, @floatFromInt(st.prefill_ns)) / span, span / 1e9 });
         for (st.sizes[1 .. parallel + 1], 1..) |n, rows| std.debug.print(" {d}:{d}", .{ rows, n });
         std.debug.print("\n", .{});
     };

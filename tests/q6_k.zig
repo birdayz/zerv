@@ -1,7 +1,8 @@
 const std = @import("std");
-const quant = @import("zerv").quant;
+const quant = @import("quant");
 const t = std.testing;
-const Sha256 = std.crypto.hash.sha2.Sha256;
+const Sha256 = @import("fast_sha256.zig").Sha256; // hashing in the ReleaseFast support object
+const parallel = @import("parallel.zig");
 const Fingerprint = struct { blocks: usize, values: usize, output_sha256: []const u8 };
 const Goldens = struct {
     generator_sha256: []const u8,
@@ -11,6 +12,24 @@ const Goldens = struct {
     scales_fingerprint: Fingerprint,
     examples: []const struct { name: []const u8, packed_hex: []const u8, output_le_hex: []const u8 },
 };
+/// Halves c * 1024 + 0..1024 (finite ones), each with the four patterns.
+fn trailingHalves(patterns: *const [4][210]u8, c: usize, out: *std.ArrayList(u8)) !void {
+    var encoded: [210 * 4]u8 = undefined;
+    var output: [256 * 4]f32 = undefined;
+    var bytes: [256 * 4 * 4]u8 = undefined;
+    for (c * 1024..(c + 1) * 1024) |bits| {
+        if (bits & 0x7c00 == 0x7c00) continue;
+        for (patterns, 0..) |pattern, phase| {
+            const at = phase * 210;
+            @memcpy(encoded[at..][0..210], &pattern);
+            std.mem.writeInt(u16, encoded[at + 208 ..][0..2], @intCast(bits), .little);
+        }
+        try quant.decode(.q6_k, &encoded, &output);
+        canonical(&output, &bytes);
+        try out.appendSlice(t.allocator, &bytes);
+    }
+}
+
 fn load() !std.json.Parsed(Goldens) {
     return std.json.parseFromSlice(Goldens, t.allocator, @embedFile("fixtures/q6_k.json"), .{ .ignore_unknown_fields = true });
 }
@@ -63,19 +82,12 @@ test "Q6_K every finite trailing half and every signed subgroup scale encoding" 
     var encoded: [210 * 4]u8 = undefined;
     var output: [256 * 4]f32 = undefined;
     var bytes: [256 * 4 * 4]u8 = undefined;
+    // All finite trailing halves in order: chunks of 1024 run concurrently, hashed in order.
     var hash = Sha256.init(.{});
+    try parallel.hashChunks(&hash, 64, &patterns, trailingHalves);
     var blocks: usize = 0;
     for (0..65536) |bits| {
-        if (bits & 0x7c00 == 0x7c00) continue;
-        for (patterns, 0..) |pattern, phase| {
-            const at = phase * 210;
-            @memcpy(encoded[at..][0..210], &pattern);
-            std.mem.writeInt(u16, encoded[at + 208 ..][0..2], @intCast(bits), .little);
-        }
-        try quant.decode(.q6_k, &encoded, &output);
-        canonical(&output, &bytes);
-        hash.update(&bytes);
-        blocks += 4;
+        if (bits & 0x7c00 != 0x7c00) blocks += 4;
     }
     try t.expectEqual(@as(usize, 253952), blocks);
     try t.expectEqual(blocks, parsed.value.fingerprint.blocks);

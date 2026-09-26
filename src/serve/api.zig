@@ -1,11 +1,11 @@
 //! OpenAI Chat Completions v1 request validation and response encoding. Driver-free.
 //! Unsupported features are rejected with OpenAI-style errors, never silently ignored.
 const std = @import("std");
-const chat = @import("../chat/qwen38.zig");
-const pyjson = @import("../chat/pyjson.zig");
-const sampler = @import("../session/sampler.zig");
-const text = @import("../session/text.zig");
-const tools = @import("../session/tools.zig");
+const chat = @import("chat").qwen38;
+const pyjson = @import("chat").pyjson;
+const sampler = @import("session").sampler;
+const text = @import("session").text;
+const tools = @import("session").tools;
 const schema = @import("schema.zig");
 
 pub const Limits = struct {

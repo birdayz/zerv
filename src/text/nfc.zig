@@ -3,12 +3,13 @@ const std = @import("std");
 pub const unicode_version = "9.0.0";
 pub const Error = error{ InvalidUtf8, InsufficientScratch, InsufficientOutput, Overflow };
 const data = @embedFile("data/nfc9.bin");
-pub const table_sha256 = blk: {
-    @setEvalBranchQuota(8_000_000);
+/// SHA-256 of the embedded table, hex. Computed at run time: at comptime it cost ~25 s of
+/// every compile that referenced it (docs/development.md, "Tests in parallel").
+pub fn tableSha256() [64]u8 {
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(data, &digest, .{});
-    break :blk std.fmt.bytesToHex(digest, .lower);
-};
+    return std.fmt.bytesToHex(digest, .lower);
+}
 const decomp_count = read(u32, 4);
 const ccc_count = read(u32, 8);
 const composition_count = read(u32, 12);

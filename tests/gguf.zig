@@ -1,8 +1,8 @@
 const std = @import("std");
 const t = std.testing;
-const artifact = @import("zerv").artifact;
+const artifact = @import("artifact");
 const gguf = artifact.gguf;
-const Sha256 = std.crypto.hash.sha2.Sha256;
+const Sha256 = @import("fast_sha256.zig").Sha256; // hashing in the ReleaseFast support object
 const full = @embedFile("fixtures/gguf/default.gguf");
 const aligned = @embedFile("fixtures/gguf/aligned64.gguf");
 const metadata_only = @embedFile("fixtures/gguf/metadata.gguf");

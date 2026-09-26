@@ -1,8 +1,8 @@
 //! Test/benchmark ownership and transfers only, never native model execution.
 const std = @import("std");
-const zerv = @import("zerv");
-const gpu = zerv.gpu;
-const m = zerv.matvec;
+const matvec = @import("matvec");
+const gpu = @import("gpu");
+const m = matvec;
 pub const timeout_ns = 30 * std.time.ns_per_s;
 pub const Timing = @import("gpu_timing.zig").Timing;
 pub const Marks = @import("gpu_timing.zig").Marks;

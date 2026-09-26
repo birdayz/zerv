@@ -1,7 +1,7 @@
 //! Qwen3.8 (GGUF `qwen35`) hyperparameters and strict tensor inventory. Driver-free.
 const std = @import("std");
-const gguf = @import("../artifact/gguf.zig");
-const matvec = @import("../matvec/root.zig");
+const gguf = @import("artifact").gguf;
+const matvec = @import("matvec");
 
 pub const hidden = 5120;
 pub const ffn = 17408;

@@ -2,9 +2,9 @@
 //! externally serialized. One pre-recorded command per decode step; no per-step
 //! allocation, descriptor update or re-recording.
 const std = @import("std");
-const gpu = @import("../gpu/root.zig");
-const matvec = @import("../matvec/root.zig");
-const gguf = @import("../artifact/gguf.zig");
+const gpu = @import("gpu");
+const matvec = @import("matvec");
+const gguf = @import("artifact").gguf;
 const config = @import("config.zig");
 const layout = @import("layout.zig");
 const gemm = @import("gemm.zig");
@@ -85,6 +85,11 @@ pub const Options = struct {
     /// KV pool pages shared by the slots (0: `slots` x the pages of `context`, each slot
     /// owning its share; otherwise slots beyond the pool start without pages).
     kv_pages: u32 = 0,
+    /// Shared KV pool (docs/specs/concurrent.md, "18d.2 design"; several slots): no slot
+    /// owns pages at init, the scheduler maps them on demand (`ensurePages`, `releasePages`),
+    /// `context` is the per-sequence maximum, and with `kv_pages` = 0 the pool is sized to
+    /// the memory left (with `context = context_max`: each sequence may use the whole pool).
+    kv_share: bool = false,
     /// Batched decode projection arithmetic (`--decode-precision`, docs/specs/concurrent.md
     /// "18e design"): `.f32` (exact, the single-sequence arithmetic) or `.f16` (opt-in: the
     /// f16 prefill arithmetic, f16 x f16 -> f32 WMMA, for the projections the prefill f16
@@ -122,7 +127,7 @@ fn prefillSplit(options: Options, M: u32, plan_rows: u32, K: u32) u32 {
     const rows = if (options.prefill_precision == .f16 and options.f16_split == .shape) 128 else plan_rows;
     return gemm.splitChunk(M, rows, K, split_target, gemm.tileFor(M, plan_rows));
 }
-pub const Error = gpu.Error || matvec.Error || config.Error || layout.Error || gemm.Error || error{ InvalidToken, ContextFull, TooManyPipelines, InvalidTensorBytes, CaptureFull, PrefillDisabled, ProbeFailed, InvalidPlan, UnsupportedDevice, InvalidContext, InvalidSnapshot, InsufficientVram, VerifyDisabled, VerifyPending, NoVerify, MtpDisabled, VramBudgetUnknown, InvalidDraftVocab, MtpNeedsOneSlot, InvalidBatch, InvalidSlot, PagesMissing, PageInUse, ChunkInFlight, SlotNeedsReset };
+pub const Error = gpu.Error || matvec.Error || config.Error || layout.Error || gemm.Error || error{ InvalidToken, ContextFull, TooManyPipelines, InvalidTensorBytes, CaptureFull, PrefillDisabled, ProbeFailed, InvalidPlan, UnsupportedDevice, InvalidContext, InvalidSnapshot, InsufficientVram, VerifyDisabled, VerifyPending, NoVerify, PoolExhausted, MtpDisabled, VramBudgetUnknown, InvalidDraftVocab, MtpNeedsOneSlot, InvalidBatch, InvalidSlot, PagesMissing, PageInUse, ChunkInFlight, SlotNeedsReset };
 
 /// Segmented prefill (docs/specs/concurrent.md, "18c.2 design"): with several slots each
 /// chunk also exists as `prefill_segments` commands of `prefill_segment_layers` layers.
@@ -217,6 +222,29 @@ pub fn contextBytes(context: u32, shape: ContextShape) layout.Error!u64 {
     const s = try layout.stateWith(context, shape.kv_capacity, shape.mtp, shape.kv, shape.kv_page, shape.slots, shape.kv_pages);
     const a = try layout.actWith(context, shape.rows, shape.part_words, shape.x16, shape.decode_rows, shape.mtp, shape.verify, shape.slots);
     return a.words * 4 + s.words * 4 + s.kvBytes();
+}
+
+/// Shared pool with `context = context_max`: each sequence may use the whole pool (a
+/// multiple of 32, at most `limit`).
+fn sharedContext(limit: u32, pool_tokens: u64) u32 {
+    return @intCast(@min(limit, pool_tokens) / 32 * 32);
+}
+
+/// Shared pool: the most pool pages whose context-dependent buffers fit `room` bytes, with
+/// a per-sequence context of `context` (or, with `context_max`, the pool itself). 0: none fit.
+fn fitPages(room: u64, limit: u32, context: u32, shape: ContextShape) u32 {
+    const page: u64 = if (shape.kv_page == 0) 1 else shape.kv_page;
+    var lo: u32 = 0; // fits
+    var hi: u32 = max_pool_pages + 1; // does not fit
+    while (hi - lo > 1) {
+        const mid = lo + (hi - lo) / 2;
+        const ctx = if (context != context_max) context else sharedContext(limit, mid * page);
+        var sh = shape;
+        sh.kv_pages = mid;
+        const fits = ctx > 0 and if (contextBytes(ctx, sh)) |bytes| bytes <= room else |_| false;
+        if (fits) lo = mid else hi = mid;
+    }
+    return lo;
 }
 
 /// The largest multiple of 32 up to `limit` whose context-dependent buffers fit `room`
@@ -845,7 +873,29 @@ pub const Model = struct {
 
         // The context: given, or the largest that fits (`context_max`).
         const trained = self.hyper.context_length;
-        const context = if (options.context != context_max) options.context else fit: {
+        if (options.kv_share and options.slots < 2) return error.InvalidSlots;
+        // Shared pool: the pool pages (given, or the most that fit) and a per-sequence
+        // context of at most the pool (`context_max`: the whole pool).
+        if (options.kv_share and options.kv_pages == 0) {
+            const free = self.vram.free orelse return error.VramBudgetUnknown;
+            const cap = device.budget - device.allocated_bytes;
+            const by_free = std.math.sub(u64, free, fixed + vram_headroom + options.context_reserve) catch 0;
+            const by_cap = std.math.sub(u64, cap, fixed + host + cap_margin) catch 0;
+            const shape: ContextShape = .{ .kv_capacity = kv_capacity, .rows = @max(self.rows, 1), .part_words = part_words, .x16 = x16, .decode_rows = decodeRows(options), .mtp = options.mtp, .kv = options.kv_type, .kv_page = options.kv_page_tokens, .verify = options.verify_rows > 1, .slots = options.slots, .kv_pages = 0 };
+            const limit = @min(trained, layout.maxContext(kv_capacity, options.kv_type, options.kv_page_tokens));
+            const pages = fitPages(@min(by_free, by_cap), limit, options.context, shape);
+            if (pages == 0) {
+                self.vram.needed = fixed + vram_headroom + options.context_reserve;
+                self.vram.before_context = true;
+                self.vram.cap_limited = by_cap < by_free;
+                return error.InsufficientVram;
+            }
+            self.options.kv_pages = pages;
+        }
+        const pool_tokens: u64 = @as(u64, self.options.kv_pages) * (if (options.kv_page_tokens == 0) 1 else options.kv_page_tokens);
+        const context = if (options.context != context_max) options.context else if (options.kv_share)
+            sharedContext(@min(trained, layout.maxContext(kv_capacity, options.kv_type, options.kv_page_tokens)), pool_tokens)
+        else fit: {
             const free = self.vram.free orelse return error.VramBudgetUnknown;
             const cap = device.budget - device.allocated_bytes;
             const by_free = std.math.sub(u64, free, fixed + vram_headroom + options.context_reserve) catch 0;
@@ -866,7 +916,7 @@ pub const Model = struct {
         if (self.rows > 0 and context % 32 != 0) return error.InvalidContext;
         self.options.context = context;
         if (options.kv_type == .f16 and !device.storage16) return error.UnsupportedDevice;
-        self.state_layout = try layout.stateWith(context, kv_capacity, options.mtp, options.kv_type, options.kv_page_tokens, options.slots, options.kv_pages);
+        self.state_layout = try layout.stateWith(context, kv_capacity, options.mtp, options.kv_type, options.kv_page_tokens, options.slots, self.options.kv_pages);
         if (self.state_layout.pages > max_pool_pages or self.state_layout.words * 4 > capacity) return error.InvalidSlots;
         self.act_layout = try layout.actWith(context, @max(self.rows, 1), part_words, x16, decodeRows(options), options.mtp, options.verify_rows > 1, options.slots);
         self.slot_io = if (options.slots > 1) layout.io.slot else 0;
@@ -1345,6 +1395,7 @@ pub const Model = struct {
             return e;
         };
         self.ptab_live = true;
+        if (self.options.kv_share) return; // pages are mapped on demand
         for (0..S.slots) |slot| {
             if ((slot + 1) * S.seq_pages > S.pages) break;
             const words = std.mem.bytesAsSlice(u32, try self.ptab_staging.mapped());
@@ -1375,6 +1426,39 @@ pub const Model = struct {
             if (owner.* == slot) owner.* = no_owner;
         }
         self.mapped[slot] = 0;
+    }
+
+    /// Pool pages no slot holds.
+    pub fn freePages(self: *const Model) u32 {
+        var n: u32 = 0;
+        for (self.page_owner[0..self.state_layout.pages]) |owner| n += @intFromBool(owner == no_owner);
+        return n;
+    }
+
+    /// Maps free pool pages to `slot` until its positions below `tokens` are covered
+    /// (`PoolExhausted` when the pool has too few free pages; nothing is mapped then).
+    pub fn ensurePages(self: *Model, slot: u32, tokens: u32) Error!void {
+        const S = self.state_layout;
+        if (slot >= S.slots) return error.InvalidSlot;
+        if (tokens > S.context) return error.ContextFull;
+        const want = std.math.divCeil(u32, tokens, S.page) catch unreachable;
+        if (want <= self.mapped[slot]) return;
+        const need = want - self.mapped[slot];
+        if (self.freePages() < need) return error.PoolExhausted;
+        // Map in bounded batches (the free pages were counted: this cannot run short).
+        var pages: [256]u32 = undefined;
+        var left = need;
+        var next: usize = 0;
+        while (left > 0) {
+            var n: u32 = 0;
+            while (n < @min(left, pages.len)) : (next += 1) {
+                if (self.page_owner[next] != no_owner) continue;
+                pages[n] = @intCast(next);
+                n += 1;
+            }
+            try self.mapPages(slot, pages[0..n]);
+            left -= n;
+        }
     }
 
     /// Pages mapped for `slot` (logical pages 0..).

@@ -1,5 +1,5 @@
 const std = @import("std");
-const m = @import("zerv").matvec;
+const m = @import("matvec");
 const t = std.testing;
 
 test "matvec bounded shapes, byte addressing and two-dimensional dispatch" {

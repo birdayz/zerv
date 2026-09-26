@@ -1,7 +1,7 @@
 //! Scalar-X FP32 GEMM kernels for batched prefill (see gemm.comp). Driver-free geometry
 //! and extent validation; the caller owns kernels, buffers and barriers.
 const std = @import("std");
-const matvec = @import("../matvec/root.zig");
+const matvec = @import("matvec");
 
 pub const Variant = enum { f32_k, f32_m, q4_0, q4_1, q5_k, q6_k, q8_0 };
 pub const Push = extern struct {

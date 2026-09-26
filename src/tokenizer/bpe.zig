@@ -1,7 +1,7 @@
 //! Owned byte-BPE tables with the Qwen NFC/split profile and raw-byte decoding.
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const nfc = @import("../text/nfc.zig");
+const nfc = @import("text").nfc;
 const split = @import("qwen_split.zig");
 /// `added` and `control` tokens are both matched in input text; `control` tokens
 /// render as nothing in generated output (llama_token_to_piece with special=false).

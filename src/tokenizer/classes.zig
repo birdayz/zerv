@@ -9,12 +9,13 @@ pub const Properties = packed struct(u8) {
     space: bool = false,
     reserved: u4 = 0,
 };
-pub const table_sha256 = blk: {
-    @setEvalBranchQuota(2_000_000);
+/// SHA-256 of the embedded table, hex, computed at run time (at comptime it cost seconds of
+/// every compile that referenced it).
+pub fn tableSha256() [64]u8 {
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(data, &digest, .{});
-    break :blk std.fmt.bytesToHex(digest, .lower);
-};
+    return std.fmt.bytesToHex(digest, .lower);
+}
 
 fn read(at: usize) u32 {
     return std.mem.readInt(u32, data[at..][0..4], .little);

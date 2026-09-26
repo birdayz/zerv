@@ -1,6 +1,6 @@
 # Controlled work queue
 
-Active block: **18 · concurrent sequences** (below). Active goal (resumed by the user after 08c): native Qwen3.8-27B through
+Active block: **19 · image input (vision)** (below). Active goal (resumed by the user after 08c): native Qwen3.8-27B through
 `POST /v1/chat/completions`, fully verified. Not achieved yet. No proxy, mock
 inference, or external engine in the production path.
 
@@ -75,7 +75,45 @@ a toy", on serving several requests at once): block 17 is **parked** in place be
 open items (status unchanged; the single-user levers found by the HyperQwen protocol run are
 listed in it); block 18 is active.
 
-- [ ] **18 · concurrent sequences: batched decode for several requests** (active).
+Queue change (2026-09-26, user: "commit what we have. then, start working on vision support for
+qwen 3.8:27b"): block 18 is **parked** in place below with its open items; the in-tree 18e
+part 4 work (`gemm_rows.comp`, `DecodePrecision.split`, its gpu-test) was committed as WIP in
+`c30c6d9` without a spec section, report or model gates. The queued "Image input" item
+becomes block 19, active.
+
+- [ ] **19 · image input: Qwen3.8-27B vision through `/v1/chat/completions`** (active).
+  - Why: bruh sends tool screenshots as `image_url` user content (PNG data URLs); zerv answers
+    400 and the turn fails. llama-server serves them with `--mmproj`.
+  - Steps, one at a time, each with its gates:
+    - [ ] 19a research ([note](docs/research/vision-qwen38.md), first pass 2026-09-26): HF and
+      llama.cpp semantics read at the pinned revisions and cross-checked (encoder, merger,
+      2-D RoPE, interleaved M-RoPE positions, preprocessing, template, server media);
+      projector `mmproj-BF16.gguf` downloaded and verified, all 334 tensors bit-equal to the
+      RedHat checkpoint's BF16 tower (`tools/vision_artifacts.py`); llama-mtmd-cli runs it
+      here. Found: llama.cpp's merger uses tanh GELU (HF: erf), pads instead of stretching,
+      caps images at 4,096 tokens (HF 16,384); the prefix cache would confuse two same-size
+      images (all placeholders are one token id). Open: the note's section 9 (7 items, two
+      need a user decision: the HF dev-tool venv, the default image token maximum).
+    - [ ] Spec `docs/specs/vision.md` with gates and thresholds; FP64 NumPy vision reference
+      and the llama.cpp embedding/logits capture, validated against each other, before code.
+    - [ ] 19b image decode (PNG first) and preprocessing, bit-exact to PIL.
+    - [ ] 19c vision encoder on the GPU vs FP64; component benchmark vs llama.cpp's encoder.
+    - [ ] 19d language-model integration: embedding input rows, M-RoPE rows, per-sequence
+      position offset, prefix-cache key with image identity, MTP draft input policy;
+      whole-model logits vs FP64 and libllama.
+    - [ ] 19e serving: `image_url` data URLs, template, limits and errors; served outputs
+      and TTFT vs llama-server `--mmproj` on the same images.
+    - [ ] 19f JPEG, then WebP/GIF or explicit rejection.
+
+Process note (2026-09-26, user: "optimize our tests for parallelism"): tests now run one binary
+per file in parallel (`zig build check` runs every required check; ~96 s → 9.4 s cold for
+`zig build test`; [report](docs/bench/2026-09-26-test-parallelism.md)). The load exposed a
+committed batcher defect (a canceled prompt ran all its remaining chunks; fixed), a committed
+test hang (the packed-chunk test, 5/240 under load; fixed) and two timing flaws in the
+uncommitted 18d.2 shared-pool work of a concurrent session (fixed in place, uncommitted).
+
+- [ ] **18 · concurrent sequences: batched decode for several requests** — parked 2026-09-26
+  for block 19.
   - Why: zerv serves one request at a time; bruh's parallel subagents queue. Decode is
     weight-bandwidth bound (16.7 of 20 ms per step), so one weight pass can serve several
     sequences: the verify path already does 3 / 4 / 5 rows in 22.7 / 25.0 / 28.8 ms against
@@ -515,10 +553,7 @@ Proposed order (by impact on bruh use); the user chooses what comes next.
   - `tool_choice: "required"` and named functions (rejected with 400 today);
   - `response_format` `json_object` / `json_schema` (rejected with 400 today; bruh uses
     it only with `compaction.structured_output: true`, off by default).
-- **Image input.** bruh's `browser` and `generate_image` tools can return images, which
-  bruh sends as `image_url` user content; zerv rejects that with 400, so the turn fails.
-  llama-server without mmproj fails the same way. Research first: the vision encoder
-  for Qwen3.8-27B (the template has image/video tokens), its artifact, and the oracle.
+- ~~Image input~~: now block 19 (active, 2026-09-26).
 - **More than one sequence at a time.** Today requests are serialized (a bounded wait
   queue). Research the VRAM, KV and scheduling tradeoffs of parallel sequences or
   batched decode, and what bruh actually sends concurrently.

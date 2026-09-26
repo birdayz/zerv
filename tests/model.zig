@@ -1,15 +1,17 @@
 const std = @import("std");
-const zerv = @import("zerv");
-const config = zerv.model.config;
-const layout = zerv.model.layout;
+const matvec = @import("matvec");
+const artifact = @import("artifact");
+const model = @import("model");
+const config = model.config;
+const layout = model.layout;
 const t = std.testing;
 
-fn artifactBytes(s: *const config.Spec, format: zerv.matvec.Format) u64 {
-    const shape: zerv.matvec.Shape = .{ .format = format, .columns = @intCast(s.k), .rows = @intCast(s.rows) };
+fn artifactBytes(s: *const config.Spec, format: matvec.Format) u64 {
+    const shape: matvec.Shape = .{ .format = format, .columns = @intCast(s.k), .rows = @intCast(s.rows) };
     return shape.weightBytes() catch unreachable;
 }
 
-fn actualFormat(s: *const config.Spec) zerv.matvec.Format {
+fn actualFormat(s: *const config.Spec) matvec.Format {
     const name = config.specName(s);
     if (s.role != .matrix) return if (s.role == .embedding) .q4_0 else .f32;
     if (std.mem.eql(u8, name, "output.weight")) return .q6_k;
@@ -320,21 +322,21 @@ test "slots: state arena slot strides, KV pool pages and per-slot page tables" {
 }
 
 test "fitContext is the largest fitting multiple of 32" {
-    const shape: zerv.model.ContextShape = .{ .kv_capacity = 0xf000_0000, .rows = 512, .part_words = 1 << 20, .x16 = false, .decode_rows = 4, .mtp = true };
+    const shape: model.ContextShape = .{ .kv_capacity = 0xf000_0000, .rows = 512, .part_words = 1 << 20, .x16 = false, .decode_rows = 4, .mtp = true };
     const room: u64 = 6 * 1024 * 1024 * 1024;
-    const got = zerv.model.fitContext(room, 262144, shape);
+    const got = model.fitContext(room, 262144, shape);
     try t.expect(got > 0 and got % 32 == 0);
-    try t.expect(try zerv.model.contextBytes(got, shape) <= room);
-    try t.expect(try zerv.model.contextBytes(got + 32, shape) > room);
+    try t.expect(try model.contextBytes(got, shape) <= room);
+    try t.expect(try model.contextBytes(got + 32, shape) > room);
     // The limit binds; no room gives 0.
-    try t.expectEqual(@as(u32, 4096), zerv.model.fitContext(room, 4096, shape));
-    try t.expectEqual(@as(u32, 0), zerv.model.fitContext(1024, 262144, shape));
+    try t.expectEqual(@as(u32, 4096), model.fitContext(room, 4096, shape));
+    try t.expectEqual(@as(u32, 0), model.fitContext(1024, 262144, shape));
 }
 
 test "qwen35 metadata gate rejects other artifacts" {
-    var file = try zerv.artifact.MappedFile.open(t.io, "tests/fixtures/gguf/default.gguf", 4096);
+    var file = try artifact.MappedFile.open(t.io, "tests/fixtures/gguf/default.gguf", 4096);
     defer file.deinit();
-    var container = try zerv.artifact.gguf.Container.parse(t.allocator, file.bytes, .{});
+    var container = try artifact.gguf.Container.parse(t.allocator, file.bytes, .{});
     defer container.deinit();
     try t.expectError(error.UnsupportedModel, config.hyper(&container));
 }
@@ -343,7 +345,7 @@ test "tensor checks reject wrong shapes, types and embedding formats" {
     const specs = config.tensors();
     const bytes: [4]u8 = @splat(0);
     for (&specs) |*s| {
-        var tensor: zerv.artifact.gguf.Tensor = .{ .name = config.specName(s), .kind = .f32, .rank = if (s.rows == 1) 1 else 2, .dims = .{ s.k, s.rows, 1, 1 }, .offset = 0, .size = 4, .data = &bytes };
+        var tensor: artifact.gguf.Tensor = .{ .name = config.specName(s), .kind = .f32, .rank = if (s.rows == 1) 1 else 2, .dims = .{ s.k, s.rows, 1, 1 }, .offset = 0, .size = 4, .data = &bytes };
         tensor.kind = switch (s.role) {
             .param => .f32,
             .embedding => .q4_0,
@@ -363,7 +365,7 @@ test "tensor checks reject wrong shapes, types and embedding formats" {
         try t.expectError(error.WrongTensorType, config.check(s, &wrong));
     }
     try t.expectError(error.WrongTensorType, config.matrixFormat(.bf16));
-    try t.expectEqual(zerv.matvec.Format.q5_k, try config.matrixFormat(.q5_k));
+    try t.expectEqual(matvec.Format.q5_k, try config.matrixFormat(.q5_k));
     // The MTP inventory: 15 blk.64 tensors; only eh_proj may be Q8_0 (multi-row only).
     const mtp = config.mtpTensors();
     var rows_only: u32 = 0;
@@ -373,7 +375,7 @@ test "tensor checks reject wrong shapes, types and embedding formats" {
             rows_only += 1;
             try t.expectEqualStrings("blk.64.nextn.eh_proj.weight", config.specName(s));
             try t.expectEqual(@as(u64, 10240), s.k);
-            var q8: zerv.artifact.gguf.Tensor = undefined;
+            var q8: artifact.gguf.Tensor = undefined;
             q8.kind = .q8_0;
             q8.rank = 2;
             q8.dims = .{ 10240, 5120, 1, 1 };
@@ -384,7 +386,7 @@ test "tensor checks reject wrong shapes, types and embedding formats" {
 }
 
 test "prefill GEMM geometry: split-K selection, validation and extents" {
-    const gemm = zerv.model.gemm;
+    const gemm = model.gemm;
     // Tile 256 x 32. Large outputs need no split; small M or few row tiles split K.
     try t.expectEqual(@as(u32, 256), gemm.tile_m);
     try t.expectEqual(@as(u32, 32), gemm.Tile.narrow.rows());
@@ -429,7 +431,7 @@ test "prefill GEMM geometry: split-K selection, validation and extents" {
 }
 
 test "split-K decode attention geometry and push layouts" {
-    const att = zerv.model.attention;
+    const att = model.attention;
     try t.expectEqual(@as(u32, 6), att.heads_per_kv);
     try t.expectEqual(@as(u32, 64), att.chunk);
     // Scores: one workgroup per chunk pair (block 17c).
@@ -451,7 +453,7 @@ test "split-K decode attention geometry and push layouts" {
     try t.expectEqual(@as(u32, 24), att.pushBytes(.gmax));
     try t.expectEqual(@as(u32, 36), att.pushBytes(.block));
     for ([_]att.Pass{ .scores, .gmax, .pv, .block, .combine }) |pass| {
-        for ([_]zerv.model.KvType{ .f32, .f16 }) |kv| {
+        for ([_]model.KvType{ .f32, .f16 }) |kv| {
             const code = att.module(pass, kv);
             try t.expect(code.len > 20 and std.mem.readInt(u32, code[0..4], .little) == 0x07230203);
         }
@@ -459,7 +461,6 @@ test "split-K decode attention geometry and push layouts" {
 }
 
 test "prefill plans and chunk policy" {
-    const model = zerv.model;
     var plans: [model.max_plans]model.Plan = undefined;
     // Default capacity: plans of 32/64/128/256/512 rows (split-K sized per plan).
     const n = model.makePlans(512, &plans);

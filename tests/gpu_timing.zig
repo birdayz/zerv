@@ -1,6 +1,6 @@
 //! Private test/benchmark instrumentation. No production GPU API or timing claim.
 const std = @import("std");
-const gpu = @import("zerv").gpu;
+const gpu = @import("gpu");
 const vk = gpu.testing.abi;
 const QueryPool = ?*opaque {};
 const QueryInfo = extern struct {

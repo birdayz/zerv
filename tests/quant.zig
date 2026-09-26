@@ -1,26 +1,8 @@
+//! Q4_0/Q8_0 block decoding against the independent quant goldens (tests/fixtures/quantization.json).
 const std = @import("std");
-const quant = @import("zerv").quant;
+const quant = @import("quant");
 const testing = std.testing;
-const Sha256 = std.crypto.hash.sha2.Sha256;
-
-test {
-    _ = @import("gguf.zig");
-    _ = @import("chat.zig");
-    _ = @import("nfc.zig");
-    _ = @import("tokenizer_split.zig");
-    _ = @import("tokenizer.zig");
-    _ = @import("q4_1.zig");
-    _ = @import("q5_k.zig");
-    _ = @import("q6_k.zig");
-    _ = @import("gpu_abi.zig");
-    _ = @import("matvec.zig");
-    _ = @import("model.zig");
-    _ = @import("session.zig");
-    _ = @import("serve.zig");
-    _ = @import("batcher.zig");
-    _ = @import("tools.zig");
-    _ = @import("prefix.zig");
-}
+const Sha256 = @import("fast_sha256.zig").Sha256; // hashing in the ReleaseFast support object
 
 const Fingerprint = struct {
     scale_cases: usize,

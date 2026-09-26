@@ -1,6 +1,6 @@
 const std = @import("std");
 const t = std.testing;
-const chat = @import("zerv").chat.qwen38;
+const chat = @import("chat").qwen38;
 const Golden = struct {
     generator_sha256: []const u8,
     cases: []const struct {

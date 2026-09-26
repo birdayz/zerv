@@ -53,6 +53,8 @@ pub const Stats = struct {
     prefill_units: u64 = 0,
     batches_in_chunk: u64 = 0,
     aborted_chunks: u64 = 0,
+    /// Times a prompt had to wait for memory (`admit` false).
+    admission_waits: u64 = 0,
 };
 
 /// `Backend` is called by the scheduler task only, never concurrently:
@@ -63,6 +65,9 @@ pub const Stats = struct {
 ///       and runs its first unit; with no items, runs the next unit of the chunk in flight;
 ///       the tokens are read only by the starting call)
 ///   abortChunk() void   (drop the chunk in flight; its slots are reset before reuse)
+///   admit(slot: u32, tokens: usize) bool   (make room for `tokens` positions of the slot's
+///       sequence before its prompt starts; false: not now, the prompt waits)
+///   release(slot: u32) void   (a freed slot's memory goes back to the pool)
 ///   checkRow(row: Row) !void   (can this row run now? a failing row gets its own error,
 ///       the other rows of the batch run)
 ///   decodeBatch(rows: []const Row) ![]const f32   (rows.len logits rows of `vocab` floats)
@@ -107,6 +112,12 @@ pub fn Batcher(comptime Backend: type) type {
             result: []const f32 = &.{},
             err: ?anyerror = null,
             hold: Hold = .none,
+            /// Positions the sequence may reach (prompt + output limit; 0: its prompt only),
+            /// and whether the backend admitted it (`admit`); a failed admission waits for
+            /// a release (`admit_epoch`).
+            reserve: usize = 0,
+            admitted: bool = false,
+            failed_epoch: u64 = std.math.maxInt(u64),
         };
 
         io: std.Io,
@@ -127,6 +138,13 @@ pub fn Batcher(comptime Backend: type) type {
         last_batch_end: i96 = 0,
         /// The chunk in flight (between prefill units).
         pack: ?Pack = null,
+        /// Slots freed since the scheduler last ran `release` for them.
+        to_release: u64 = 0,
+        /// Bumped whenever memory is released: prompts that failed admission retry.
+        admit_epoch: u64 = 0,
+        /// Arrival order of the oldest prompt that failed admission: newer prompts are not
+        /// admitted before it (no starvation of large prompts).
+        blocked: ?u64 = null,
         stats: Stats = .{},
 
         pub fn init(io: std.Io, backend: Backend, options: Options) error{InvalidSlots}!Self {
@@ -170,6 +188,13 @@ pub fn Batcher(comptime Backend: type) type {
             if (tokens.len == 0) return error.InvalidToken;
             return self.submit(slot, .prefill, tokens, 0);
         }
+        /// The positions `slot`'s sequence may reach (prompt plus output limit): memory the
+        /// backend admits before the next prompt starts (`admit`).
+        pub fn reserve(self: *Self, slot: u32, tokens: usize) void {
+            self.mutex.lockUncancelable(self.io);
+            defer self.mutex.unlock(self.io);
+            self.slot[slot].reserve = tokens;
+        }
         /// Borrowed logits after `token` (until `sampled`).
         pub fn step(self: *Self, slot: u32, token: u32) anyerror![]const f32 {
             return self.submit(slot, .step, &.{}, token);
@@ -182,7 +207,8 @@ pub fn Batcher(comptime Backend: type) type {
             self.poke();
         }
 
-        /// Ask `run` to return (after the operation it is running, if any).
+        /// Ask `run` to return (after the operation it is running, if any, and after returning
+        /// the memory of slots already left).
         pub fn stop(self: *Self) void {
             self.mutex.lockUncancelable(self.io);
             defer self.mutex.unlock(self.io);
@@ -252,13 +278,28 @@ pub fn Batcher(comptime Backend: type) type {
             s.hold = .none;
         }
 
-        fn free(_: *Self, s: *Slot) void {
+        fn free(self: *Self, s: *Slot) void {
+            const i = (@intFromPtr(s) - @intFromPtr(&self.slot[0])) / @sizeOf(Slot);
+            self.to_release |= @as(u64, 1) << @intCast(i);
+            if (s.admitted or (self.blocked != null and s.order == self.blocked.?)) self.blocked = null;
+            s.admitted = false;
+            s.reserve = 0;
+            s.failed_epoch = std.math.maxInt(u64);
             s.used = false;
             s.closing = false;
             s.decoding = false;
             s.op = .none;
             s.hold = .none;
             s.tokens = &.{};
+        }
+
+        /// Whether a pending reset or prompt may be chosen now: resets always; a prompt when
+        /// admitted, or when it has not failed admission since the last release and no older
+        /// prompt is waiting for memory.
+        fn eligible(self: *const Self, s: *const Slot) bool {
+            if (s.op == .reset or s.admitted) return true;
+            if (s.failed_epoch == self.admit_epoch) return false;
+            return self.blocked == null or s.order <= self.blocked.?;
         }
 
         /// Prefill order between chunks: resets first (they are cheap), then the fewest
@@ -336,6 +377,12 @@ pub fn Batcher(comptime Backend: type) type {
                     s.op = .none;
                     s.err = error.InvalidChunk;
                     self.complete(s);
+                } else if (s.canceled) {
+                    // More chunks, but the waiter was canceled during this unit: complete it
+                    // now; the rest of its prompt is not run (and its tokens not read).
+                    s.op = .none;
+                    s.err = error.Canceled;
+                    self.complete(s);
                 } else {
                     // More chunks: the operation stays queued.
                     s.running = false;
@@ -348,11 +395,21 @@ pub fn Batcher(comptime Backend: type) type {
             var rows: [max_slots]Row = undefined;
             while (true) {
                 self.mutex.lockUncancelable(self.io);
+                const seen = self.wake.load(.acquire);
+                if (self.to_release != 0) {
+                    // Freed slots' memory back to the pool (before any new admission, and
+                    // before stopping: a slot left just before `stop` returns its memory).
+                    const bits = self.to_release;
+                    self.to_release = 0;
+                    self.admit_epoch += 1;
+                    self.mutex.unlock(self.io);
+                    for (0..self.options.slots) |i| if (bits & (@as(u64, 1) << @intCast(i)) != 0) self.backend.release(@intCast(i));
+                    continue;
+                }
                 if (self.stopping) {
                     self.mutex.unlock(self.io);
                     return;
                 }
-                const seen = self.wake.load(.acquire);
                 if (self.pack) |*pk| {
                     var live: u32 = 0;
                     for (pk.slots[0..pk.n], 0..) |slot, i| {
@@ -381,7 +438,7 @@ pub fn Batcher(comptime Backend: type) type {
                     if (!s.used or s.closing) continue;
                     if (s.decoding) n_decoding += 1;
                     switch (s.op) {
-                        .reset, .prefill => if (!s.running and (pre == null or self.before(s, &self.slot[pre.?]))) {
+                        .reset, .prefill => if (!s.running and self.eligible(s) and (pre == null or self.before(s, &self.slot[pre.?]))) {
                             pre = @intCast(i);
                         },
                         .step => n_steps += 1,
@@ -461,6 +518,9 @@ pub fn Batcher(comptime Backend: type) type {
                     self.mutex.lockUncancelable(self.io);
                     self.account(&self.stats.prefill_ns, t0, t1);
                     s.op = .none;
+                    // The backend's reset returned the slot's memory to the pool.
+                    s.admitted = false;
+                    self.admit_epoch += 1;
                     if (out) |_| {} else |e| s.err = e;
                     self.complete(s);
                 } else {
@@ -476,15 +536,34 @@ pub fn Batcher(comptime Backend: type) type {
                             const s = &self.slot[i];
                             remaining[n] = s.tokens.len - s.done;
                             if (n > 0 and !self.backend.packFits(remaining[0 .. n + 1])) break;
+                            // Memory for the whole sequence before its prompt starts (the
+                            // backend call is host bookkeeping and a page-table copy).
+                            if (!s.admitted) {
+                                if (self.backend.admit(i, @max(s.reserve, s.tokens.len))) {
+                                    s.admitted = true;
+                                    if (self.blocked != null and self.blocked.? == s.order) self.blocked = null;
+                                } else {
+                                    s.failed_epoch = self.admit_epoch;
+                                    if (self.blocked == null or s.order < self.blocked.?) self.blocked = s.order;
+                                    self.stats.admission_waits += 1;
+                                    break;
+                                }
+                            }
                             items[n] = .{ .slot = i, .tokens = s.tokens[s.done..] };
                             taken |= @as(u64, 1) << @intCast(i);
                             n += 1;
                             if (n == self.options.pack) break;
                             next = null;
                             for (self.slot[0..self.options.slots], 0..) |*c, j| {
-                                if (!c.used or c.closing or c.running or c.op != .prefill or taken & (@as(u64, 1) << @intCast(j)) != 0) continue;
+                                if (!c.used or c.closing or c.running or c.op != .prefill or !self.eligible(c) or taken & (@as(u64, 1) << @intCast(j)) != 0) continue;
                                 if (next == null or self.before(c, &self.slot[next.?])) next = @intCast(j);
                             }
+                        }
+                        if (n == 0) {
+                            // Its memory is not free yet: wait for a release (not eligible
+                            // again until then).
+                            self.mutex.unlock(self.io);
+                            continue;
                         }
                         var pk: Pack = .{ .n = @intCast(n), .slots = undefined, .gone = @splat(false) };
                         for (items[0..n], 0..) |item, k| {

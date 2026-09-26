@@ -8,7 +8,7 @@
 //! (compact JSON in generation order). Byte-at-a-time state machine with bounded
 //! buffers; allocation-free. This is a parser, not a constraint: names are not checked.
 const std = @import("std");
-const pyjson = @import("../chat/pyjson.zig");
+const pyjson = @import("chat").pyjson;
 
 /// JSON value kinds a parameter schema admits (llama.cpp `value_types`).
 pub const Types = packed struct(u8) {

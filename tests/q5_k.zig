@@ -1,7 +1,8 @@
 const std = @import("std");
-const quant = @import("zerv").quant;
+const quant = @import("quant");
 const t = std.testing;
-const Sha256 = std.crypto.hash.sha2.Sha256;
+const Sha256 = @import("fast_sha256.zig").Sha256; // hashing in the ReleaseFast support object
+const parallel = @import("parallel.zig");
 const Fingerprint = struct { blocks: usize, values: usize, output_sha256: []const u8 };
 const Goldens = struct {
     generator_sha256: []const u8,
@@ -12,6 +13,32 @@ const Goldens = struct {
     scales_fingerprint: Fingerprint,
     examples: []const struct { name: []const u8, packed_hex: []const u8, output_le_hex: []const u8 },
 };
+/// Chunk c: field c / 64 (the scale d or the minimum dmin), halves (c % 64) * 1024 + 0..1024,
+/// each block row with the three partner values in the other field.
+const GlobalFields = struct {
+    pattern: *const [176]u8,
+    partners: []const u16,
+    fn produce(self: GlobalFields, c: usize, out: *std.ArrayList(u8)) !void {
+        var encoded: [176 * 3]u8 = undefined;
+        var output: [256 * 3]f32 = undefined;
+        var bytes: [256 * 3 * 4]u8 = undefined;
+        std.debug.assert(self.partners.len == 3);
+        const field = c / 64;
+        for ((c % 64) * 1024..(c % 64 + 1) * 1024) |bits| {
+            if (bits & 0x7c00 == 0x7c00) continue;
+            for (self.partners, 0..) |other, i| {
+                const at = i * 176;
+                @memcpy(encoded[at..][0..176], self.pattern);
+                std.mem.writeInt(u16, encoded[at..][0..2], if (field == 0) @intCast(bits) else other, .little);
+                std.mem.writeInt(u16, encoded[at + 2 ..][0..2], if (field == 1) @intCast(bits) else other, .little);
+            }
+            try quant.decode(.q5_k, &encoded, &output);
+            canonical(&output, &bytes);
+            try out.appendSlice(t.allocator, &bytes);
+        }
+    }
+};
+
 fn load() !std.json.Parsed(Goldens) {
     return std.json.parseFromSlice(Goldens, t.allocator, @embedFile("fixtures/q5_k.json"), .{ .ignore_unknown_fields = true });
 }
@@ -64,22 +91,13 @@ test "Q5_K finite global fields and exhaustive packed subscale byte positions" {
     var encoded: [176 * partners.len]u8 = undefined;
     var output: [256 * partners.len]f32 = undefined;
     var bytes: [256 * partners.len * 4]u8 = undefined;
+    // Both fields x all finite halves, in that order: chunks of 1024 halves run concurrently
+    // and are hashed in order (tests/parallel.zig).
     var hash = Sha256.init(.{});
+    try parallel.hashChunks(&hash, 2 * 64, GlobalFields{ .pattern = &pattern, .partners = &partners }, GlobalFields.produce);
     var blocks: usize = 0;
-    for (0..2) |field| {
-        for (0..65536) |bits| {
-            if (bits & 0x7c00 == 0x7c00) continue;
-            for (partners, 0..) |other, i| {
-                const at = i * 176;
-                @memcpy(encoded[at..][0..176], &pattern);
-                std.mem.writeInt(u16, encoded[at..][0..2], if (field == 0) @intCast(bits) else other, .little);
-                std.mem.writeInt(u16, encoded[at + 2 ..][0..2], if (field == 1) @intCast(bits) else other, .little);
-            }
-            try quant.decode(.q5_k, &encoded, &output);
-            canonical(&output, &bytes);
-            hash.update(&bytes);
-            blocks += partners.len;
-        }
+    for (0..2 * 65536) |i| {
+        if (i & 0x7c00 != 0x7c00) blocks += partners.len;
     }
     try t.expectEqual(@as(usize, 380928), blocks);
     try t.expectEqual(blocks, parsed.value.fingerprint.blocks);

@@ -4,7 +4,7 @@ const classes = @import("classes.zig");
 pub const properties = classes.properties;
 pub const Properties = classes.Properties;
 pub const unicode_version = classes.unicode_version;
-pub const table_sha256 = classes.table_sha256;
+pub const tableSha256 = classes.tableSha256;
 pub const Limits = struct { max_input_bytes: usize = 1024 * 1024 };
 pub const Error = error{ InvalidUtf8, InputTooLarge };
 

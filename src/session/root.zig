@@ -6,6 +6,8 @@ pub const text = @import("text.zig");
 pub const tools = @import("tools.zig");
 pub const prefix = @import("prefix.zig");
 pub const spec = @import("spec.zig");
+pub const media = @import("media.zig");
+pub const Media = media.Media;
 
 /// Model-profile token ids, resolved from the tokenizer at load time.
 pub const Special = struct {
@@ -18,6 +20,11 @@ pub const Special = struct {
 
 pub const Request = struct {
     prompt: []const u32,
+    /// Prompt rows fed by media (image encoder outputs) instead of their placeholder
+    /// tokens (docs/specs/prefix-cache.md, "Media spans"). The backend must then provide
+    /// `prefillMedia(tokens, spans, first)`: `spans` with prompt rows, `first` the prompt
+    /// row of `tokens[0]`, every span whole inside the tokens.
+    media: []const Media = &.{},
     max_tokens: u32,
     params: sampler.Params = .{},
     stops: []const []const u8 = &.{},
@@ -64,7 +71,7 @@ pub const Result = struct {
     backend_ns: u64 = 0,
     sample_ns: u64 = 0,
 };
-pub const Error = sampler.Error || error{ InvalidStop, EmptyPrompt, ContextExceeded, InvalidMaxTokens, PieceTooLong, NoAllowedToken, SnapshotsUnsupported };
+pub const Error = sampler.Error || error{ InvalidStop, EmptyPrompt, ContextExceeded, InvalidMaxTokens, PieceTooLong, NoAllowedToken, SnapshotsUnsupported, InvalidMedia, MediaUnsupported };
 
 const max_piece = 16384;
 
@@ -75,6 +82,8 @@ pub fn Generation(comptime Backend: type, comptime Tokenizer: type, comptime Sin
             if (request.max_tokens == 0) return error.InvalidMaxTokens;
             const context = backend.context();
             if (request.prompt.len >= context) return error.ContextExceeded;
+            try media.validate(request.media, request.prompt.len);
+            if (request.media.len > 0 and !comptime mediaInput(Backend)) return error.MediaUnsupported;
             const limit: u32 = @intCast(@min(request.max_tokens, context - request.prompt.len));
             var s = try sampler.Sampler.init(allocator, backend.vocab(), request.params);
             defer s.deinit(allocator);
@@ -106,11 +115,11 @@ pub fn Generation(comptime Backend: type, comptime Tokenizer: type, comptime Sin
             var logits: []const f32 = undefined;
             if (request.cache) |cache| {
                 if (comptime snapshots(Backend)) {
-                    logits = try prefillCached(backend, cache, request.prompt, &begin);
+                    logits = try prefillCached(backend, cache, request.prompt, request.media, &begin);
                 } else return error.SnapshotsUnsupported;
             } else {
                 try backend.reset();
-                logits = try backend.prefill(request.prompt);
+                logits = try prefillSegment(backend, request.prompt, request.media, 0);
             }
             const prefill_end = std.Io.Clock.awake.now(io);
             var generated: u32 = 0;
@@ -175,7 +184,7 @@ pub fn Generation(comptime Backend: type, comptime Tokenizer: type, comptime Sin
                             policy.timeCommit(commit_ns);
                             policy.observe(sv.probs[0 .. sv.rows - 1], m - 1);
                         }
-                        if (request.cache) |cache| cache.record(sv.tokens[0..m]);
+                        if (request.cache) |cache| cache.record(sv.tokens[0..m], &.{});
                     }
                     // Drafts: at most one fewer than the tokens still to sample (each verified
                     // row yields at most one) and inside the context (the verify's last row).
@@ -216,7 +225,7 @@ pub fn Generation(comptime Backend: type, comptime Tokenizer: type, comptime Sin
                 if (request.cache) |cache| {
                     errdefer cache.invalidate();
                     sv.logits = try backend.step(token);
-                    cache.record(&.{token});
+                    cache.record(&.{token}, &.{});
                 } else sv.logits = try backend.step(token);
                 backend_ns += elapsed(io, step_start);
             }
@@ -227,7 +236,7 @@ pub fn Generation(comptime Backend: type, comptime Tokenizer: type, comptime Sin
                 const t0 = std.Io.Clock.awake.now(io);
                 try backend.commit(sv.row + 1);
                 backend_ns += elapsed(io, t0);
-                if (request.cache) |cache| cache.record(sv.tokens[0 .. sv.row + 1]);
+                if (request.cache) |cache| cache.record(sv.tokens[0 .. sv.row + 1], &.{});
                 sv.pending = false;
                 stats.verified += sv.row;
                 stats.accepted += sv.row;
@@ -296,10 +305,10 @@ fn elapsed(io: std.Io, since: std.Io.Timestamp) u64 {
 
 /// Starts `prompt` from the prefix cache: reset, restore or keep, then prefill the rest
 /// in segments that end at the snapshot points, saving a snapshot after each.
-fn prefillCached(backend: anytype, cache: *prefix.Cache, prompt: []const u32, begin: *prefix.Begin) ![]const f32 {
+fn prefillCached(backend: anytype, cache: *prefix.Cache, prompt: []const u32, spans: []const Media, begin: *prefix.Begin) ![]const f32 {
     // Any backend failure leaves the model state unknown: forget the cache.
     errdefer cache.invalidate();
-    begin.* = cache.begin(prompt);
+    begin.* = cache.begin(prompt, spans);
     switch (begin.outcome) {
         .reset => try backend.reset(),
         .restore => try backend.loadSnapshot(begin.slot, begin.start),
@@ -307,15 +316,34 @@ fn prefillCached(backend: anytype, cache: *prefix.Cache, prompt: []const u32, be
     }
     var points: [prefix.max_points]u32 = undefined;
     var at = begin.start;
-    for (cache.points(prompt, begin.start, &points)) |point| {
-        _ = try backend.prefill(prompt[at..point]);
-        cache.record(prompt[at..point]);
+    for (cache.points(prompt, spans, begin.start, &points)) |point| {
+        _ = try prefillSegment(backend, prompt[at..point], spans, at);
+        cache.record(prompt[at..point], media.within(spans, at, point));
         try backend.saveSnapshot(cache.claim());
         at = point;
     }
-    const logits = try backend.prefill(prompt[at..]);
-    cache.record(prompt[at..]);
+    const n: u32 = @intCast(prompt.len);
+    const logits = try prefillSegment(backend, prompt[at..], spans, at);
+    cache.record(prompt[at..], media.within(spans, at, n));
     return logits;
+}
+
+/// Prefills prompt rows `first..first + tokens.len` (never cutting a span): through
+/// `prefillMedia` when spans lie among them, else `prefill`.
+fn prefillSegment(backend: anytype, tokens: []const u32, spans: []const Media, first: u32) ![]const f32 {
+    const inner = media.within(spans, first, first + @as(u32, @intCast(tokens.len)));
+    if (inner.len == 0) return backend.prefill(tokens);
+    if (comptime mediaInput(@TypeOf(backend))) return backend.prefillMedia(tokens, inner, first);
+    unreachable; // rejected in `run`
+}
+
+/// Whether `Backend` (a type or a pointer to one) takes media rows (`prefillMedia`).
+fn mediaInput(comptime Backend: type) bool {
+    const T = switch (@typeInfo(Backend)) {
+        .pointer => |p| p.child,
+        else => Backend,
+    };
+    return @hasDecl(T, "prefillMedia");
 }
 
 /// Whether `Backend` (a type or a pointer to one) supports prefix-cache snapshots.
