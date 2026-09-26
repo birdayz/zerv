@@ -77,7 +77,7 @@ just release     # ReleaseFast, native-CPU server, benchmarks and tools (--confi
 
 - **One Bazel package per directory, explicit deps.** `src/NAME/BUILD.bazel` is the
   package's `zig_library` (module `NAME`) with its dependencies and embedded data; `//src:zerv`
-  the umbrella; `//src:server` the server. Tests: `tests/BUILD.bazel`, macro `zerv_test`
+  the umbrella; `//src:zerv` the server. Tests: `tests/BUILD.bazel`, macro `zerv_test`
   (`bazel/defs.bzl`) = the test in Debug plus `NAME_release_fast` (a `zig_configure_test`,
   stripped, tag `release_fast`), each declaring the packages it imports, the files it embeds
   and the files it opens at run time (`data`). The golden SHA-256 is a ReleaseFast

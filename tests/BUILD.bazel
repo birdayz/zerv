@@ -176,7 +176,7 @@ zig_test(
     ],
     linkopts = ["$(location @vulkan_loader//:libvulkan.so)"],
     zigopts = ["-lc"],
-    deps = ["//src:zerv", "//src/gpu", "//src/matvec"],
+    deps = ["//src:zerv_lib", "//src/gpu", "//src/matvec"],
     size = "large",
     tags = ["manual", "exclusive", "gpu"],
 )
@@ -186,7 +186,7 @@ zig_library(
     name = "gpu_workload",
     main = "gpu_workload.zig",
     extra_srcs = ["fixtures/gpu/affine.spv", "fixtures/gpu/dispatch.json"],
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
     visibility = ["//bench:__pkg__"],
 )
 

@@ -4,7 +4,8 @@ record the context the server chose, its VRAM accounting and the VRAM actually i
 and serve one short request to show it works. One server at a time; nothing else should
 use the GPU (docs/specs/model.md, `--context max`).
 
-Usage: bench/context_max.py --output DIR [--binary zig-out/bin/zerv] [--configs NAME,...]"""
+Usage: bench/context_max.py --output DIR [--binary PATH] [--configs NAME,...]
+(default binary: //src:zerv built with Bazel, --config=release)"""
 import argparse
 from datetime import datetime, timezone
 import hashlib
@@ -53,11 +54,15 @@ def parse_log(text):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--binary", type=Path, default=ROOT/"zig-out/bin/zerv")
+    p.add_argument("--binary", type=Path, help="zerv binary (default: //src:zerv built with Bazel, --config=release)")
     p.add_argument("--model", type=Path, default=ROOT/"models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf")
     p.add_argument("--configs", default=",".join(CONFIGS))
     p.add_argument("--port", type=int, default=18093)
     a = p.parse_args()
+    if a.binary is None:
+        sys.path.insert(0, str(ROOT/"tools"))
+        import zerv_build
+        a.binary = zerv_build.binary("zerv")
     out = a.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     binary_sha = hashlib.sha256(a.binary.read_bytes()).hexdigest()
     results = []

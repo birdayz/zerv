@@ -4,13 +4,13 @@ load("//bazel:defs.bzl", "zerv_vk_binary")
 zerv_vk_binary(
     name = "zerv-model-capture",
     main = "model_capture.zig",
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
 )
 
 zig_binary(
     name = "zerv-inspect",
     main = "inspect.zig",
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
 )
 
 exports_files(glob(["*.py"]), visibility = ["//tests:__pkg__"])

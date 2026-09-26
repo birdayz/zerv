@@ -140,11 +140,14 @@ def main():
     p.add_argument("--workload", type=Path, default=ROOT/"bench/workloads/tool-parity-v1.json")
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--engines", default="llama-fp32-full,zerv", help="engine names from bench/run_serving.py; the first is the reference")
-    p.add_argument("--zerv-binary", type=Path, default=ROOT/"zig-out/bin/zerv")
+    p.add_argument("--zerv-binary", type=Path, help="zerv binary (default: //src:zerv built with Bazel, --config=release)")
     p.add_argument("--context", type=int, default=8192)
     p.add_argument("--port", type=int, default=18093)
     p.add_argument("--reference-raw", type=Path, help="raw.json of an earlier run: its first engine is the reference and is not rerun")
     a = p.parse_args()
+    if a.zerv_binary is None:
+        import zerv_build
+        a.zerv_binary = zerv_build.binary("zerv")
     out = a.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     if serving.sha(a.model) != serving.MODEL_SHA: raise SystemExit("model mismatch")
     workload = json.loads(a.workload.read_text())

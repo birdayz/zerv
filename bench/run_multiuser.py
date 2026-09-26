@@ -217,8 +217,12 @@ def main():
     p.add_argument("--prompt-cache", choices=("on", "off"), default="off", help="off: cache_prompt=false in every request (cold prefill)")
     p.add_argument("--levels", default="1,2,4,8")
     p.add_argument("--port", type=int, default=18098)
-    p.add_argument("--zerv-binary", type=pathlib.Path, default=ROOT / "zig-out/bin/zerv")
+    p.add_argument("--zerv-binary", type=pathlib.Path, help="zerv binary (default: //src:zerv built with Bazel, --config=release)")
     a = p.parse_args()
+    if a.zerv_binary is None:
+        sys.path.insert(0, str(ROOT/"tools"))
+        import zerv_build
+        a.zerv_binary = zerv_build.binary("zerv")
     out = a.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
     if a.prompt_cache == "off": EXTRA["cache_prompt"] = False

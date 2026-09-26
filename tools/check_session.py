@@ -90,9 +90,8 @@ def main():
     if sha(PIECES) != json.loads((ROOT/"tests/fixtures/tokenizer/manifest.json").read_text())["raw_pieces_sha256"]: raise SystemExit("pieces changed")
     if table[THINK_END] != b"</think>": raise SystemExit("unexpected </think> id")
     fixture = json.loads((ROOT/"tests/fixtures/model/qwen38-oracle.json").read_text())
-    zig = ROOT/".tools/zig-x86_64-linux-0.16.0/zig"
-    subprocess.run([str(zig), "build", "server", "-Doptimize=ReleaseFast", "-Dcpu=native"], cwd=ROOT, check=True)
-    binary = ROOT/"zig-out/bin/zerv"
+    import zerv_build
+    binary = zerv_build.binary("zerv")
     a.output.parent.mkdir(parents=True, exist_ok=True)
     log = open(str(a.output)+".server.log", "w")
     proc = subprocess.Popen([str(binary), "--model", str(a.model), "--port", str(a.port), "--context", "4096"], stdout=log, stderr=subprocess.STDOUT)

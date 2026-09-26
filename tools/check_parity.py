@@ -85,8 +85,8 @@ def main():
     workload = json.loads(a.workload.read_text())
     if a.zerv_binary: source = a.zerv_binary.resolve()
     else:
-        subprocess.run([str(ROOT/".tools/zig-x86_64-linux-0.16.0/zig"), "build", "server", "-Doptimize=ReleaseFast", "-Dcpu=native"], cwd=ROOT, check=True)
-        source = ROOT/"zig-out/bin/zerv"
+        import zerv_build
+        source = zerv_build.binary("zerv")
     binary = ROOT/"third_party/serving-bench"/out.name/"zerv"
     binary.parent.mkdir(parents=True, exist_ok=False); shutil.copy2(source, binary)
     table = serving.engines(a.model, a.port, a.context, binary)

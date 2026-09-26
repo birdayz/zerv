@@ -46,14 +46,15 @@ def main():
     a.report.parent.mkdir(parents=True, exist_ok=True)
     if sha(a.model) != MODEL_SHA: raise SystemExit("model mismatch")
     work.mkdir(parents=True)
-    zig = ROOT/".tools/zig-x86_64-linux-0.16.0/zig"
-    build = [str(zig), "build", "model-capture-build", "-Doptimize=ReleaseFast", "-Dcpu=native"]
+    build = ["bazelisk", "build", "--config=release", "//tools:zerv-model-capture"]
     if a.tool is None:
-        subprocess.run(build, cwd=ROOT, check=True)
+        import zerv_build
+        source = zerv_build.binary("zerv-model-capture")
     else:
         build = ["archived-tool", str(a.tool)]
+        source = a.tool
     tool = work/"zerv-model-capture"
-    tool.write_bytes((a.tool or ROOT/"zig-out/bin/zerv-model-capture").read_bytes()); tool.chmod(0o755)
+    tool.write_bytes(source.read_bytes()); tool.chmod(0o755)
     fixture = json.loads(a.fixture.read_text())
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, model_sha256=MODEL_SHA, tool_sha256=sha(tool),
                     sources={str(f.relative_to(ROOT)): sha(f) for d in ("src/model", "src/matvec", "src/gpu") for f in sorted((ROOT/d).rglob("*")) if f.is_file()},

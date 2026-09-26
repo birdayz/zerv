@@ -4,7 +4,8 @@ load("//bazel:defs.bzl", "zerv_vk_binary")
 # The `zerv` umbrella: every package, for executables that use several (the server,
 # benchmarks, tools, GPU tests). Packages never import it.
 zig_library(
-    name = "zerv",
+    name = "zerv_lib",
+    import_name = "zerv",
     main = "root.zig",
     deps = [
         "//src/quant",
@@ -24,9 +25,9 @@ zig_library(
 
 # The OpenAI Chat Completions v1 server.
 zerv_vk_binary(
-    name = "server",
+    name = "zerv",
     main = "main.zig",
-    deps = [":zerv"],
+    deps = [":zerv_lib"],
     visibility = ["//visibility:public"],
 )
 

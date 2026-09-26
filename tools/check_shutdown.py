@@ -74,10 +74,13 @@ def stream_until_first_delta(port, body, first):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model", type=Path, default=ROOT/"models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf")
-    p.add_argument("--zerv-binary", type=Path, default=ROOT/"zig-out/bin/zerv")
+    p.add_argument("--zerv-binary", type=Path, help="zerv binary (default: //src:zerv built with Bazel, --config=release)")
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--port", type=int, default=18099)
     a = p.parse_args()
+    if a.zerv_binary is None:
+        import zerv_build
+        a.zerv_binary = zerv_build.binary("zerv")
     if a.output.exists(): p.error("fresh output required")
     a.output.parent.mkdir(parents=True, exist_ok=True)
     log = open(str(a.output)+".server.log", "w")

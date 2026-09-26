@@ -5,7 +5,7 @@ Text: the documents of bench/workloads/long-v1.json case decode-38k (repository 
 snapshot, without the needle sentence and the final question), raw tokens, no template.
 For each engine and KV type: prefill PREFIX tokens, then decode STEPS tokens one at a
 time, teacher-forced, and keep the next-token logits of positions PREFIX-1 .. PREFIX+STEPS-1.
-  zerv:  zig-out/bin/zerv-kv-quality (built by --build)
+  zerv:  //bench:zerv-kv-quality (Bazel, --config=release; built by --build)
   llama: tests/reference/llama_batch_capture.c (pinned libllama, FA on) with LOGITS_FROM,
          so its steps also use its single-token decode path; f16 twice for run-to-run noise.
 Metrics per pair (reference P, candidate Q) over the STEPS + 1 rows: KL(P || Q) mean,
@@ -74,9 +74,9 @@ def main():
     for path, digest in PINS.items():
         if sha(path) != digest: raise SystemExit("pin mismatch: "+path)
     text = work/"text.txt"; text.write_text(document_text())
-    zig = ROOT/".tools/zig-x86_64-linux-0.16.0/zig"
-    if a.build: subprocess.run([str(zig), "build", "kv-quality-build", "-Doptimize=ReleaseFast", "-Dcpu=native"], cwd=ROOT, check=True)
-    tool = work/"zerv-kv-quality"; tool.write_bytes((ROOT/"zig-out/bin/zerv-kv-quality").read_bytes()); tool.chmod(0o755)
+    import zerv_build
+    built = zerv_build.binary("zerv-kv-quality") if a.build else Path(zerv_build.bazel("info", "--config=release", "bazel-bin", capture=True).stdout.strip())/"bench/zerv-kv-quality"
+    tool = work/"zerv-kv-quality"; tool.write_bytes(built.read_bytes()); tool.chmod(0o755)
     capture = work/"llama_batch_capture"
     subprocess.run(["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", str(CAPTURE_SRC), "-o", str(capture),
                     "/usr/lib/libllama.so.0.4.1", "/usr/lib/libggml-base.so.0.24.0", "-lm"], check=True)

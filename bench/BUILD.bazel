@@ -6,127 +6,127 @@ load("//bazel:defs.bzl", "zerv_vk_binary")
 zerv_vk_binary(
     name = "zerv-gpu-driver-bench",
     main = "gpu_driver.zig",
-    deps = ["//src:zerv", "//tests:gpu_workload"],
+    deps = ["//src:zerv_lib", "//tests:gpu_workload"],
 )
 
 zerv_vk_binary(
     name = "zerv-gpu-matvec-bench",
     main = "gpu_matvec.zig",
-    deps = ["//src:zerv", "//tests:matvec_workload"],
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
 )
 
 zerv_vk_binary(
     name = "zerv-gemm-bench",
     main = "gemm.zig",
-    deps = ["//src:zerv", "//tests:matvec_workload"],
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
 )
 
 zerv_vk_binary(
     name = "zerv-decode-f16-bench",
     main = "decode_f16.zig",
-    deps = ["//src:zerv", "//tests:matvec_workload"],
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
 )
 
 zerv_vk_binary(
     name = "zerv-matvec-rows-bench",
     main = "matvec_rows.zig",
-    deps = ["//src:zerv", "//tests:matvec_workload"],
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
 )
 
 zerv_vk_binary(
     name = "zerv-model-profile",
     main = "profile_model.zig",
-    deps = ["//src:zerv", "//tests:matvec_workload"],
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
 )
 
 zerv_vk_binary(
     name = "zerv-prefix-check",
     main = "prefix_check.zig",
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
 )
 
 zerv_vk_binary(
     name = "zerv-kv-quality",
     main = "kv_quality.zig",
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
 )
 
 zerv_vk_binary(
     name = "zerv-spec-check",
     main = "spec_check.zig",
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
 )
 
 zerv_vk_binary(
     name = "zerv-batch-check",
     main = "batch_check.zig",
-    deps = ["//src:zerv", "//tests:matvec_workload"],
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
 )
 
 zerv_vk_binary(
     name = "zerv-mtp-check",
     main = "mtp_check.zig",
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
 )
 
 zerv_vk_binary(
     name = "zerv-kernel-chain",
     main = "kernel_chain.zig",
-    deps = ["//src:zerv", "//tests:matvec_workload"],
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
 )
 
 zerv_vk_binary(
     name = "zerv-coopmat-probe",
     main = "coopmat_probe.zig",
-    deps = ["//src:zerv", "//tests:matvec_workload"],
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
 )
 
 zerv_vk_binary(
     name = "zerv-quant-bench",
     main = "quant.zig",
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
 )
 
 zig_binary(
     name = "zerv-tokenizer-bench",
     main = "tokenizer.zig",
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
 )
 
 zig_binary(
     name = "zerv-split-bench",
     main = "split.zig",
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
 )
 
 zig_binary(
     name = "zerv-nfc-bench",
     main = "nfc.zig",
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
 )
 
 zig_binary(
     name = "zerv-sampler-bench",
     main = "sampler.zig",
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
 )
 
 zig_binary(
     name = "zerv-chat-bench",
     main = "chat.zig",
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
 )
 
 zig_binary(
     name = "zerv-gguf-bench",
     main = "gguf.zig",
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
 )
 
 zig_binary(
     name = "zerv-model-quant-bench",
     main = "model_quant.zig",
-    deps = ["//src:zerv"],
+    deps = ["//src:zerv_lib"],
 )
 
 # Python harnesses (tests/test_*.py load them).

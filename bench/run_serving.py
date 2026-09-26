@@ -273,14 +273,13 @@ def main():
     out = a.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     if sha(a.model) != MODEL_SHA: raise SystemExit("model mismatch")
     workload = json.loads(a.workload.read_text())
-    zig = ROOT/".tools/zig-x86_64-linux-0.16.0/zig"
-    build = [str(zig), "build", "server", "-Doptimize=ReleaseFast", "-Dcpu=native"]
+    build = ["bazelisk", "build", "--config=release", "//src:zerv"]
     if a.zerv_binary:
         build = ["reused", str(a.zerv_binary.resolve()), sha(a.zerv_binary)]
         source = a.zerv_binary.resolve()
     else:
-        subprocess.run(build, cwd=ROOT, check=True)
-        source = ROOT/"zig-out/bin/zerv"
+        sys.path.insert(0, str(ROOT/"tools")); import zerv_build  # noqa: E402  (lazy: tests import this module)
+        source = zerv_build.binary("zerv")
     # Keyed by the output's parent and name (the output directory itself must be fresh).
     artifact = ROOT/"third_party/serving-bench"/out.parent.name/out.name; artifact.mkdir(parents=True, exist_ok=False)
     zerv_binary = artifact/"zerv"; shutil.copy2(source, zerv_binary)

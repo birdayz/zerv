@@ -107,9 +107,13 @@ def main():
     p.add_argument("--max-tokens", type=int, default=512)
     p.add_argument("--requests-per-client", type=int, default=2)
     p.add_argument("--port", type=int, default=18097)
-    p.add_argument("--zerv-binary", type=pathlib.Path, default=ROOT / "zig-out/bin/zerv")
+    p.add_argument("--zerv-binary", type=pathlib.Path, help="zerv binary (default: //src:zerv built with Bazel, --config=release)")
     p.add_argument("--reference", type=pathlib.Path, help="raw.jsonl of solo runs: per-case output_sha256 gate")
     a = p.parse_args()
+    if a.zerv_binary is None:
+        sys.path.insert(0, str(ROOT/"tools"))
+        import zerv_build
+        a.zerv_binary = zerv_build.binary("zerv")
     reference = None
     if a.reference:
         reference = {}
