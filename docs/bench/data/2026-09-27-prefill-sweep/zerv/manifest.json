@@ -1,0 +1,90 @@
+{
+ "started_at": "2026-09-27T22:10:03.528881+00:00",
+ "argv": [
+  "/home/USER/projects/zerv/bench/run_long_context.py",
+  "--output",
+  "docs/bench/data/2026-09-27-prefill-sweep/zerv",
+  "--zerv-binary",
+  "third_party/multiuser/zerv-sweep1",
+  "--engines",
+  "zerv-f16@kv-type=f16",
+  "--paragraphs",
+  "5,20,80,160,320,440",
+  "--repeats",
+  "2",
+  "--max-tokens",
+  "16",
+  "--context",
+  "94208"
+ ],
+ "host": {
+  "system": "Linux",
+  "node": "benchmark-host",
+  "release": "7.2.6-arch2-1",
+  "version": "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000",
+  "machine": "x86_64",
+  "processor": ""
+ },
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "zerv_sha256": "f8a3e51a2e6022aa0afd180240cf492b157e81d4d801d1538d543c9ae693acdb",
+ "llama_server_sha256": "f6a09ab1a41b0bd75c0268af3cff2618c34f1f547ecf0b1a2a1158b8a8fb4b40",
+ "llama_version": "version: 0.4.1 (build 10964, commit b29c606e28)\nbuilt with Clang (Zig, hermetic_cc_toolchain) for x86_64-linux-gnu",
+ "template_sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041",
+ "context": 94208,
+ "repeats": 2,
+ "paragraphs": [
+  5,
+  20,
+  80,
+  160,
+  320,
+  440
+ ],
+ "max_tokens": 16,
+ "prompt_sha256": [
+  "bacb14316d61346dfd151039e4e1753e67266e8f49195820795a4683bac2ce9a",
+  "977051c3ab742a214e6aa12bb2c83448d261c414b2cd5caaa63a23eabe0191cf",
+  "6a900a0c705bbaf5cb64789aa9cd751fd2c1d276d71779e980f47bb7da341a8a",
+  "084fbf26a40593e43107aa7e8562ec531733a9e66fb14c2cd3822462e252bd71",
+  "ba5bef4287a8f2055b4442b319831c9dbeb6d5fb5acd8dfb4fd8435ea1feb85e",
+  "4505ba8355754ad0c6ee9d6f05ee8d6f32c35e6bf98ad4eb858cc243b2de0d6e",
+  "5faa604d1c7a1693ba6a7a08aa0f5d5b55331f51943d89bebf5556dc121c9237",
+  "fb2baaabd53e4c5e414281a43281f13c013051c7c246ea1b52443fefbd939a72",
+  "fb97b0f5ee4fab365ce539fe9afdb97ae5127ad99a07fcad96b41f200b4732e1",
+  "bd177279e8ff5c22fd59f3d4054aae6edbaa76356dc6512feafdae669d336564",
+  "5526cadd5274471e1e8fd54ab87f8c0286f8108ef383fe057b1c200e7ffa3dee",
+  "35473c62820ac70d7ed79f60e5acfc3c92d0f5639058a6091302c4043448c8c2",
+  "73f05f0c17d8767dd86c21f68f876729ecb33b8a4fea6235f207ae40ac864684"
+ ],
+ "engines": {
+  "zerv-f16@kv-type=f16": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/multiuser/zerv-sweep1",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18090",
+    "--context",
+    "94208",
+    "--prefill-precision",
+    "f16",
+    "--spec-draft",
+    "0",
+    "--kv-type",
+    "f16"
+   ],
+   "env": {},
+   "load_s": 20.020347139099613,
+   "vram_idle_before": 1794674688,
+   "vram_loaded": 25169215488,
+   "vram_peak": 25209249792,
+   "host_memory": {
+    "VmHWM": "15141884 kB",
+    "VmRSS": "78836 kB"
+   }
+  }
+ },
+ "vram_before": 1794674688,
+ "client": "python http.client streaming SSE; TTFT = first content delta; decode rate = (completion_tokens-1)/(last_delta-first_delta); request 0 is a warmup with a distinct session tag; every request has a unique prefix (no prefix/checkpoint reuse)",
+ "finished_at": "2026-09-27T22:19:46.775164+00:00"
+}

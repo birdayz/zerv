@@ -46,7 +46,7 @@ def main():
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--engines", default="zerv,zerv-f16,llama-fa-ub512",
                    help="comma-separated engine names; with any `@` knob suffix (run_serving.resolve_engine) separate them with `;`")
-    p.add_argument("--paragraphs", type=int, default=145, help="paragraph repeats (145 -> ~29k prompt tokens)")
+    p.add_argument("--paragraphs", default="145", help="paragraph repeats (145 -> ~29k prompt tokens); a comma list sweeps several lengths on one server start (shortest first)")
     p.add_argument("--max-tokens", type=int, default=128)
     p.add_argument("--repeats", type=int, default=2)
     p.add_argument("--context", type=int, default=29504)
@@ -58,11 +58,15 @@ def main():
     if rs.sha(a.model) != rs.MODEL_SHA: raise SystemExit("model mismatch")
     zerv_binary = a.zerv_binary.resolve()
     table = rs.engines(a.model, a.port, a.context, zerv_binary)
-    prompts = [prompt(i, a.paragraphs) for i in range(a.repeats+1)]
+    lengths = sorted(int(x) for x in a.paragraphs.split(","))
+    # One warmup (the shortest length), then `repeats` prompts per length; every prompt has
+    # its own session tag (no prefix or checkpoint reuse).
+    plan = [(lengths[0], True)] + [(n, False) for n in lengths for _ in range(a.repeats)]
+    prompts = [prompt(i, n) for i, (n, _) in enumerate(plan)]
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, host=platform.uname()._asdict(), model_sha256=rs.MODEL_SHA,
                     zerv_sha256=rs.sha(zerv_binary), llama_server_sha256=rs.sha(rs.llama_server()),
                     llama_version=subprocess.run([rs.llama_server(), "--version"], capture_output=True, text=True).stderr.strip(),
-                    template_sha256=rs.sha(rs.TEMPLATE), context=a.context, repeats=a.repeats, paragraphs=a.paragraphs, max_tokens=a.max_tokens,
+                    template_sha256=rs.sha(rs.TEMPLATE), context=a.context, repeats=a.repeats, paragraphs=lengths, max_tokens=a.max_tokens,
                     prompt_sha256=[hashlib.sha256(t.encode()).hexdigest() for t in prompts], engines={}, vram_before=rs.vram_used(),
                     client="python http.client streaming SSE; TTFT = first content delta; decode rate = (completion_tokens-1)/(last_delta-first_delta); "
                            "request 0 is a warmup with a distinct session tag; every request has a unique prefix (no prefix/checkpoint reuse)")
@@ -90,8 +94,8 @@ def main():
             for i, text in enumerate(prompts):
                 body = dict(model="qwen3.8-27b", messages=[dict(role="user", content=text)], stream=True, stream_options={"include_usage": True},
                             max_tokens=a.max_tokens, temperature=0, seed=1234, chat_template_kwargs={"enable_thinking": False})
-                r = rs.stream_request(a.port, body)
-                r.update(engine=name, request=i, warmup=i == 0, output_sha256=hashlib.sha256((r["reasoning"]+"\x00"+r["content"]).encode()).hexdigest())
+                r = rs.stream_request(a.port, body, limit_s=3600)
+                r.update(engine=name, request=i, warmup=plan[i][1], paragraphs=plan[i][0], output_sha256=hashlib.sha256((r["reasoning"]+"\x00"+r["content"]).encode()).hexdigest())
                 ct = r["usage"]["completion_tokens"]
                 span = r["last_delta_s"]-r["ttft_s"]
                 r["decode_tok_s"] = (ct-1)/span if ct > 1 and span > 0 else None
@@ -112,16 +116,17 @@ def main():
     rows = [json.loads(line) for line in (out/"raw.jsonl").read_text().splitlines()]
     summary = {}
     for name in (a.engines.split(";") if "@" in a.engines else a.engines.split(",")):
-        timed = [r for r in rows if r["engine"] == name and not r["warmup"]]
+      for n in lengths:
+        timed = [r for r in rows if r["engine"] == name and not r["warmup"] and r.get("paragraphs", n) == n]
         if not timed: continue
         # llama-server's own per-request prompt/eval timings, in request order (warmup first).
         server = [dict(prompt_ms=float(m[1]), prompt_tokens=int(m[2]))
                   for m in re.finditer(r"prompt eval time =\s+([\d.]+) ms /\s+(\d+) tokens", (out/f"{name}.log").read_text())]
-        summary[name] = dict(ttft_s=[r["ttft_s"] for r in timed], decode_tok_s=[r["decode_tok_s"] for r in timed],
+        summary[f"{name}@{n}"] = dict(paragraphs=n, prompt_tok_s=[r["usage"]["prompt_tokens"] / r["ttft_s"] for r in timed], ttft_s=[r["ttft_s"] for r in timed], decode_tok_s=[r["decode_tok_s"] for r in timed],
                              ttft_median_s=statistics.median(r["ttft_s"] for r in timed),
                              decode_median_tok_s=statistics.median(r["decode_tok_s"] for r in timed if r["decode_tok_s"]),
                              prompt_tokens=sorted({r["usage"]["prompt_tokens"] for r in timed}), completion_tokens=[r["usage"]["completion_tokens"] for r in timed],
-                             outputs=sorted({r["output_sha256"] for r in timed}), server_prompt_eval=server[1:] if server else None)
+                             outputs=sorted({r["output_sha256"] for r in timed}), server_prompt_eval=server or None)
     manifest["finished_at"] = datetime.now(timezone.utc).isoformat()
     (out/"summary.json").write_text(json.dumps(summary, indent=1)+"\n")
     (out/"manifest.json").write_text(json.dumps(manifest, indent=1)+"\n")
