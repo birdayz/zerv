@@ -30,6 +30,10 @@ pub const Native = struct {
     /// batcher owning the model; generations run through it. Null: one generation at a time.
     batch: ?*Batcher = null,
     batch_backend: ?*ModelBackend = null,
+    /// Shared pool admission (docs/specs/concurrent.md, "18d.3 design"): `.reserve` admits
+    /// prompt + output limit; `.prompt` admits the prompt and grows page by page (swapping
+    /// sequences to host memory under pressure).
+    admission: Admission = .reserve,
 
     /// Resolve and verify profile token ids against the loaded tokenizer.
     /// `allocator` owns `whitespace_ids` until `deinit`.
@@ -232,7 +236,7 @@ pub const Native = struct {
             // Shared KV pool (docs/specs/concurrent.md, "18d.2 design"): memory for the prompt
             // plus the output limit (the generation's own `limit`), admitted before it starts.
             const context = self.model.state_layout.context;
-            if (prepared.tokens.len < context) b.reserve(slot, prepared.tokens.len + @min(r.max_tokens, context - @as(u32, @intCast(prepared.tokens.len))));
+            if (prepared.tokens.len < context and self.admission == .reserve) b.reserve(slot, prepared.tokens.len + @min(r.max_tokens, context - @as(u32, @intCast(prepared.tokens.len))));
             break :slot try SlotGeneration.run(self.io, arena, .{ .b = b, .slot = slot, .m = self.model }, self.tokenizer, special, sr, sink);
         } else try Generation.run(self.io, arena, .{ .m = self.model }, self.tokenizer, special, r, sink);
         if (self.cache != null) std.log.info("prefix cache: {s}, reused {d} of {d} prompt tokens", .{ @tagName(result.cache_outcome), result.cached_tokens, result.prompt_tokens });
@@ -243,6 +247,7 @@ pub const Native = struct {
 };
 
 pub const Batcher = batcher.Batcher(*ModelBackend);
+pub const Admission = enum { reserve, prompt };
 
 /// The resident model as the batcher's backend (docs/specs/concurrent.md, "18c design"):
 /// called by the scheduler task only. A failed call that leaves a command pending (a
@@ -283,6 +288,26 @@ pub const ModelBackend = struct {
     pub fn release(self: *ModelBackend, slot: u32) void {
         if (!self.m.options.kv_share) return;
         self.m.releasePages(slot) catch self.noteFailure();
+    }
+    /// Shared pool: a page for the slot's next decode position (false: none free).
+    pub fn grow(self: *ModelBackend, slot: u32) !bool {
+        if (!self.m.options.kv_share) return true;
+        self.m.ensurePages(slot, self.m.slotPosition(slot) + 1) catch |e| {
+            if (e == error.PoolExhausted) return false;
+            return self.check(e);
+        };
+        return true;
+    }
+    pub fn swapOut(self: *ModelBackend, slot: u32) !bool {
+        if (self.m.swap_pages == 0) return false;
+        self.m.swapOut(slot) catch |e| {
+            if (e == error.SwapFull) return false;
+            return self.check(e);
+        };
+        return true;
+    }
+    pub fn swapIn(self: *ModelBackend, slot: u32, spare: u32) !bool {
+        return self.m.swapIn(slot, spare) catch |e| return self.check(e);
     }
     /// Whether these prompts' next chunks fit one packed chunk (docs/specs/concurrent.md,
     /// "18d.1 design"): always for one; several need the model's packed commands.

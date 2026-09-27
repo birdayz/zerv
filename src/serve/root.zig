@@ -6,3 +6,4 @@ pub const Native = @import("engine.zig").Native;
 pub const batcher = @import("batcher.zig");
 pub const Batcher = @import("engine.zig").Batcher;
 pub const ModelBackend = @import("engine.zig").ModelBackend;
+pub const Admission = @import("engine.zig").Admission;

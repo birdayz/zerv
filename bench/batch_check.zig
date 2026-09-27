@@ -21,6 +21,11 @@
 //! `shared`: the shared-KV-pool gate (docs/specs/concurrent.md, "18d.2 design"): a pool
 //! for about 3 of the 8 sequences, pages mapped on demand and recycled as sequences leave;
 //! every logits row bitwise equal to the sequence run alone.
+//! `swap`: the swap gate (docs/specs/concurrent.md, "18d.3 design"): prompt-only admission
+//! into a pool too small for every sequence's growth; a decode step that finds no free page
+//! swaps the youngest running sequence out to the host store, and swapped sequences come
+//! back (on fresh pages) before new ones join; every logits row bitwise equal to the
+//! sequence run alone.
 //! `pack`: the packed-prefill gate instead (docs/specs/concurrent.md, "18d.1 design"; f16
 //! prefill mode): every sequence prefilled alone is the reference; then the sequences join
 //! in packed chunks of 2..8 (re-packed chunk by chunk, several chunk grids) with decode
@@ -73,7 +78,8 @@ pub fn main(init: std.process.Init) !void {
     if (args.len < 2 or args.len > 7) return error.Usage;
     const pack_mode = args.len == 7 and std.mem.eql(u8, args[6], "pack");
     const shared_mode = args.len == 7 and std.mem.eql(u8, args[6], "shared");
-    if (args.len == 7 and !pack_mode and !shared_mode) return error.Usage;
+    const swap_mode = args.len == 7 and std.mem.eql(u8, args[6], "swap");
+    if (args.len == 7 and !pack_mode and !shared_mode and !swap_mode) return error.Usage;
     const kv_type: model.KvType = if (args.len >= 3) std.meta.stringToEnum(model.KvType, args[2]) orelse return error.Usage else .f32;
     const page: u32 = if (args.len >= 4) (if (std.mem.eql(u8, args[3], "context")) 0 else try std.fmt.parseInt(u32, args[3], 10)) else model.layout.default_kv_page;
     const context: u32 = if (args.len >= 5) try std.fmt.parseInt(u32, args[4], 10) else 2048;
@@ -114,6 +120,7 @@ pub fn main(init: std.process.Init) !void {
         token.* = random.intRangeLessThan(u32, 0, 150000);
     };
 
+    if (swap_mode) return swapCheck(a, &device, &container, out, kv_type, page, context, precision, dkernel, dformats, &prompts, &xs);
     if (shared_mode) return sharedCheck(a, &device, &container, out, kv_type, page, context, precision, dkernel, dformats, &prompts, &xs);
     if (pack_mode) return packCheck(a, io, &device, &container, out, kv_type, page, context, precision, dkernel, dformats, &prompts, &xs);
 
@@ -572,6 +579,161 @@ fn sharedCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artif
     const all_free = m.freePages() == pool;
     const passed = stats.failures == 0 and errors_ok and all_free and waits > 0 and max_live >= 2;
     try out.print("{{\"summary\":true,\"mode\":\"shared\",\"pool_pages\":{d},\"compared\":{d},\"failures\":{d},\"join_waits\":{d},\"max_live\":{d},\"errors_ok\":{},\"all_pages_returned\":{},\"passed\":{}}}\n", .{ pool, stats.compared, stats.failures, waits, max_live, errors_ok, all_free, passed });
+    try out.flush();
+    if (!passed) std.process.exit(1);
+}
+
+/// The swap gate (`swap` mode; docs/specs/concurrent.md, "18d.3 design").
+fn swapCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artifact.gguf.Container, out: *std.Io.Writer, kv_type: model.KvType, page: u32, context: u32, precision: model.DecodePrecision, dkernel: model.DecodeF16Kernel, dformats: model.DecodeF16Formats, prompts: *const [K][max_prompt]u32, xs: *const [K][T]u32) !void {
+    const pt = if (page == 0) context else page;
+    // The pool holds the prompts of about 3 sequences plus growth only for some.
+    const pool: u32 = 3 * ((max_prompt + T + pt - 1) / pt);
+    var m: model.Model = undefined;
+    try m.init(device, container, .{ .context = context, .prefill_rows = 512, .kv_type = kv_type, .kv_page_tokens = page, .slots = K, .batch_rows = K, .kv_pages = pool, .kv_share = true, .swap_bytes = 2 << 30, .decode_precision = precision, .decode_f16_kernel = dkernel, .decode_f16_formats = dformats });
+    defer m.deinit();
+    const host_pages = m.hostFreePages();
+    if (m.freePages() != pool or host_pages < pool) return error.PoolNotEmpty;
+    const ref_prefill = try a.alloc(f32, K * vocab);
+    const ref = try a.alloc(f32, K * T * vocab);
+    for (0..K) |i| {
+        try m.select(0);
+        try m.reset();
+        try m.releasePages(0);
+        try m.ensurePages(0, prompt_lens[i] + T);
+        @memcpy(ref_prefill[i * vocab ..][0..vocab], try m.prefill(prompts[i][0..prompt_lens[i]]));
+        for (0..T) |t| @memcpy(ref[(i * T + t) * vocab ..][0..vocab], try m.decodeBatch(&.{.{ .slot = 0, .token = xs[i][t] }}));
+    }
+    try m.releasePages(0);
+    var stats: Stats = .{};
+    var swap_outs: u32 = 0;
+    var swap_ins: u32 = 0;
+    var self_swaps: u32 = 0;
+    var forced: u32 = 0;
+    var batches: u32 = 0;
+    var max_live: u32 = 0;
+    // Join order = age (index into `order`); slots rotate as in the shared gate.
+    const order = [K]u32{ 6, 0, 7, 2, 5, 1, 4, 3 };
+    var age: [K]u32 = undefined;
+    for (order, 0..) |i, k| age[i] = @intCast(k);
+    var slot_of: [K]?u32 = @splat(null);
+    var swapped: [K]bool = @splat(false);
+    var steps: [K]u32 = @splat(0);
+    var slot_busy: [K]bool = @splat(false);
+    var next_join: usize = 0;
+    var done: u32 = 0;
+    var next_slot: u32 = 0;
+    while (done < K) {
+        var running: u32 = 0;
+        var oldest_swapped: ?u32 = null;
+        for (0..K) |i| if (slot_of[i] != null and steps[i] < T) {
+            if (swapped[i]) {
+                if (oldest_swapped == null or age[i] < age[oldest_swapped.?]) oldest_swapped = @intCast(i);
+            } else running += 1;
+        };
+        // Swapped sequences come back first (with a spare page per running one).
+        if (oldest_swapped) |i| {
+            if (try m.swapIn(slot_of[i].?, running)) {
+                swapped[i] = false;
+                swap_ins += 1;
+                continue;
+            }
+        } else if (next_join < K) {
+            const i = order[next_join];
+            if (m.freePages() >= (prompt_lens[i] + pt - 1) / pt) {
+                var slot = next_slot;
+                while (slot_busy[slot]) slot = (slot + 1) % K;
+                next_slot = (slot + 3) % K;
+                slot_busy[slot] = true;
+                slot_of[i] = slot;
+                try m.select(slot);
+                try m.reset();
+                try m.ensurePages(slot, prompt_lens[i]); // the prompt only
+                try check(out, &stats, "swap-prefill", i, -1, try m.prefill(prompts[i][0..prompt_lens[i]]), ref_prefill[i * vocab ..][0..vocab]);
+                next_join += 1;
+                continue;
+            }
+        }
+        // Growth, oldest first: a missing page swaps out the youngest running sequence.
+        var by_age: [K]u32 = undefined;
+        var n_by: usize = 0;
+        for (order) |i| if (slot_of[i] != null and steps[i] < T and !swapped[i]) {
+            by_age[n_by] = i;
+            n_by += 1;
+        };
+        for (by_age[0..n_by]) |i| {
+            if (swapped[i]) continue;
+            while (true) {
+                m.ensurePages(slot_of[i].?, prompt_lens[i] + steps[i] + 1) catch |e| {
+                    if (e != error.PoolExhausted) return e;
+                    var victim: ?u32 = null;
+                    for (by_age[0..n_by]) |j| if (!swapped[j]) {
+                        victim = j;
+                    };
+                    const v = victim.?;
+                    try m.swapOut(slot_of[v].?);
+                    swapped[v] = true;
+                    swap_outs += 1;
+                    if (v == i) {
+                        self_swaps += 1;
+                        break;
+                    }
+                    continue;
+                };
+                break;
+            }
+        }
+        // Forced swaps besides the pressure ones: every third batch the youngest running
+        // sequence goes out (and comes back on fresh pages), so many swaps are compared.
+        batches += 1;
+        if (batches % 3 == 0) {
+            var live: u32 = 0;
+            var youngest: ?u32 = null;
+            for (by_age[0..n_by]) |i| if (!swapped[i]) {
+                live += 1;
+                youngest = i;
+            };
+            if (live >= 2) {
+                try m.swapOut(slot_of[youngest.?].?);
+                swapped[youngest.?] = true;
+                swap_outs += 1;
+                forced += 1;
+            }
+        }
+        var rows: [K]model.BatchRow = undefined;
+        var who: [K]u32 = undefined;
+        var b: usize = 0;
+        for (0..K) |i| if (slot_of[i] != null and steps[i] < T and !swapped[i]) {
+            rows[b] = .{ .slot = slot_of[i].?, .token = xs[i][steps[i]] };
+            who[b] = @intCast(i);
+            b += 1;
+        };
+        if (b == 0) return error.Deadlock;
+        max_live = @max(max_live, @as(u32, @intCast(b)));
+        const logits = try m.decodeBatch(rows[0..b]);
+        for (who[0..b], 0..) |i, r| {
+            try check(out, &stats, "swap-decode", i, steps[i], logits[r * vocab ..][0..vocab], ref[(i * T + steps[i]) * vocab ..][0..vocab]);
+            steps[i] += 1;
+            if (steps[i] == T) {
+                try m.releasePages(slot_of[i].?);
+                slot_busy[slot_of[i].?] = false;
+                slot_of[i] = null;
+                done += 1;
+            }
+        }
+    }
+    // Error cases: swapping an empty slot, swapping twice, dropping a swapped slot.
+    var errors_ok = true;
+    if (m.swapOut(1)) |_| errors_ok = false else |e| errors_ok = e == error.PagesMissing;
+    try m.select(1);
+    try m.reset();
+    try m.ensurePages(1, 100);
+    try m.swapOut(1);
+    if (m.swapOut(1)) |_| errors_ok = false else |e| errors_ok = errors_ok and e == error.SlotSwapped;
+    if (m.ensurePages(1, 200)) |_| errors_ok = false else |e| errors_ok = errors_ok and e == error.SlotSwapped;
+    try m.releasePages(1);
+    const all_free = m.freePages() == pool and m.hostFreePages() == host_pages;
+    const passed = stats.failures == 0 and errors_ok and all_free and swap_outs - forced > 0 and forced >= 10 and swap_ins == swap_outs and max_live >= 2;
+    try out.print("{{\"summary\":true,\"mode\":\"swap\",\"pool_pages\":{d},\"host_pages\":{d},\"compared\":{d},\"failures\":{d},\"swap_outs\":{d},\"swap_ins\":{d},\"self_swaps\":{d},\"forced\":{d},\"max_live\":{d},\"errors_ok\":{},\"all_pages_returned\":{},\"passed\":{}}}\n", .{ pool, host_pages, stats.compared, stats.failures, swap_outs, swap_ins, self_swaps, forced, max_live, errors_ok, all_free, passed });
     try out.flush();
     if (!passed) std.process.exit(1);
 }

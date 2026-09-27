@@ -221,8 +221,19 @@ the llama-server A/B on an idle machine, the Zig caches outside the output base.
       projection kernels) goes before 18d. The 8-row step is the bottleneck: 46 ms, 2.3× one
       row, and the GPU is 99% busy. Within 18d, per-slot prefix caching comes first (bruh's
       multi-turn long prompts).
-    - [ ] 18d speculation per slot, chunked prefill interleaving, per-slot prefix cache,
-      preemption, async scheduling.
+    - [x] 18d.2 shared KV pool ([report](docs/bench/2026-09-26-shared-pool.md)): one pool,
+      pages on demand; no measurable cost against static (ABBA), one request may use the
+      whole pool (91.9–101k tokens at `--parallel 8`); **default `--kv-pool shared`**. Long
+      context: only zerv keeps other users streaming (157 ms gaps, 1.4 s short TTFT; llama
+      2.9 s / 7–141 s, vLLM 5 s / 221–311 s); llama prefills 70k 7% faster.
+    - [ ] 18d.3 prompt admission + exact swap to host ([report](docs/bench/2026-09-27-kv-swap.md)):
+      implemented behind `--kv-admit prompt` / `--kv-swap-mib`; gates 1–3 passed (host tests,
+      batch-check swap 168/168 x4, serving identity with 10 real swaps). No-`max_tokens`
+      clients: 109 tok/s and 16/16 done vs reserve 47 tok/s and 11/16 timeouts. Open before
+      the default flip: ABBA reserve vs prompt; a swap-pressure run at scale; swap copy cost.
+    - [ ] Steady gap p99 vs vLLM (145 vs 55 ms at 8 users): stall sweep, then mixed
+      prefill+decode steps (needs decode rows bitwise equal inside a prefill pass).
+    - [ ] 18d speculation per slot, per-slot prefix cache, async scheduling.
     - [ ] 18e batched projection kernels: tuned FP32 beyond 5 rows; WMMA `--decode-precision f16`.
       - [x] FP32 part 1, negative ([report](docs/bench/2026-09-25-fp32-batched-projection.md)):
         component splitting (`SPLIT`) and adjacent row groups (`ROWGROUPS`) stay bitwise

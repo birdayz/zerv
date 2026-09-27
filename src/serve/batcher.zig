@@ -55,6 +55,12 @@ pub const Stats = struct {
     aborted_chunks: u64 = 0,
     /// Times a prompt had to wait for memory (`admit` false).
     admission_waits: u64 = 0,
+    /// Sequences swapped out to host memory and back (docs/specs/concurrent.md, "18d.3
+    /// design"), the time in those calls, and rows failed because nothing could be swapped.
+    swap_outs: u64 = 0,
+    swap_ins: u64 = 0,
+    swap_ns: u64 = 0,
+    swap_failures: u64 = 0,
 };
 
 /// `Backend` is called by the scheduler task only, never concurrently:
@@ -67,7 +73,13 @@ pub const Stats = struct {
 ///   abortChunk() void   (drop the chunk in flight; its slots are reset before reuse)
 ///   admit(slot: u32, tokens: usize) bool   (make room for `tokens` positions of the slot's
 ///       sequence before its prompt starts; false: not now, the prompt waits)
-///   release(slot: u32) void   (a freed slot's memory goes back to the pool)
+///   release(slot: u32) void   (a freed slot's memory goes back to the pool, host copy too)
+///   grow(slot: u32) !bool   (memory for the slot's next decode position; false: the pool
+///       is exhausted; docs/specs/concurrent.md "18d.3 design")
+///   swapOut(slot: u32) !bool   (copy the sequence to host memory and free its pool memory;
+///       false: no room there; its state is unchanged either way)
+///   swapIn(slot: u32, spare: u32) !bool   (bring it back when the pool has its memory plus
+///       `spare` pages more; false: not now)
 ///   checkRow(row: Row) !void   (can this row run now? a failing row gets its own error,
 ///       the other rows of the batch run)
 ///   decodeBatch(rows: []const Row) ![]const f32   (rows.len logits rows of `vocab` floats)
@@ -118,6 +130,10 @@ pub fn Batcher(comptime Backend: type) type {
             reserve: usize = 0,
             admitted: bool = false,
             failed_epoch: u64 = std.math.maxInt(u64),
+            /// Swapped out to host memory (its step waits until `swapIn`); the release epoch
+            /// of its last failed swap-in.
+            swapped: bool = false,
+            swap_epoch: u64 = std.math.maxInt(u64),
         };
 
         io: std.Io,
@@ -145,6 +161,8 @@ pub fn Batcher(comptime Backend: type) type {
         /// Arrival order of the oldest prompt that failed admission: newer prompts are not
         /// admitted before it (no starvation of large prompts).
         blocked: ?u64 = null,
+        /// Slots swapped out: while any is, no new prompt is admitted.
+        swapped_slots: u32 = 0,
         stats: Stats = .{},
 
         pub fn init(io: std.Io, backend: Backend, options: Options) error{InvalidSlots}!Self {
@@ -282,6 +300,9 @@ pub fn Batcher(comptime Backend: type) type {
             const i = (@intFromPtr(s) - @intFromPtr(&self.slot[0])) / @sizeOf(Slot);
             self.to_release |= @as(u64, 1) << @intCast(i);
             if (s.admitted or (self.blocked != null and s.order == self.blocked.?)) self.blocked = null;
+            if (s.swapped) self.swapped_slots -= 1; // `release` drops its host copy
+            s.swapped = false;
+            s.swap_epoch = std.math.maxInt(u64);
             s.admitted = false;
             s.reserve = 0;
             s.failed_epoch = std.math.maxInt(u64);
@@ -298,7 +319,7 @@ pub fn Batcher(comptime Backend: type) type {
         /// prompt is waiting for memory.
         fn eligible(self: *const Self, s: *const Slot) bool {
             if (s.op == .reset or s.admitted) return true;
-            if (s.failed_epoch == self.admit_epoch) return false;
+            if (s.failed_epoch == self.admit_epoch or self.swapped_slots > 0) return false;
             return self.blocked == null or s.order <= self.blocked.?;
         }
 
@@ -410,6 +431,45 @@ pub fn Batcher(comptime Backend: type) type {
                     self.mutex.unlock(self.io);
                     return;
                 }
+                if (self.swapped_slots > 0) swap: {
+                    // The oldest swapped sequence comes back first, with a spare page per
+                    // running decoding sequence (not evicted again at its next page).
+                    var oldest: ?usize = null;
+                    var spare: u32 = 0;
+                    for (self.slot[0..self.options.slots], 0..) |*s, i| {
+                        if (!s.used or s.closing) continue;
+                        if (s.swapped and !s.running and s.swap_epoch != self.admit_epoch and (oldest == null or s.order < self.slot[oldest.?].order)) oldest = i;
+                        if (s.decoding and !s.swapped) spare += 1;
+                    }
+                    const i = oldest orelse break :swap;
+                    const s = &self.slot[i];
+                    s.running = true;
+                    self.mutex.unlock(self.io);
+                    const t0 = self.now();
+                    const in = self.backend.swapIn(@intCast(i), spare);
+                    const t1 = self.now();
+                    self.mutex.lockUncancelable(self.io);
+                    s.running = false;
+                    if (in) |ok| {
+                        if (ok) {
+                            s.swapped = false;
+                            self.swapped_slots -= 1;
+                            self.stats.swap_ins += 1;
+                            self.account(&self.stats.swap_ns, t0, t1);
+                        } else s.swap_epoch = self.admit_epoch; // retried after a release
+                    } else |_| {
+                        // Not swapped back: its next step fails in `grow` (the backend
+                        // still holds it as swapped out).
+                        s.swapped = false;
+                        self.swapped_slots -= 1;
+                    }
+                    if (s.closing) {
+                        self.release(s);
+                        self.free(s);
+                    }
+                    self.mutex.unlock(self.io);
+                    continue;
+                }
                 if (self.pack) |*pk| {
                     var live: u32 = 0;
                     for (pk.slots[0..pk.n], 0..) |slot, i| {
@@ -436,6 +496,7 @@ pub fn Batcher(comptime Backend: type) type {
                 var n_decoding: u32 = 0;
                 for (self.slot[0..self.options.slots], 0..) |*s, i| {
                     if (!s.used or s.closing) continue;
+                    if (s.swapped) continue; // waits for `swapIn`
                     if (s.decoding) n_decoding += 1;
                     switch (s.op) {
                         .reset, .prefill => if (!s.running and self.eligible(s) and (pre == null or self.before(s, &self.slot[pre.?]))) {
@@ -465,8 +526,10 @@ pub fn Batcher(comptime Backend: type) type {
                 };
                 if (batch_ready and (!prefill_ready or (!self.last_batch and preempt))) {
                     var n: usize = 0;
-                    for (self.slot[0..self.options.slots], 0..) |*s, i| if (s.used and !s.closing and s.op == .step) {
+                    var ages: [max_slots]u64 = undefined;
+                    for (self.slot[0..self.options.slots], 0..) |*s, i| if (s.used and !s.closing and !s.swapped and s.op == .step) {
                         rows[n] = .{ .slot = @intCast(i), .token = s.token };
+                        ages[n] = s.order;
                         s.running = true;
                         n += 1;
                     };
@@ -481,8 +544,54 @@ pub fn Batcher(comptime Backend: type) type {
                     var good: [max_slots]Row = undefined;
                     var index: [max_slots]?usize = @splat(null);
                     var bad: [max_slots]anyerror = undefined;
+                    var ok: [max_slots]bool = @splat(true);
+                    // Memory for each row's next position, oldest sequence first; when the
+                    // pool is exhausted, the youngest row still in the batch is swapped out
+                    // (itself, last). Rows are running: no other thread frees their slots.
+                    var out_rows: [max_slots]bool = @splat(false);
+                    var by_age: [max_slots]usize = undefined;
+                    for (0..n) |r| {
+                        var j = r;
+                        while (j > 0 and ages[by_age[j - 1]] > ages[r]) : (j -= 1) by_age[j] = by_age[j - 1];
+                        by_age[j] = r;
+                    }
+                    var swap_t: u64 = 0;
+                    for (by_age[0..n]) |r| {
+                        if (out_rows[r] or !ok[r]) continue;
+                        while (true) {
+                            const grown = self.backend.grow(rows[r].slot) catch |e| {
+                                bad[r] = e;
+                                ok[r] = false;
+                                break;
+                            };
+                            if (grown) break;
+                            var victim: usize = r;
+                            for (by_age[0..n]) |v| if (!out_rows[v] and ok[v]) {
+                                victim = v;
+                            };
+                            const t0 = self.now();
+                            const swapped = self.backend.swapOut(rows[victim].slot) catch |e| {
+                                bad[r] = e;
+                                ok[r] = false;
+                                break;
+                            };
+                            swap_t += @intCast(self.now() - t0);
+                            if (!swapped) {
+                                // No room in host memory: the victim fails (last resort) and
+                                // its memory goes back now; the older rows keep running.
+                                bad[victim] = error.PoolExhausted;
+                                ok[victim] = false;
+                                self.backend.release(rows[victim].slot);
+                                if (victim == r) break;
+                                continue;
+                            }
+                            out_rows[victim] = true;
+                            if (victim == r) break;
+                        }
+                    }
                     var k: usize = 0;
                     for (rows[0..n], 0..) |row, r| {
+                        if (out_rows[r] or !ok[r]) continue;
                         if (self.backend.checkRow(row)) |_| {
                             good[k] = row;
                             index[r] = k;
@@ -494,9 +603,24 @@ pub fn Batcher(comptime Backend: type) type {
                     const t1 = self.now();
                     self.mutex.lockUncancelable(self.io);
                     self.account(&self.stats.batch_ns, t0, t1);
+                    self.stats.swap_ns += swap_t;
                     self.last_batch_end = t1;
                     for (rows[0..n], 0..) |row, r| {
                         const s = &self.slot[row.slot];
+                        if (out_rows[r]) {
+                            // Swapped out: its step stays queued until `swapIn` (unless its
+                            // generation went away meanwhile).
+                            s.swapped = true;
+                            self.swapped_slots += 1;
+                            self.stats.swap_outs += 1;
+                            if (s.canceled or s.closing) {
+                                s.op = .none;
+                                s.err = error.Canceled;
+                                self.complete(s);
+                            } else s.running = false;
+                            continue;
+                        }
+                        if (!ok[r] and bad[r] == error.PoolExhausted) self.stats.swap_failures += 1;
                         s.op = .none;
                         if (index[r]) |g| {
                             if (out) |logits| {

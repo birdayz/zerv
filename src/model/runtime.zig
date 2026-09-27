@@ -90,6 +90,10 @@ pub const Options = struct {
     /// `context` is the per-sequence maximum, and with `kv_pages` = 0 the pool is sized to
     /// the memory left (with `context = context_max`: each sequence may use the whole pool).
     kv_share: bool = false,
+    /// Host swap store for the shared pool (docs/specs/concurrent.md, "18d.3 design"): bytes
+    /// of host-visible memory for one state region per slot plus KV pages (`swapOut`,
+    /// `swapIn`); 0: no swapping. Counted in the device allocation cap, not in VRAM.
+    swap_bytes: u64 = 0,
     /// Batched decode projection arithmetic (`--decode-precision`, docs/specs/concurrent.md
     /// "18e design"): `.f32` (exact, the single-sequence arithmetic) or `.f16` (opt-in: the
     /// f16 prefill arithmetic, f16 x f16 -> f32 WMMA, for the projections the prefill f16
@@ -127,7 +131,7 @@ fn prefillSplit(options: Options, M: u32, plan_rows: u32, K: u32) u32 {
     const rows = if (options.prefill_precision == .f16 and options.f16_split == .shape) 128 else plan_rows;
     return gemm.splitChunk(M, rows, K, split_target, gemm.tileFor(M, plan_rows));
 }
-pub const Error = gpu.Error || matvec.Error || config.Error || layout.Error || gemm.Error || error{ InvalidToken, ContextFull, TooManyPipelines, InvalidTensorBytes, CaptureFull, PrefillDisabled, ProbeFailed, InvalidPlan, UnsupportedDevice, InvalidContext, InvalidSnapshot, InsufficientVram, VerifyDisabled, VerifyPending, NoVerify, PoolExhausted, MtpDisabled, VramBudgetUnknown, InvalidDraftVocab, MtpNeedsOneSlot, InvalidBatch, InvalidSlot, PagesMissing, PageInUse, ChunkInFlight, SlotNeedsReset };
+pub const Error = gpu.Error || matvec.Error || config.Error || layout.Error || gemm.Error || error{ InvalidToken, ContextFull, TooManyPipelines, InvalidTensorBytes, CaptureFull, PrefillDisabled, ProbeFailed, InvalidPlan, UnsupportedDevice, InvalidContext, InvalidSnapshot, InsufficientVram, VerifyDisabled, VerifyPending, NoVerify, PoolExhausted, MtpDisabled, VramBudgetUnknown, InvalidDraftVocab, MtpNeedsOneSlot, InvalidBatch, InvalidSlot, PagesMissing, PageInUse, ChunkInFlight, SlotNeedsReset, NoSwap, SwapFull, SlotSwapped };
 
 /// Segmented prefill (docs/specs/concurrent.md, "18c.2 design"): with several slots each
 /// chunk also exists as `prefill_segments` commands of `prefill_segment_layers` layers.
@@ -726,6 +730,21 @@ pub const Model = struct {
     /// Logical KV pages mapped per slot, and the owner slot of every pool page.
     mapped: [layout.max_slots]u32 = @splat(0),
     page_owner: [max_pool_pages]u8 = @splat(no_owner),
+    /// Logical page (index in its owner's table) of every owned pool page.
+    page_logical: [max_pool_pages]u16 = @splat(0),
+    /// Host swap store (18d.3): per KV buffer, `swap_pages` pages laid out like the pool;
+    /// one state region per slot; owner slot and logical page of every host page; host
+    /// pages held per swapped slot (its `mapped` is 0 then).
+    swap_kv: [layout.max_kv_buffers]gpu.Buffer = undefined,
+    swap_kv_live: u8 = 0,
+    swap_state: gpu.Buffer = undefined,
+    swap_state_live: bool = false,
+    swap_commands: gpu.Commands = undefined,
+    swap_commands_live: bool = false,
+    swap_pages: u32 = 0,
+    host_owner: [max_pool_pages]u8 = @splat(no_owner),
+    host_logical: [max_pool_pages]u16 = @splat(0),
+    swapped: [layout.max_slots]u32 = @splat(0),
     /// Reset commands of slots 1.. (slot 0: `reset_commands`).
     slot_resets: [layout.max_slots]gpu.Commands = undefined,
     live_slot_resets: u8 = 0,
@@ -868,6 +887,8 @@ pub const Model = struct {
         if (options.slots > 1 and self.rows > 0) host += @as(u64, @min(layout.io.max_seqs, options.slots)) * config.vocab * 4;
         if (options.snapshot_memory == .host) host += self.snapshotBytes() * options.snapshots;
         if (options.embedding_memory == .host) host += tensors[0].data.len;
+        if (options.swap_bytes > 0 and !options.kv_share) return error.NoSwap;
+        host += options.swap_bytes;
         const budget = try device.memoryBudget();
         if (budget) |b| self.vram.free = b.free();
 
@@ -960,6 +981,7 @@ pub const Model = struct {
 
         try self.upload(tensors, items, placements);
         try self.writePageTable();
+        if (options.swap_bytes > 0) try self.initSwap(options.swap_bytes);
         if (options.embedding_memory == .host) {
             const embedding = container.findTensor(config.specName(&specs[0])).?;
             std.debug.assert(specs[0].role == .embedding);
@@ -1310,6 +1332,13 @@ pub const Model = struct {
         self.live_slot_resets = 0;
         for (self.batch_commands[1 .. self.live_batch + 1]) |*c| c.deinit() catch @panic("batch command still pending");
         self.live_batch = 0;
+        if (self.swap_commands_live) self.swap_commands.deinit() catch @panic("swap copy pending");
+        self.swap_commands_live = false;
+        for (self.swap_kv[0..self.swap_kv_live]) |*b| b.deinit() catch @panic("swap store in use");
+        self.swap_kv_live = 0;
+        if (self.swap_state_live) self.swap_state.deinit() catch @panic("swap store in use");
+        self.swap_state_live = false;
+        self.swap_pages = 0;
         if (self.ptab_live) {
             self.ptab_commands.deinit() catch @panic("page-table command pending");
             self.ptab_staging.deinit() catch @panic("page-table staging in use");
@@ -1409,6 +1438,7 @@ pub const Model = struct {
     pub fn mapPages(self: *Model, slot: u32, pages: []const u32) Error!void {
         const S = self.state_layout;
         if (slot >= S.slots) return error.InvalidSlot;
+        if (self.swapped[slot] != 0) return error.SlotSwapped;
         if (pages.len > S.seq_pages - self.mapped[slot]) return error.InvalidToken;
         for (pages, 0..) |page, i| {
             if (page >= S.pages or self.page_owner[page] != no_owner) return error.PageInUse;
@@ -1426,6 +1456,145 @@ pub const Model = struct {
             if (owner.* == slot) owner.* = no_owner;
         }
         self.mapped[slot] = 0;
+        // A swapped sequence's host pages too (it is dropped).
+        if (self.swapped[slot] != 0) {
+            for (self.host_owner[0..self.swap_pages]) |*owner| {
+                if (owner.* == slot) owner.* = no_owner;
+            }
+            self.swapped[slot] = 0;
+        }
+    }
+
+    /// Bytes of one KV page in KV buffer `g` (its attention layers' pieces, contiguous).
+    fn pageBytes(self: *const Model, g: u32) u64 {
+        const S = self.state_layout;
+        return @as(u64, S.layersIn(g)) * S.piece() * S.kv.bytes();
+    }
+
+    /// Host swap store of `bytes`: the slot state regions first, the rest in pool-shaped pages.
+    fn initSwap(self: *Model, bytes: u64) Error!void {
+        const S = self.state_layout;
+        const state_bytes = @as(u64, S.slots) * S.slot_words * 4;
+        var page_bytes: u64 = 0;
+        for (0..S.kv_buffers) |g| page_bytes += self.pageBytes(@intCast(g));
+        const pages = @min((std.math.sub(u64, bytes, state_bytes) catch return error.NoSwap) / page_bytes, max_pool_pages);
+        if (pages == 0) return error.NoSwap;
+        self.swap_commands = try gpu.Commands.init(self.device);
+        self.swap_commands_live = true;
+        self.swap_state = try gpu.Buffer.init(self.device, state_bytes, .host);
+        self.swap_state_live = true;
+        for (0..S.kv_buffers) |g| {
+            self.swap_kv[g] = try gpu.Buffer.init(self.device, pages * self.pageBytes(@intCast(g)), .host);
+            self.swap_kv_live += 1;
+        }
+        self.swap_pages = @intCast(pages);
+    }
+
+    /// Host swap pages no swapped slot holds.
+    pub fn hostFreePages(self: *const Model) u32 {
+        var n: u32 = 0;
+        for (self.host_owner[0..self.swap_pages]) |owner| n += @intFromBool(owner == no_owner);
+        return n;
+    }
+
+    /// Host pages `slot` holds (nonzero: it is swapped out).
+    pub fn swappedPages(self: *const Model, slot: u32) u32 {
+        return self.swapped[slot];
+    }
+
+    /// Copy `slot`'s KV pages and state to the host swap store and return its pool pages
+    /// (docs/specs/concurrent.md, "18d.3 design"). Its position is kept; it cannot run until
+    /// `swapIn`. `SwapFull`: the store has too few free pages (nothing changes then).
+    pub fn swapOut(self: *Model, slot: u32) Error!void {
+        const S = self.state_layout;
+        if (slot >= S.slots) return error.InvalidSlot;
+        if (self.swap_pages == 0) return error.NoSwap;
+        if (self.swapped[slot] != 0) return error.SlotSwapped;
+        if (self.mapped[slot] == 0) return error.PagesMissing;
+        if (self.pending_verify != 0) return error.VerifyPending;
+        if (self.chunk) |c| if (c.has(slot)) return error.ChunkInFlight;
+        const n = self.mapped[slot];
+        if (self.hostFreePages() < n) return error.SwapFull;
+        const c = &self.swap_commands;
+        try c.reset();
+        try c.begin();
+        try c.barrier(.compute, .transfer);
+        const region = @as(u64, S.slot_words) * 4;
+        try c.copy(&self.state, slot * region, &self.swap_state, slot * region, region);
+        var h: u32 = 0;
+        for (self.page_owner[0..S.pages], 0..) |owner, p| {
+            if (owner != slot) continue;
+            while (self.host_owner[h] != no_owner) h += 1;
+            self.host_owner[h] = @intCast(slot);
+            self.host_logical[h] = self.page_logical[p];
+            for (0..S.kv_buffers) |g| {
+                const b = self.pageBytes(@intCast(g));
+                try c.copy(&self.kv[g], p * b, &self.swap_kv[g], h * b, b);
+            }
+        }
+        try c.barrier(.transfer, .host);
+        try c.end();
+        c.run(self.options.timeout_ns) catch |e| {
+            // Nothing was released: the host pages go back, the slot keeps its pages.
+            for (self.host_owner[0..self.swap_pages]) |*owner| if (owner.* == slot) {
+                owner.* = no_owner;
+            };
+            return e;
+        };
+        for (self.page_owner[0..S.pages]) |*owner| if (owner.* == slot) {
+            owner.* = no_owner;
+        };
+        self.mapped[slot] = 0;
+        self.swapped[slot] = n;
+    }
+
+    /// Bring a swapped `slot` back: map fresh pool pages (any), rewrite its page table, copy
+    /// its pages and state back. False (nothing changes) unless the pool has its pages plus
+    /// `spare` more free.
+    pub fn swapIn(self: *Model, slot: u32, spare: u32) Error!bool {
+        const S = self.state_layout;
+        if (slot >= S.slots) return error.InvalidSlot;
+        const n = self.swapped[slot];
+        if (n == 0) return error.InvalidState;
+        if (self.freePages() < @as(u64, n) + spare) return false;
+        const words = std.mem.bytesAsSlice(u32, try self.ptab_staging.mapped());
+        if (words.len < n) return error.InvalidSlots;
+        const c = &self.swap_commands;
+        try c.reset();
+        try c.begin();
+        // The fresh pages and the state region were last touched by compute.
+        try c.barrier(.compute, .transfer);
+        const region = @as(u64, S.slot_words) * 4;
+        try c.copy(&self.swap_state, slot * region, &self.state, slot * region, region);
+        var p: u32 = 0;
+        var taken: u32 = 0;
+        for (self.host_owner[0..self.swap_pages], 0..) |owner, h| {
+            if (owner != slot) continue;
+            while (self.page_owner[p] != no_owner) p += 1;
+            const i = self.host_logical[h];
+            if (i >= n) return error.InvalidState;
+            words[i] = p;
+            self.page_owner[p] = @intCast(slot); // taken (commitPages sets it again)
+            taken += 1;
+            for (0..S.kv_buffers) |g| {
+                const b = self.pageBytes(@intCast(g));
+                try c.copy(&self.swap_kv[g], h * b, &self.kv[g], p * b, b);
+            }
+            p += 1;
+        }
+        if (taken != n) return error.InvalidState;
+        try c.barrier(.transfer, .compute);
+        try c.end();
+        c.run(self.options.timeout_ns) catch |e| {
+            for (words[0..n]) |page| self.page_owner[page] = no_owner;
+            return e;
+        };
+        for (self.host_owner[0..self.swap_pages]) |*owner| if (owner.* == slot) {
+            owner.* = no_owner;
+        };
+        self.swapped[slot] = 0;
+        try self.commitPages(slot, n);
+        return true;
     }
 
     /// Pool pages no slot holds.
@@ -1441,6 +1610,7 @@ pub const Model = struct {
         const S = self.state_layout;
         if (slot >= S.slots) return error.InvalidSlot;
         if (tokens > S.context) return error.ContextFull;
+        if (self.swapped[slot] != 0) return error.SlotSwapped;
         const want = std.math.divCeil(u32, tokens, S.page) catch unreachable;
         if (want <= self.mapped[slot]) return;
         const need = want - self.mapped[slot];
@@ -1479,7 +1649,10 @@ pub const Model = struct {
         try c.barrier(.transfer, .compute);
         try c.end();
         try c.run(self.options.timeout_ns);
-        for (words[0..n]) |page| self.page_owner[page] = @intCast(slot);
+        for (words[0..n], 0..) |page, k| {
+            self.page_owner[page] = @intCast(slot);
+            self.page_logical[page] = @intCast(self.mapped[slot] + k);
+        }
         self.mapped[slot] += n;
     }
 

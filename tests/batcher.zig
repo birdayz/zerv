@@ -56,6 +56,13 @@ const Fake = struct {
     pool: usize = 0,
     page: usize = 4,
     held: [max_slots]usize = @splat(0),
+    /// Positions processed per slot; host swap store (pages; 0: none) and what each
+    /// swapped-out slot holds there.
+    pos: [max_slots]usize = @splat(0),
+    host_pool: usize = 0,
+    host_held: [max_slots]usize = @splat(0),
+    swapped: [max_slots]bool = @splat(false),
+    swap_outs: u32 = 0,
     admits: u32 = 0,
     packs: u32 = 0,
     seg: u32 = 0,
@@ -80,6 +87,9 @@ const Fake = struct {
             self.resume_reset.waitUncancelable(self.io);
         }
         self.held[slot] = 0;
+        self.host_held[slot] = 0;
+        self.swapped[slot] = false;
+        self.pos[slot] = 0;
         self.hist[slot] = 7;
     }
     pub fn packFits(self: *Fake, remaining: []const usize) bool {
@@ -121,6 +131,7 @@ const Fake = struct {
         for (0..k) |i| {
             const slot = self.fslots[i];
             for (self.ftokens[i][0..self.fcount[i]]) |token| self.hist[slot] = mix(self.hist[slot], token);
+            self.pos[slot] += self.fcount[i];
             unit.consumed[i] = self.fcount[i];
             logitsFor(self.hist[slot], self.prefill_out[i * V ..][0..V]);
             if (self.fcount[i] == self.ftotal[i] and self.done_count < self.done_order.len) {
@@ -139,6 +150,9 @@ const Fake = struct {
     /// it was admitted for until `release` or its reset.
     pub fn admit(self: *Fake, slot: u32, tokens: usize) bool {
         if (self.pool == 0) return true;
+        for (self.swapped) |sw| if (sw) {
+            self.violations += 1; // no admission while a sequence is swapped out
+        };
         const want = (tokens + self.page - 1) / self.page;
         if (want <= self.held[slot]) return true;
         var used: usize = 0;
@@ -150,6 +164,41 @@ const Fake = struct {
     }
     pub fn release(self: *Fake, slot: u32) void {
         self.held[slot] = 0;
+        self.host_held[slot] = 0;
+        self.swapped[slot] = false;
+    }
+    fn usedPages(self: *const Fake) usize {
+        var n: usize = 0;
+        for (self.held) |h| n += h;
+        return n;
+    }
+    pub fn grow(self: *Fake, slot: u32) !bool {
+        if (self.pool == 0) return true;
+        if (self.swapped[slot]) return error.FakeSwapped;
+        const want = (self.pos[slot] + 1 + self.page - 1) / self.page;
+        if (want <= self.held[slot]) return true;
+        if (self.usedPages() + want - self.held[slot] > self.pool) return false;
+        self.held[slot] = want;
+        return true;
+    }
+    pub fn swapOut(self: *Fake, slot: u32) !bool {
+        if (self.swapped[slot] or self.held[slot] == 0) self.violations += 1;
+        var host: usize = 0;
+        for (self.host_held) |h| host += h;
+        if (host + self.held[slot] > self.host_pool) return false;
+        self.host_held[slot] = self.held[slot];
+        self.held[slot] = 0;
+        self.swapped[slot] = true;
+        self.swap_outs += 1;
+        return true;
+    }
+    pub fn swapIn(self: *Fake, slot: u32, spare: u32) !bool {
+        if (!self.swapped[slot]) return error.FakeNotSwapped;
+        if (self.usedPages() + self.host_held[slot] + spare > self.pool) return false;
+        self.held[slot] = self.host_held[slot];
+        self.host_held[slot] = 0;
+        self.swapped[slot] = false;
+        return true;
     }
     pub fn checkRow(self: *Fake, row: batcher.Row) !void {
         if (row.token == self.bad_token) return error.FakeBadRow;
@@ -174,7 +223,11 @@ const Fake = struct {
             return error.FakeFailure;
         }
         self.sizes[rows.len] += 1;
+        for (rows) |row| if (self.pool != 0 and (self.swapped[row.slot] or self.held[row.slot] * self.page < self.pos[row.slot] + 1)) {
+            self.violations += 1; // a row without its memory
+        };
         for (rows, 0..) |row, r| {
+            self.pos[row.slot] += 1;
             self.hist[row.slot] = mix(self.hist[row.slot], row.token);
             logitsFor(self.hist[row.slot], self.rows_out[r * V ..][0..V]);
         }
@@ -654,9 +707,12 @@ fn chunkMembers(fake: *const Fake) usize {
 }
 
 fn pooledGeneration(b: *B, prompt: []const u32, steps: u32, out: *anyerror!void) void {
-    out.* = pooled(b, prompt, steps);
+    out.* = pooled(b, prompt, steps, true);
 }
-fn pooled(b: *B, prompt: []const u32, steps: u32) !void {
+fn growingGeneration(b: *B, prompt: []const u32, steps: u32, out: *anyerror!void) void {
+    out.* = pooled(b, prompt, steps, false);
+}
+fn pooled(b: *B, prompt: []const u32, steps: u32, reserve: bool) !void {
     const slot = while (true) break b.join() catch |e| switch (e) {
         error.NoSlot => {
             try b.io.sleep(.fromMilliseconds(1), .awake);
@@ -665,7 +721,7 @@ fn pooled(b: *B, prompt: []const u32, steps: u32) !void {
         else => return e,
     };
     defer b.leave(slot);
-    b.reserve(slot, prompt.len + steps);
+    if (reserve) b.reserve(slot, prompt.len + steps);
     try b.reset(slot);
     var h: u64 = 7;
     for (prompt) |token| h = mix(h, token);
@@ -714,4 +770,55 @@ test "batcher: shared memory pool: prompts wait for memory, a large prompt is no
     try t.expectEqual(@as(u32, 0), fake.violations);
     try t.expect(b.stats.admission_waits > 0); // the pool was really a constraint
     for (fake.held) |h| try t.expectEqual(@as(usize, 0), h); // every page came back
+}
+
+fn growingRun(fake: *Fake, slots: u32, n: usize, steps: u32, results: []anyerror!void) !B {
+    const io = t.io;
+    var b = try B.init(io, fake, .{ .slots = slots, .vocab = V, .stall = .{ .ns = 0 }, .order = .shortest, .pack = 3 });
+    var prompts: [12][6]u32 = undefined;
+    for (&prompts, 0..) |*pr, i| for (pr, 0..) |*x, j| {
+        x.* = @intCast(1000 * i + j + 1);
+    };
+    var group: std.Io.Group = .init;
+    defer group.cancel(io);
+    for (0..n) |i| try group.concurrent(io, growingGeneration, .{ &b, prompts[i][0 .. 2 + i % 5], steps, &results[i] });
+    while (queued(&b, .reset) < slots) try io.sleep(.fromMicroseconds(200), .awake);
+    var task = try io.concurrent(B.run, .{&b});
+    try group.await(io);
+    b.stop();
+    task.await(io);
+    return b;
+}
+
+test "batcher: prompt admission grows page by page; the youngest sequence swaps out and back, outputs unchanged" {
+    // 6 slots over 10 pages of 4 positions: every prompt fits (1-2 pages), but 6 sequences
+    // of up to 26 positions (7 pages) cannot all grow; swapped sequences come back.
+    var fake: Fake = .{ .io = t.io, .segments = 2, .unit_delay_ns = 50_000, .pool = 10, .page = 4, .pack_cap = 3, .host_pool = 100 };
+    var results: [12]anyerror!void = undefined;
+    const b = try growingRun(&fake, 6, 12, 20, &results);
+    for (results) |r| try r;
+    try t.expectEqual(@as(u32, 0), fake.violations);
+    try t.expect(b.stats.swap_outs > 0);
+    try t.expectEqual(b.stats.swap_outs, b.stats.swap_ins);
+    try t.expectEqual(@as(u64, fake.swap_outs), b.stats.swap_outs);
+    try t.expectEqual(@as(u64, 0), b.stats.swap_failures);
+    for (fake.held, fake.host_held) |h, x| {
+        try t.expectEqual(@as(usize, 0), h);
+        try t.expectEqual(@as(usize, 0), x);
+    }
+}
+
+test "batcher: prompt admission without a host store: a row that finds no page fails alone" {
+    var fake: Fake = .{ .io = t.io, .segments = 1, .pool = 10, .page = 4, .pack_cap = 3, .host_pool = 0 };
+    var results: [6]anyerror!void = undefined;
+    const b = try growingRun(&fake, 6, 6, 20, &results);
+    var failed: u32 = 0;
+    for (results) |r| r catch |e| {
+        try t.expectEqual(error.PoolExhausted, e);
+        failed += 1;
+    };
+    try t.expect(failed > 0 and failed < 6);
+    try t.expectEqual(@as(u64, failed), b.stats.swap_failures);
+    try t.expectEqual(@as(u32, 0), fake.violations);
+    for (fake.held) |h| try t.expectEqual(@as(usize, 0), h);
 }

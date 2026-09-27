@@ -296,3 +296,9 @@ finish independent tests and benchmark gates before advancing.
     measurements): vLLM reserves the prompt and preempts the youngest by recompute; SGLang reserves prompt + a decaying
     0.7→0.1 share of the output and retracts by recompute; llama.cpp -kvu has no admission and fails every slot (observed
     exit at 93k). Nobody is bitwise exact across preemption; host swap is the exact option for zerv.
+96. [Shared KV pool](bench/2026-09-26-shared-pool.md) (18d.2): no measurable cost against static KV (ABBA),
+    one request may use the whole pool; default `--kv-pool shared`. 70–80k prompts with 6 users streaming against
+    llama-server `-kvu` and vLLM (only zerv keeps the others streaming; llama prefills 70k 7% faster).
+97. [Prompt admission with exact swap to host](bench/2026-09-27-kv-swap.md) (18d.3): `--kv-admit prompt`, bitwise
+    exact swaps (batch-check and serving); clients without `max_tokens`: 109 tok/s, 16/16 finished, against reserve
+    47 tok/s with 11/16 timeouts and vLLM ~21 tok/s unfinished after 2.7 h.

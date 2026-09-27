@@ -22,6 +22,9 @@ interference  P - 2 users stream long answers (short prompts); once each has 20 
             gaps before it; the long prompt's TTFT; the short prompt's TTFT (head-of-line
             blocking behind the long one).
 
+open        as steady, but the requests omit max_tokens (the server's limit applies; the
+            answers end at EOS): what admission does with clients that give no output bound.
+
 queue       P + 2 users: P stream long answers, 2 more arrive and wait for a slot. Their TTFT
             (queueing included) and what the running users see.
 
@@ -99,8 +102,11 @@ EXTRA = {}
 
 
 def body(case, workload, max_tokens):
-    return dict(model="qwen3.8-27b", messages=case["messages"], stream=True, stream_options={"include_usage": True},
-                max_tokens=max_tokens, temperature=workload["temperature"], seed=workload["seed"], **EXTRA, **case.get("options", {}))
+    """max_tokens None: the request omits it (the server's own limit applies)."""
+    b = dict(model="qwen3.8-27b", messages=case["messages"], stream=True, stream_options={"include_usage": True},
+             temperature=workload["temperature"], seed=workload["seed"], **EXTRA, **case.get("options", {}))
+    if max_tokens is not None: b["max_tokens"] = max_tokens
+    return b
 
 
 def exact(r):
@@ -131,15 +137,15 @@ def gaps(times, lo=None, hi=None):
     return out
 
 
-def steady(port, short, level, raw, engine, rnd=0):
+def steady(port, short, level, raw, engine, rnd=0, max_tokens=256, scenario="steady"):
     recs = [dict() for _ in range(level * 2)]
 
     def client(i):
         for n in range(2):
             case = short["cases"][(i + n * level) % len(short["cases"])]
             r = recs[i * 2 + n]
-            r.update(engine=engine, scenario="steady", round=rnd, level=level, client=i, case=case["name"])
-            stream(port, body(case, short, 256), r)
+            r.update(engine=engine, scenario=scenario, round=rnd, level=level, client=i, case=case["name"])
+            stream(port, body(case, short, max_tokens), r)
 
     t0 = time.perf_counter()
     threads = [threading.Thread(target=client, args=(i,)) for i in range(level)]
@@ -152,7 +158,7 @@ def steady(port, short, level, raw, engine, rnd=0):
     itl = [g for r in recs if exact(r) for g in gaps(r["times"])]
     rates = sorted(x for x in (rate(r) for r in recs if r.get("times")) if x)
     tokens = sum(r["usage"]["completion_tokens"] for r in recs if r.get("usage"))
-    return dict(level=level, round=rnd, errors=errors, aggregate_tok_s=tokens / wall, ttft_p50_ms=pct(ttft, .5), ttft_p95_ms=pct(ttft, .95),
+    return dict(level=level, round=rnd, errors=errors, wall_s=wall, completion_tokens=tokens, aggregate_tok_s=tokens / wall, ttft_p50_ms=pct(ttft, .5), ttft_p95_ms=pct(ttft, .95),
                 **gap_stats(itl, "itl_"), itl_excluded_requests=sum(1 for r in recs if r.get("times") and not exact(r)),
                 user_tok_s_min=rates[0] if rates else None, user_tok_s_median=pct(rates, .5))
 
@@ -245,7 +251,7 @@ def main():
                     parallel=a.parallel, context_per_slot=a.context_per_slot, reps=a.reps, rounds=a.rounds, prompt_cache=a.prompt_cache, engines={})
     raw = (out / "raw.jsonl").open("w")
     names = a.engines.split(";")
-    summary = {n: dict(steady=[], interference=[], queue=[]) for n in names}
+    summary = {n: dict(steady=[], open=[], interference=[], queue=[]) for n in names}
     for rnd, name in [(r, n) for r in range(a.rounds) for n in (names if r % 2 == 0 else names[::-1])]:
         spec = dict(rs.resolve_engine(table, name, zb))
         cmd = list(spec["cmd"])
@@ -270,6 +276,10 @@ def main():
                 s = steady(a.port, short, level, raw, name, rnd)
                 res["steady"].append(s)
                 print(name, "steady", json.dumps({k: round(v, 1) if isinstance(v, float) else v for k, v in s.items()}), flush=True)
+            for level in ([int(x) for x in a.levels.split(",")] if "open" in scenarios else []):
+                s = steady(a.port, short, level, raw, name, rnd, max_tokens=None, scenario="open")
+                res["open"].append(s)
+                print(name, "open", json.dumps({k: round(v, 1) if isinstance(v, float) else v for k, v in s.items()}), flush=True)
             for rep in (range(rnd * a.reps, (rnd + 1) * a.reps) if "interference" in scenarios else []):
                 s = interference(a.port, short, long_w, a.parallel - 2, raw, name, rep)
                 res["interference"].append(s)

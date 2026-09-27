@@ -436,7 +436,7 @@ not the other slots used theirs.
 - **Limitation.** A request without `max_tokens` reserves up to the full per-request context.
   Growing on demand needs preemption, and preemption must stay exact: generated tokens
   replayed through batched decode, not prefill. That is left to the tiered-store work.
-- `--kv-pool static` is the previous behaviour and stays the default until the benchmark.
+- `--kv-pool static` is the previous behaviour. **Default: `shared`** since the 2026-09-26 A/B (no measurable cost, docs/bench/2026-09-26-shared-pool.md).
 
 **Gates.**
 1. Host tests: the batcher shared-pool test (admission waits happen; a large prompt is not
@@ -449,6 +449,67 @@ not the other slots used theirs.
    - Passed 168/168 with f32 KV, f16 KV, 256-token pages and `.split` decode.
 3. Serving identity: `run_concurrent.py --reference` (the 18d.1 reference) with
    `--kv-pool shared`: passed at 1/2/4/8 clients, 161.7 tok/s at 8.
+
+### 18d.3 design: prompt admission, page growth, exact swap to host (specified 2026-09-27)
+
+**Problem.** 18d.2 reserves prompt + output limit at admission. A request without `max_tokens`
+reserves the whole per-request context, so with `--context max` such requests run one at a
+time. vLLM and SGLang admit on the prompt and preempt under pressure, by recompute
+(docs/research/2026-09-27-kv-admission-preemption.md). Recompute is a full re-prefill,
+46 s at 29k tokens here, and not bitwise identical to an uninterrupted run.
+
+**Design** (knobs; `--kv-admit reserve` keeps the 18d.2 behaviour):
+- **`--kv-admit prompt`** (shared pool only): a prompt is admitted when its prompt pages are
+  free. Nothing is reserved for the output.
+- **Growth.** Before a decode batch, the scheduler asks the backend to `grow` each row's
+  slot: map one more page when the next position crosses a page boundary.
+- **Swap out.** If growth fails (pool exhausted), the scheduler swaps out a victim, a
+  decoding slot not in the batch being built or already grown. The victim is the youngest
+  such slot (latest prompt arrival, as vLLM does). Its pages (in logical order) and its
+  whole per-slot state region are copied to a host swap store, and its pages return to the
+  pool. If no other slot can be swapped, the requesting row's own slot is swapped out.
+- **Swap in.** A swapped slot's pending step waits. While any slot is swapped, no new prompt
+  is admitted. The oldest swapped slot is swapped in as soon as the pool holds its pages
+  plus one spare page per running decoding slot, so it is not evicted again at the next
+  page boundary. Swap in maps fresh pages (any physical pages), rewrites the slot's page
+  table and copies the pages and the state back.
+- **Exactness.** The swapped bytes are identical, and every kernel reads KV through the
+  page table. Rows are bitwise independent of physical page placement (18d.2 gate 2) and
+  of batch composition (18c). So a swapped sequence continues bitwise as if never swapped.
+- **Host store:** `--kv-swap-mib N` of host-visible memory, in pages of the pool's page
+  size plus one state region per slot. It is counted in the device allocation cap like
+  other host buffers, not in VRAM. It is needed for `--kv-admit prompt`: the default is
+  enough for the whole pool plus the slot states.
+- **Host store full (or no store).** When the victim does not fit, the victim fails with
+  `PoolExhausted` (its request ends with an error) and its pages return to the pool at once,
+  so the older rows keep running. This is the last resort, as in SGLang, and it is counted
+  (`swap_failures`). The oldest sequence is never the victim while another row exists.
+- **Candidates.** Victims are rows of the batch being built. They are marked running, so no
+  client thread frees their slots meanwhile. Slots in a prefill chunk and decoding slots
+  whose step has not arrived are not candidates.
+- **Cost.** Copies run on the compute queue between batches: about 16 GB/s out and
+  10 GB/s in (docs/bench/2026-09-24-host-memory.md). An 8k f16 sequence (512 MiB of KV plus
+  150 MiB of state) is about 42 ms out and 65 ms in, stalling every running stream once.
+  Measured and reported per run (`swap_outs`, `swap_ins`, swap ms).
+
+**Gates.**
+1. **Host tests** (fake backend):
+   - prompt admission lets more sequences in than reserve;
+   - growth exhaustion swaps the youngest and resumes it;
+   - no admission while any slot is swapped;
+   - outputs equal the sequence alone;
+   - every page and host page returned;
+   - host-full errors.
+2. **`zerv-batch-check … swap`:**
+   - a small pool, sequences decoding past it;
+   - forced swap out and in with remapped pages;
+   - every row bitwise equal to the sequence alone;
+   - all pages and host pages returned.
+3. **Serving identity:** `run_concurrent.py --reference` (18d.1 reference) with
+   `kv-admit=prompt` and a small `--kv-pool-pages` that forces swaps. Every output equal to
+   the reference, and swaps > 0 in the log.
+4. **Benchmark:** clients without `max_tokens`, reserve vs prompt vs vLLM, and the steady
+   levels unchanged.
 
 ## Session and HTTP (host performance)
 
