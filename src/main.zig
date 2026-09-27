@@ -9,8 +9,9 @@ const usage =
     \\            [--drain-timeout 30]  (seconds; SIGINT/SIGTERM drain, a second one exits)
     \\            [--prefill-precision fp32]  (fp32 | f16: explicit f16 WMMA prompt projections)
     \\            [--gemm-code native]  (f16 mode, Q4_0 prompt projections: native = our RDNA3 machine code for gemm_f16x, same values, ~12% lower TTFT; spirv = the compiled SPIR-V; native falls back to spirv on other drivers)
-    \\            [--prefix-cache-slots 8]  (recurrent-state snapshots, ~150 MiB each; 0 = no prefix cache)
-    \\            [--prefix-cache-memory device]  (device: snapshots in VRAM; host: in system RAM, no VRAM, ~10 ms TTFT per save)
+    \\            [--prefix-cache-slots 8, with --parallel N: 3N]  (recurrent-state snapshots, ~150 MiB each; 0 = no prefix cache)
+    \\            [--prefix-cache flat]  (--parallel > 1: the prefix-cache policy: flat = checkpoint list; radix = prefix tree with deduplication of pages on insert)
+    \\            [--prefix-cache-memory device, with --parallel: host]  (device: snapshots in VRAM; host: in system RAM, no VRAM, ~10 ms TTFT per save)
     \\            [--matvec-accumulation fma]  (decode/verify dot products: fma one rounding per step; separate: the pre-2026-09-24 multiply+add)
     \\            [--decode-fusion on]  (fused decode FFN input: same values, one dispatch fewer per layer; off: separate)
     \\            [--verify-fusion on]  (the same fusion in the speculative verify pass; off: separate)
@@ -59,8 +60,9 @@ pub fn main(init: std.process.Init) !void {
     var prefill_chunk: u32 = 512;
     var drain_s: u32 = 30;
     var precision: zerv.model.gemm.Precision = .fp32;
-    var snapshot_slots: u32 = 8;
-    var snapshot_memory: zerv.gpu.Location = .device;
+    var snapshot_slots_arg: ?u32 = null;
+    var snapshot_memory_arg: ?zerv.gpu.Location = null;
+    var prefix_cache_kind: zerv.session.kvcache.Kind = .flat;
     var embedding_memory: zerv.gpu.Location = .host;
     var reserve_mib: u64 = 1024;
     var kv_type: zerv.model.KvType = .f32;
@@ -104,8 +106,9 @@ pub fn main(init: std.process.Init) !void {
         else if (std.mem.eql(u8, arg, "--prefill-chunk")) prefill_chunk = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--drain-timeout")) drain_s = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefill-precision")) precision = std.meta.stringToEnum(zerv.model.gemm.Precision, value) orelse return error.InvalidArguments //
-        else if (std.mem.eql(u8, arg, "--prefix-cache-slots")) snapshot_slots = try std.fmt.parseInt(u32, value, 10) //
-        else if (std.mem.eql(u8, arg, "--prefix-cache-memory")) snapshot_memory = std.meta.stringToEnum(zerv.gpu.Location, value) orelse return error.InvalidArguments //
+        else if (std.mem.eql(u8, arg, "--prefix-cache-slots")) snapshot_slots_arg = try std.fmt.parseInt(u32, value, 10) //
+        else if (std.mem.eql(u8, arg, "--prefix-cache")) prefix_cache_kind = std.meta.stringToEnum(zerv.session.kvcache.Kind, value) orelse return error.InvalidArguments //
+        else if (std.mem.eql(u8, arg, "--prefix-cache-memory")) snapshot_memory_arg = std.meta.stringToEnum(zerv.gpu.Location, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--vram-reserve-mib")) reserve_mib = std.math.cast(u32, try std.fmt.parseInt(u64, value, 10)) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--decode-fusion")) decode_fusion = try parseSwitch(value) //
         else if (std.mem.eql(u8, arg, "--verify-fusion")) verify_fusion = try parseSwitch(value) //
@@ -143,12 +146,22 @@ pub fn main(init: std.process.Init) !void {
         std.debug.print("zerv: --parallel must be 1..{d} (and needs --prefill-chunk >= it)\n", .{zerv.model.layout.io.batch_max});
         return error.InvalidArguments;
     }
+    // One sequence: 8 snapshots of its history. Several: 3 checkpoints per slot (a system
+    // prompt plus recent turns per conversation; docs/specs/concurrent.md "18d.4 design").
+    var snapshot_slots: u32 = snapshot_slots_arg orelse if (parallel > 1) @min(3 * parallel, zerv.session.prefix.max_slots) else 8;
     if (parallel > 1) {
-        // Per-slot speculation and prefix caching come with block 18d.
-        if (spec_draft > 0 or snapshot_slots > 0) std.debug.print("zerv: --parallel {d}: speculative decoding and the prefix cache are off (per-slot versions: block 18d)\n", .{parallel});
+        // Per-slot speculation comes with block 18d. The prefix cache becomes checkpoints of
+        // the shared pool (18d.4); a static pool has none.
+        if (spec_draft > 0) std.debug.print("zerv: --parallel {d}: speculative decoding is off (per-slot version: block 18d)\n", .{parallel});
         spec_draft = 0;
-        snapshot_slots = 0;
+        if (!kv_share and snapshot_slots > 0) {
+            std.debug.print("zerv: --parallel {d} --kv-pool static: the prefix cache is off (it needs the shared pool)\n", .{parallel});
+            snapshot_slots = 0;
+        }
     }
+    // Snapshots in VRAM for one sequence (0.5 ms copies); with several the pool needs the
+    // VRAM, so they go to host memory (10-15 ms copies) unless given.
+    const snapshot_memory: zerv.gpu.Location = snapshot_memory_arg orelse if (parallel > 1) .host else .device;
     if (spec_draft >= zerv.matvec.max_rows or (spec_draft > 0 and prefill_chunk < spec_draft + 1)) {
         std.debug.print("zerv: --spec-draft must be 0..{d} (and needs --prefill-chunk >= drafts + 1)\n", .{zerv.matvec.max_rows - 1});
         return error.InvalidArguments;
@@ -231,11 +244,17 @@ pub fn main(init: std.process.Init) !void {
     if (spec_draft > 0 and spec_adaptive) native.spec_policy = .init();
     native.sampler_order = sampler_order;
     native.admission = kv_admission;
+    var model_backend_store = false;
     // --parallel N > 1: the batcher owns the model on its scheduler task.
     var model_backend: zerv.serve.ModelBackend = .{ .m = &model };
     var batch = try zerv.serve.Batcher.init(io, &model_backend, .{ .slots = parallel, .vocab = zerv.model.config.vocab, .stall = stall, .order = prefill_order, .swap_slice = if (model.swap_pages > 0 and kv_swap_slice_ms > 0) std.Io.Duration.fromMilliseconds(@intCast(kv_swap_slice_ms)) else null, .pack = if (model.packable()) @max(1, @min(prefill_pack, model.pack_seqs)) else 1 });
     var scheduler: ?std.Io.Future(void) = null;
     if (parallel > 1) {
+        if (model.options.kv_share and model.snapshot_slots > 0) {
+            try model_backend.initCache(gpa, prefix_cache_kind, native.boundary);
+            model_backend_store = true;
+            std.debug.print("zerv: prefix checkpoints: {d} ({s} memory, {s} policy)\n", .{ model.snapshot_slots, @tagName(snapshot_memory), @tagName(prefix_cache_kind) });
+        }
         try native.attachBatcher(&batch, &model_backend);
         scheduler = try io.concurrent(zerv.serve.Batcher.run, .{&batch});
     }
@@ -247,6 +266,11 @@ pub fn main(init: std.process.Init) !void {
         std.debug.print("zerv: batcher: {d} batches ({d} rows, {d} partial, {d} inside prefill chunks), {d} prefill chunks ({d} packed, {d} units, {d} aborted, {d} admission waits, {d} swaps out ({d} by time slice), {d} in, {d:.1} ms swapping, {d} rows failed for memory); GPU busy {d:.1}% (decode {d:.1}%, prefill {d:.1}%) over {d:.1} s; batches by rows:", .{ st.batches, st.batch_rows, st.partial_batches, st.batches_in_chunk, st.prefill_chunks, st.packed_chunks, st.prefill_units, st.aborted_chunks, st.admission_waits, st.swap_outs, st.slice_swaps, st.swap_ins, @as(f64, @floatFromInt(st.swap_ns)) / 1e6, st.swap_failures, 100 * @as(f64, @floatFromInt(st.batch_ns + st.prefill_ns)) / span, 100 * @as(f64, @floatFromInt(st.batch_ns)) / span, 100 * @as(f64, @floatFromInt(st.prefill_ns)) / span, span / 1e9 });
         for (st.sizes[1 .. parallel + 1], 1..) |n, rows| std.debug.print(" {d}:{d}", .{ rows, n });
         std.debug.print("\n", .{});
+        if (model_backend_store) {
+            const cs = model_backend.cache.?.stats();
+            std.debug.print("zerv: prefix checkpoints: {d} taken, {d} of {d} lookups restored ({d} prompt tokens reused), {d} dropped for new ones, {d} for memory, {d} pages deduplicated\n", .{ cs.inserts, cs.restores, cs.lookups, cs.restored_tokens, cs.capacity_drops, cs.pressure_drops, cs.dedup_pages });
+            model_backend.deinitCache(gpa);
+        }
     };
     const ids = [_][]const u8{alias};
     const defaults = try samplingDefaults(&container);

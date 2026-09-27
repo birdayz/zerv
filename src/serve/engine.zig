@@ -34,6 +34,8 @@ pub const Native = struct {
     /// prompt + output limit; `.prompt` admits the prompt and grows page by page (swapping
     /// sequences to host memory under pressure).
     admission: Admission = .reserve,
+    /// `<|im_start|>`: where prefix checkpoints go (single-slot cache and shared pool).
+    boundary: u32 = 0,
 
     /// Resolve and verify profile token ids against the loaded tokenizer.
     /// `allocator` owns `whitespace_ids` until `deinit`.
@@ -58,9 +60,11 @@ pub const Native = struct {
         }
         result.whitespace_ids = try whitespace.toOwnedSlice(allocator);
         errdefer allocator.free(result.whitespace_ids);
-        if (m.snapshot_slots > 0) {
-            const boundary = try single(allocator, tokenizer, "<|im_start|>");
-            result.cache = try session.prefix.Cache.init(allocator, m.state_layout.context, .{ .slots = m.snapshot_slots, .boundary = boundary });
+        result.boundary = try single(allocator, tokenizer, "<|im_start|>");
+        // One sequence: the single-history prefix cache. Several share the snapshots through
+        // the batcher backend's checkpoint store instead (`ModelBackend.initStore`).
+        if (m.snapshot_slots > 0 and m.state_layout.slots == 1) {
+            result.cache = try session.prefix.Cache.init(allocator, m.state_layout.context, .{ .slots = m.snapshot_slots, .boundary = result.boundary });
         }
         return result;
     }
@@ -190,6 +194,12 @@ pub const Native = struct {
         pub fn reset(s: SlotBackend) !void {
             try s.b.reset(s.slot);
         }
+        pub fn begin(s: SlotBackend, prompt: []const u32) !u32 {
+            return s.b.begin(s.slot, prompt);
+        }
+        pub fn checkpoint(s: SlotBackend, prefix: []const u32) !void {
+            try s.b.checkpoint(s.slot, prefix);
+        }
         pub fn prefill(s: SlotBackend, tokens: []const u32) ![]const f32 {
             return s.b.prefill(s.slot, tokens);
         }
@@ -231,6 +241,9 @@ pub const Native = struct {
             var sr = r;
             sr.cache = null;
             sr.spec_policy = null;
+            if (self.batch_backend) |mb| if (mb.cache != null) {
+                sr.checkpoints = self.boundary;
+            };
             const slot = try b.join();
             defer b.leave(slot);
             // Shared KV pool (docs/specs/concurrent.md, "18d.2 design"): memory for the prompt
@@ -239,7 +252,7 @@ pub const Native = struct {
             if (prepared.tokens.len < context and self.admission == .reserve) b.reserve(slot, prepared.tokens.len + @min(r.max_tokens, context - @as(u32, @intCast(prepared.tokens.len))));
             break :slot try SlotGeneration.run(self.io, arena, .{ .b = b, .slot = slot, .m = self.model }, self.tokenizer, special, sr, sink);
         } else try Generation.run(self.io, arena, .{ .m = self.model }, self.tokenizer, special, r, sink);
-        if (self.cache != null) std.log.info("prefix cache: {s}, reused {d} of {d} prompt tokens", .{ @tagName(result.cache_outcome), result.cached_tokens, result.prompt_tokens });
+        if (self.cache != null or (self.batch_backend != null and self.batch_backend.?.cache != null)) std.log.info("prefix cache: {s}, reused {d} of {d} prompt tokens", .{ @tagName(result.cache_outcome), result.cached_tokens, result.prompt_tokens });
         if (result.spec.verifies > 0) std.log.info("speculative: {d} of {d} verified drafts accepted ({d} drafted, {d} verifies, {d} tokens)", .{ result.spec.accepted, result.spec.verified, result.spec.drafted, result.spec.verifies, result.completion_tokens });
         std.log.info("decode time: {d:.3} ms total, {d:.3} ms in backend calls, {d:.3} ms sampling, {d:.3} ms other host work", .{ ms(result.decode_ns), ms(result.backend_ns), ms(result.sample_ns), ms(result.decode_ns -| result.backend_ns -| result.sample_ns) });
         return .{ .finish = result.finish, .prompt_tokens = result.prompt_tokens, .completion_tokens = result.completion_tokens, .prefill_ns = result.prefill_ns, .decode_ns = result.decode_ns, .tool_calls = result.tool_calls, .tool_call_failed = result.tool_call_failed, .cached_tokens = result.cached_tokens, .cache_outcome = result.cache_outcome, .spec = result.spec };
@@ -256,7 +269,78 @@ pub const ModelBackend = struct {
     m: *model.Model,
     rows: [batcher.max_slots]model.BatchRow = undefined,
     fatal: std.atomic.Value(bool) = .init(false),
+    /// Prefix cache of the shared pool (docs/specs/concurrent.md, "18d.4 design"): a policy
+    /// behind `session.kvcache.Cache`; this backend is its `Device`. Scheduler thread only.
+    cache: ?session.kvcache.Cache = null,
 
+    pub fn initCache(self: *ModelBackend, allocator: std.mem.Allocator, kind: session.kvcache.Kind, boundary: u32) !void {
+        const m = self.m;
+        if (!m.options.kv_share or m.snapshot_slots == 0) return error.InvalidOptions;
+        self.cache = try session.kvcache.create(allocator, kind, m.snapshot_slots, m.state_layout.context, m.state_layout.seq_pages, boundary);
+    }
+    pub fn deinitCache(self: *ModelBackend, allocator: std.mem.Allocator) void {
+        if (self.cache) |c| c.deinit(allocator);
+        self.cache = null;
+    }
+    pub fn device(self: *ModelBackend) session.kvcache.Device {
+        return .{ .ctx = self, .vtable = &device_vtable };
+    }
+    const device_vtable: session.kvcache.Device.VTable = .{ .pageTokens = devPageTokens, .save = devSave, .load = devLoad, .pin = devPin, .unpin = devUnpin, .attach = devAttach, .rebind = devRebind };
+    fn backendOf(ctx: *anyopaque) *ModelBackend {
+        return @ptrCast(@alignCast(ctx));
+    }
+    fn devPageTokens(ctx: *anyopaque) u32 {
+        return backendOf(ctx).m.state_layout.page;
+    }
+    fn devSave(ctx: *anyopaque, slot: u32, snapshot: u32) anyerror!void {
+        const self = backendOf(ctx);
+        self.m.select(slot) catch |e| return self.check(e);
+        self.m.saveSnapshot(snapshot) catch |e| return self.check(e);
+    }
+    fn devLoad(ctx: *anyopaque, slot: u32, snapshot: u32, position: u32) anyerror!void {
+        const self = backendOf(ctx);
+        self.m.select(slot) catch |e| return self.check(e);
+        self.m.loadSnapshot(snapshot, position) catch |e| return self.check(e);
+    }
+    fn devPin(ctx: *anyopaque, slot: u32, tokens: u32, out: []u32) anyerror![]const u32 {
+        const self = backendOf(ctx);
+        return self.m.pinPrefix(slot, tokens, out) catch |e| return self.check(e);
+    }
+    fn devUnpin(ctx: *anyopaque, pages: []const u32) anyerror!void {
+        const self = backendOf(ctx);
+        self.m.unpinPages(pages) catch |e| return self.check(e);
+    }
+    fn devAttach(ctx: *anyopaque, slot: u32, full: []const u32, partial: ?u32) anyerror!void {
+        const self = backendOf(ctx);
+        self.m.attachPrefix(slot, full, partial) catch |e| {
+            if (e == error.PoolExhausted) return e;
+            return self.check(e);
+        };
+    }
+    fn devRebind(ctx: *anyopaque, slot: u32, pages: []const u32) anyerror!u32 {
+        const self = backendOf(ctx);
+        return self.m.rebindPages(slot, pages) catch |e| return self.check(e);
+    }
+    /// Start `prompt` in `slot`: reset, then the cache's best checkpoint (or cold).
+    pub fn begin(self: *ModelBackend, slot: u32, prompt: []const u32) !u32 {
+        const m = self.m;
+        m.select(slot) catch |e| return self.check(e);
+        m.reset() catch |e| return self.check(e);
+        if (m.options.kv_share) m.releasePages(slot) catch |e| return self.check(e);
+        const c = self.cache orelse return 0;
+        return c.restore(self.device(), slot, prompt);
+    }
+    /// Keep `slot`'s state after `prefix` (its current position) as a checkpoint.
+    pub fn checkpoint(self: *ModelBackend, slot: u32, prefix: []const u32) !void {
+        const c = self.cache orelse return;
+        if (self.m.slotPosition(slot) != prefix.len) return error.InvalidToken;
+        try c.checkpoint(self.device(), slot, prefix);
+    }
+    /// Memory pressure: drop one cached checkpoint; false: none left.
+    fn dropOldest(self: *ModelBackend) bool {
+        const c = self.cache orelse return false;
+        return c.evict(self.device());
+    }
     pub fn checkRow(self: *ModelBackend, row: batcher.Row) !void {
         try self.m.checkRow(.{ .slot = row.slot, .token = row.token });
     }
@@ -279,11 +363,15 @@ pub const ModelBackend = struct {
     pub fn admit(self: *ModelBackend, slot: u32, tokens: usize) bool {
         if (!self.m.options.kv_share) return true;
         const want: u32 = @intCast(@min(tokens, self.m.state_layout.context));
-        self.m.ensurePages(slot, want) catch |e| {
-            if (e != error.PoolExhausted) self.noteFailure();
-            return false;
-        };
-        return true;
+        while (true) {
+            self.m.ensurePages(slot, want) catch |e| {
+                if (e != error.PoolExhausted) self.noteFailure();
+                // Unused checkpoints go before a prompt waits.
+                if (e == error.PoolExhausted and self.dropOldest()) continue;
+                return false;
+            };
+            return true;
+        }
     }
     pub fn release(self: *ModelBackend, slot: u32) void {
         if (!self.m.options.kv_share) return;
@@ -292,11 +380,15 @@ pub const ModelBackend = struct {
     /// Shared pool: a page for the slot's next decode position (false: none free).
     pub fn grow(self: *ModelBackend, slot: u32) !bool {
         if (!self.m.options.kv_share) return true;
-        self.m.ensurePages(slot, self.m.slotPosition(slot) + 1) catch |e| {
-            if (e == error.PoolExhausted) return false;
-            return self.check(e);
-        };
-        return true;
+        while (true) {
+            self.m.ensurePages(slot, self.m.slotPosition(slot) + 1) catch |e| {
+                // Unused checkpoints go before any sequence is swapped out.
+                if (e == error.PoolExhausted and self.dropOldest()) continue;
+                if (e == error.PoolExhausted) return false;
+                return self.check(e);
+            };
+            return true;
+        }
     }
     pub fn swapOut(self: *ModelBackend, slot: u32) !bool {
         if (self.m.swap_pages == 0) return false;

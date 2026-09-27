@@ -1,0 +1,68 @@
+{
+ "started_at": "2026-09-27T08:14:31.927947+00:00",
+ "argv": [
+  "/home/USER/projects/zerv/bench/run_multiturn.py",
+  "--output",
+  "docs/bench/data/2026-09-27-multiturn/zerv-ckpt1",
+  "--zerv-binary",
+  "third_party/multiuser/zerv-ckpt1",
+  "--engines",
+  "zerv-f16@parallel=8,kv-type=f16",
+  "--context-per-slot",
+  "12288",
+  "--levels",
+  "1,4,8",
+  "--reference",
+  "docs/bench/data/2026-09-27-multiturn/zerv-noprefix/raw.jsonl"
+ ],
+ "host": {
+  "sysname": "Linux",
+  "nodename": "benchmark-host",
+  "release": "7.2.6-arch2-1",
+  "version": "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000",
+  "machine": "x86_64"
+ },
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "zerv_sha256": "172bde648e307f8582c9eb4f3be6ea6cbb0a876b44e04ee0e83dc5e1a738bd31",
+ "llama_server": "/home/USER/projects/zerv/bazel-out/k8-fastbuild/bin/bench/llama-server",
+ "llama_server_sha256": "f6a09ab1a41b0bd75c0268af3cff2618c34f1f547ecf0b1a2a1158b8a8fb4b40",
+ "vllm_image": "vllm/vllm-openai-rocm@sha256:2e7da1ad1c66836802072588adea75f9f4991da5f9545b4318e91d422c22ce6a",
+ "vllm_model": "models/RedHatAI/Qwen3.8-27B-INT4/c063053e004e9783631651df95cf55d0bbf88b32",
+ "workload": {
+  "bench/workloads/multiturn-v1.json": "39732d450a9360cd310796c7d7b3f60a2bc945c75c9efb8f209b5936b5e751de"
+ },
+ "levels": [
+  1,
+  4,
+  8
+ ],
+ "parallel": 8,
+ "context_per_slot": 12288,
+ "rounds": 1,
+ "engines": {
+  "zerv-f16@parallel=8,kv-type=f16": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/multiuser/zerv-ckpt1",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18098",
+    "--context",
+    "12288",
+    "--prefill-precision",
+    "f16",
+    "--spec-draft",
+    "0",
+    "--parallel",
+    "8",
+    "--kv-type",
+    "f16"
+   ],
+   "env": {},
+   "vram_loaded": [
+    24431579136
+   ]
+  }
+ },
+ "finished_at": "2026-09-27T08:16:56.350985+00:00"
+}

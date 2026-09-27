@@ -63,6 +63,12 @@ const Fake = struct {
     host_held: [max_slots]usize = @splat(0),
     swapped: [max_slots]bool = @splat(false),
     swap_outs: u32 = 0,
+    /// Checkpoints (`checkpoint`/`begin`): prefix tokens and the history value after them.
+    ck_tokens: [8][16]u32 = undefined,
+    ck_len: [8]usize = @splat(0),
+    ck_hist: [8]u64 = undefined,
+    ck_count: usize = 0,
+    restores: u32 = 0,
     admits: u32 = 0,
     packs: u32 = 0,
     seg: u32 = 0,
@@ -91,6 +97,36 @@ const Fake = struct {
         self.swapped[slot] = false;
         self.pos[slot] = 0;
         self.hist[slot] = 7;
+    }
+    pub fn begin(self: *Fake, slot: u32, prompt: []const u32) !u32 {
+        try self.reset(slot);
+        var best: ?usize = null;
+        for (0..self.ck_count) |i| {
+            const n = self.ck_len[i];
+            if (n >= prompt.len or !std.mem.eql(u32, self.ck_tokens[i][0..n], prompt[0..n])) continue;
+            if (best == null or n > self.ck_len[best.?]) best = i;
+        }
+        const i = best orelse return 0;
+        const want = (self.ck_len[i] + self.page - 1) / self.page;
+        if (self.pool != 0 and self.usedPages() + want > self.pool) return 0; // no room: cold
+        self.held[slot] = if (self.pool != 0) want else 0;
+        self.hist[slot] = self.ck_hist[i];
+        self.pos[slot] = self.ck_len[i];
+        self.restores += 1;
+        return @intCast(self.ck_len[i]);
+    }
+    pub fn checkpoint(self: *Fake, slot: u32, prefix: []const u32) !void {
+        var h: u64 = 7;
+        for (prefix) |token| h = mix(h, token);
+        if (h != self.hist[slot] or prefix.len != self.pos[slot] or prefix.len > 16) {
+            self.violations += 1; // the slot's state is not the state after `prefix`
+            return;
+        }
+        if (self.ck_count == self.ck_len.len) return;
+        @memcpy(self.ck_tokens[self.ck_count][0..prefix.len], prefix);
+        self.ck_len[self.ck_count] = prefix.len;
+        self.ck_hist[self.ck_count] = h;
+        self.ck_count += 1;
     }
     pub fn packFits(self: *Fake, remaining: []const usize) bool {
         return remaining.len <= self.pack_cap;
@@ -894,4 +930,68 @@ test "batcher: time slice: a new prompt is not starved while long sequences rota
         try t.expectEqual(@as(usize, 0), h);
         try t.expectEqual(@as(usize, 0), x);
     }
+}
+
+fn cachedGeneration(b: *B, prompt: []const u32, point: usize, steps: u32, out: *anyerror!void, restored: *u32) void {
+    out.* = cached(b, prompt, point, steps, restored);
+}
+/// A generation through `begin` and one `checkpoint` at `point` (when it lies after the start).
+fn cached(b: *B, prompt: []const u32, point: usize, steps: u32, restored: *u32) !void {
+    const slot = while (true) break b.join() catch |e| switch (e) {
+        error.NoSlot => {
+            try b.io.sleep(.fromMilliseconds(1), .awake);
+            continue;
+        },
+        else => return e,
+    };
+    defer b.leave(slot);
+    const start = try b.begin(slot, prompt);
+    if (start > 0) restored.* += 1;
+    var at: usize = start;
+    if (point > at and point < prompt.len) {
+        _ = try b.prefill(slot, prompt[at..point]);
+        b.sampled(slot);
+        try b.checkpoint(slot, prompt[0..point]);
+        at = point;
+    }
+    var logits = try b.prefill(slot, prompt[at..]);
+    var h: u64 = 7;
+    for (prompt) |token| h = mix(h, token);
+    var want: [V]f32 = undefined;
+    for (0..steps) |_| {
+        logitsFor(h, &want);
+        if (!std.mem.eql(f32, &want, logits)) return error.WrongLogits;
+        const token = pick(logits);
+        b.sampled(slot);
+        h = mix(h, token);
+        logits = try b.step(slot, token);
+    }
+    b.sampled(slot);
+}
+
+test "batcher: begin restores the longest checkpoint; checkpoints are taken mid-prompt; outputs unchanged" {
+    const io = t.io;
+    var fake: Fake = .{ .io = io, .segments = 2, .pool = 40, .page = 4, .pack_cap = 3, .host_pool = 100 };
+    var b = try B.init(io, &fake, .{ .slots = 4, .vocab = V, .stall = .{ .ns = 0 }, .order = .shortest, .pack = 3 });
+    var task = try io.concurrent(B.run, .{&b});
+    // A shared 5-token "system prompt", then each request's own part.
+    const prompts = [_][8]u32{ .{ 1, 2, 3, 4, 5, 10, 11, 12 }, .{ 1, 2, 3, 4, 5, 20, 21, 22 }, .{ 1, 2, 3, 4, 5, 30, 31, 32 }, .{ 1, 2, 3, 4, 5, 10, 11, 13 } };
+    var restored: u32 = 0;
+    // The first request alone (it takes the checkpoint), then three at once.
+    var r0: anyerror!void = undefined;
+    cachedGeneration(&b, &prompts[0], 5, 6, &r0, &restored);
+    try r0;
+    var results: [3]anyerror!void = undefined;
+    var group: std.Io.Group = .init;
+    defer group.cancel(io);
+    for (1..4) |i| try group.concurrent(io, cachedGeneration, .{ &b, &prompts[i], @as(usize, 5), @as(u32, 6), &results[i - 1], &restored });
+    try group.await(io);
+    b.stop();
+    task.await(io);
+    for (results) |r| try r;
+    try t.expectEqual(@as(u32, 0), fake.violations);
+    try t.expectEqual(@as(u32, 3), fake.restores);
+    try t.expectEqual(@as(u32, 3), restored);
+    try t.expectEqual(@as(usize, 1), fake.ck_count); // restored requests start at the point: no new checkpoint
+    for (fake.held) |h| try t.expectEqual(@as(usize, 0), h);
 }

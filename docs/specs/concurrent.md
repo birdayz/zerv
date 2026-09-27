@@ -524,6 +524,94 @@ since 2026-09-27, docs/bench/2026-09-27-kv-swap.md):
 4. **Benchmark:** clients without `max_tokens`, reserve vs prompt vs vLLM, and the steady
    levels unchanged.
 
+### 18d.4 design: prefix checkpoints on the shared pool (specified 2026-09-27)
+
+**Problem (measured, docs/bench/data/2026-09-27-multiturn).** With `--parallel` > 1 zerv
+has no prefix cache: every turn of a conversation prefills the whole conversation again.
+On multiturn-v1 (a ~9.6k-token system prompt, 4 turns) that is 7.7–8.0 s TTFT per turn for
+one user and 25–80 s for 4–8 users. vLLM with automatic prefix caching takes 0.6–1.8 s,
+llama-server `-kvu` 0.35–1.2 s on follow-ups. vLLM also shares the system prompt across
+conversations.
+- vLLM caches the hybrid model's recurrent state only at block boundaries (1,568 tokens
+  here).
+- SGLang stores a finished request's final state on its radix-tree node.
+- llama-server keeps each slot's previous KV (slot affinity).
+
+**Design.**
+- **Checkpoint:** a token prefix T[0..p) with the recurrent state after it (a snapshot slot,
+  `--prefix-cache-slots`, host memory) and the pool pages holding positions below p,
+  pinned.
+  - Pages carry a slot bitmask and a pin count instead of one owner. A page is free when it
+    has neither.
+  - Checkpoints live in a store on the scheduler side (`session.checkpoint.Store`): bounded
+    by the snapshot slots, least recently used first out.
+- **Where checkpoints are taken** (the single-slot rule of docs/specs/prefix-cache.md, per
+  prompt): right before `<|im_start|>`, at the first boundary after the start (the end of the
+  system prompt) and at the last one (the start of the generation prompt), when not already
+  covered.
+  - A follow-up turn repeats the previous prompt up to its generation prompt. Another
+    conversation repeats the system prompt.
+- **Begin** (a scheduler operation replacing the reset):
+  - the checkpoint with the longest p ≤ n − 1 whose tokens are a prefix of the prompt is
+    restored;
+  - its full pages are mapped into the slot, shared read-only;
+  - its partial last page (if p is not page-aligned) is copied into a free page, because the
+    slot writes positions from p on;
+  - the snapshot is loaded and the prompt continues at p;
+  - otherwise the slot resets.
+- **Exactness.**
+  - Restore plus prefill of the rest equals the cold prefill bitwise (packed prefill is
+    chunk-grid invariant, 18d.1).
+  - Shared pages are never written: every writer writes positions at or above its own
+    start, and a shared page lies wholly below it.
+  - The checkpoint's pages below p are never changed by their original writer.
+- **Memory pressure:** unused checkpoints are unpinned, least recently used first, before
+  any running sequence is swapped (admission and growth retry after each).
+- Swapping a slot copies all its pages (shared ones too). It comes back on private pages.
+- Knob: `--prefix-cache-slots N` with `--parallel` > 1 (0: off, the previous behaviour).
+
+**Cache policy behind an interface** (2026-09-27, user decision: core vs implementations).
+- **Mechanism (the core, `model.Model`)**: pool pages with a slot bitmask and pin counts,
+  `pinPrefix`, `unpinPages`, `attachPrefix`, `rebindPages`, snapshot save/load. It enforces
+  exactness: shared pages are read only, a partial page is copied, a rebind only ever maps
+  pages the caller guarantees are byte-identical, and every page's holders are tracked.
+- **Device interface (`session.kvcache.Device`)**: those operations for one slot, as the
+  policy sees them. The engine's model backend implements it; host tests implement it with a
+  fake that tracks pages and content hashes.
+- **Cache interface (`session.kvcache.Cache`)**: `restore(slot, prompt) → start`,
+  `checkpoint(slot, prefix)`, `evict(keep) → bool` (memory pressure), `stats()`. A bad policy
+  can make the server slower, never wrong: it can only choose among mechanism operations.
+- **Implementations** (`--prefix-cache flat|radix`):
+  - **flat**: the first version. A list of checkpoints, longest-prefix lookup by scanning,
+    leaf-first then least-recently-used eviction.
+  - **radix**: a prefix tree of checkpoints (each node's parent is its longest live prefix).
+    Lookup descends the tree; eviction takes leaves first (structurally, O(1) per step);
+    **deduplication on insert**: when a new checkpoint shares full pages' worth of prompt
+    tokens with a node already in the tree but holds its own physical copies (two requests
+    prefilled the same prefix cold at once), its slot is rebound to the tree's pages and its
+    copies are freed. Both copies were written by prefill of identical tokens (every cached
+    prefix is a prompt prefix), so they are byte-identical; batch-check verifies it bytewise.
+    The recurrent state is never shared (one snapshot per node).
+- **Not cached, by design:** generated tokens. Their KV is written by decode (FP32 matvec),
+  while a later prompt containing them is prefilled (f16 GEMM by default): restoring it would
+  differ from a cold run. SGLang caches finished requests; we cannot, exactly.
+- **Not deduplicated yet:** a swapped-out sequence copies its shared pages too and returns
+  on private pages (to fix: skip pinned pages, re-map them on return).
+
+**Gates.**
+1. **`zerv-batch-check … prefix`:**
+   - one sequence checkpoints a common prefix (300 tokens, then page-aligned 256) and keeps
+     decoding;
+   - 7 others restore it into other slots (partial page copied) and prefill only their own
+     part on the packed path;
+   - every row bitwise equal to cold, all pages returned.
+   - **Passed 336/336** with f16 and f32 KV, 256-token pages and `.split` decode (the
+     primitives, before the policy).
+2. Unit tests of the store (lookup, points, LRU, pins).
+3. **Serving identity:** multiturn-v1 outputs with the cache on equal the outputs with it
+   off, per conversation and turn (`output_sha256`), at 1/4/8 conversations.
+4. **Benchmark:** run_multiturn against vLLM `vllm-apc` and llama-server `-kvu`.
+
 ## Session and HTTP (host performance)
 
 - `session.Generation` becomes a per-request state machine: `feed(logits rows) → tokens, output

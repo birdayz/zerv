@@ -26,6 +26,13 @@
 //! swaps the youngest running sequence out to the host store, and swapped sequences come
 //! back (on fresh pages) before new ones join; every logits row bitwise equal to the
 //! sequence run alone.
+//! `prefix`: the shared-prefix gate (docs/specs/concurrent.md, "18d.4 design"; f16 prefill,
+//! packed segments as in the server): every sequence is a common prefix (300 tokens, then
+//! a page-aligned 256) plus its own prompt. One sequence prefills the prefix, checkpoints
+//! it (snapshot + pinned pages) and continues; the others attach the checkpoint's pages
+//! (the partial last page copied), restore the snapshot and prefill only their own part,
+//! while the first keeps decoding on the original pages. Every row bitwise equal to the
+//! sequence prefilled cold; all pages come back.
 //! `pack`: the packed-prefill gate instead (docs/specs/concurrent.md, "18d.1 design"; f16
 //! prefill mode): every sequence prefilled alone is the reference; then the sequences join
 //! in packed chunks of 2..8 (re-packed chunk by chunk, several chunk grids) with decode
@@ -79,7 +86,8 @@ pub fn main(init: std.process.Init) !void {
     const pack_mode = args.len == 7 and std.mem.eql(u8, args[6], "pack");
     const shared_mode = args.len == 7 and std.mem.eql(u8, args[6], "shared");
     const swap_mode = args.len == 7 and std.mem.eql(u8, args[6], "swap");
-    if (args.len == 7 and !pack_mode and !shared_mode and !swap_mode) return error.Usage;
+    const prefix_mode = args.len == 7 and std.mem.eql(u8, args[6], "prefix");
+    if (args.len == 7 and !pack_mode and !shared_mode and !swap_mode and !prefix_mode) return error.Usage;
     const kv_type: model.KvType = if (args.len >= 3) std.meta.stringToEnum(model.KvType, args[2]) orelse return error.Usage else .f32;
     const page: u32 = if (args.len >= 4) (if (std.mem.eql(u8, args[3], "context")) 0 else try std.fmt.parseInt(u32, args[3], 10)) else model.layout.default_kv_page;
     const context: u32 = if (args.len >= 5) try std.fmt.parseInt(u32, args[4], 10) else 2048;
@@ -106,7 +114,7 @@ pub fn main(init: std.process.Init) !void {
     defer file.deinit();
     var container = try zerv.artifact.gguf.Container.parse(a, file.bytes, .{});
     defer container.deinit();
-    var device = try gpu.Device.open(.{ .max_allocated_bytes = 23 * 1024 * 1024 * 1024, .storage16 = kv_type == .f16, .cooperative_matrix = precision == .f16 or pack_mode, .subgroup_size_control = precision == .f16 or pack_mode });
+    var device = try gpu.Device.open(.{ .max_allocated_bytes = 23 * 1024 * 1024 * 1024, .storage16 = kv_type == .f16, .cooperative_matrix = precision == .f16 or pack_mode or prefix_mode, .subgroup_size_control = precision == .f16 or pack_mode or prefix_mode });
     defer device.deinit() catch @panic("live device resources");
 
     var prng = std.Random.DefaultPrng.init(0x18b2);
@@ -120,6 +128,7 @@ pub fn main(init: std.process.Init) !void {
         token.* = random.intRangeLessThan(u32, 0, 150000);
     };
 
+    if (prefix_mode) return prefixCheck(a, &device, &container, out, kv_type, page, context, precision, dkernel, dformats, &prompts, &xs);
     if (swap_mode) return swapCheck(a, io, &device, &container, out, kv_type, page, context, precision, dkernel, dformats, &prompts, &xs);
     if (shared_mode) return sharedCheck(a, &device, &container, out, kv_type, page, context, precision, dkernel, dformats, &prompts, &xs);
     if (pack_mode) return packCheck(a, io, &device, &container, out, kv_type, page, context, precision, dkernel, dformats, &prompts, &xs);
@@ -253,7 +262,7 @@ pub fn main(init: std.process.Init) !void {
         errors_ok = false;
     } else |e| errors_ok = errors_ok and e == error.InvalidBatch;
     const owned = blk: {
-        for (0..m.state_layout.pages) |p| if (m.page_owner[p] == 2) break :blk @as(u32, @intCast(p));
+        for (0..m.state_layout.pages) |p| if (m.page_mask[p] == (1 << 2)) break :blk @as(u32, @intCast(p));
         unreachable;
     };
     try m.releasePages(6);
@@ -289,7 +298,7 @@ pub fn main(init: std.process.Init) !void {
     {
         var free: [model.max_pool_pages]u32 = undefined;
         var nfree: usize = 0;
-        for (0..m.state_layout.pages) |p| if (m.page_owner[p] == 0xff) {
+        for (0..m.state_layout.pages) |p| if (m.page_mask[p] == 0 and m.page_pins[p] == 0) {
             free[nfree] = @intCast(p);
             nfree += 1;
         };
@@ -759,4 +768,170 @@ fn swapCheck(a: std.mem.Allocator, io: std.Io, device: *gpu.Device, container: *
     try out.print("{{\"summary\":true,\"mode\":\"swap\",\"pool_pages\":{d},\"host_pages\":{d},\"compared\":{d},\"failures\":{d},\"swap_outs\":{d},\"swap_ins\":{d},\"self_swaps\":{d},\"forced\":{d},\"swap_out_ms\":{d:.3},\"swap_in_ms\":{d:.3},\"pages_out\":{d},\"pages_in\":{d},\"max_live\":{d},\"errors_ok\":{},\"all_pages_returned\":{},\"passed\":{}}}\n", .{ pool, host_pages, stats.compared, stats.failures, swap_outs, swap_ins, self_swaps, forced, @as(f64, @floatFromInt(out_ns)) / 1e6, @as(f64, @floatFromInt(in_ns)) / 1e6, out_pages, in_pages, max_live, errors_ok, all_free, passed });
     try out.flush();
     if (!passed) std.process.exit(1);
+}
+
+/// The shared-prefix gate (`prefix` mode; docs/specs/concurrent.md, "18d.4 design").
+fn prefixCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artifact.gguf.Container, out: *std.Io.Writer, kv_type: model.KvType, page: u32, context: u32, precision: model.DecodePrecision, dkernel: model.DecodeF16Kernel, dformats: model.DecodeF16Formats, prompts: *const [K][max_prompt]u32, xs: *const [K][T]u32) !void {
+    const pt = if (page == 0) context else page;
+    const pool: u32 = K * ((300 + max_prompt + T + pt - 1) / pt) + 4;
+    var m: model.Model = undefined;
+    try m.init(device, container, .{ .context = context, .prefill_rows = 512, .prefill_precision = .f16, .kv_type = kv_type, .kv_page_tokens = page, .slots = K, .batch_rows = K, .kv_pages = pool, .kv_share = true, .snapshots = 2, .snapshot_memory = .host, .decode_precision = precision, .decode_f16_kernel = dkernel, .decode_f16_formats = dformats });
+    defer m.deinit();
+    if (!m.packable()) return error.NotPackable;
+    var stats: Stats = .{};
+    var attached: u32 = 0;
+    var copied: u32 = 0;
+    var dedups: u32 = 0;
+    var dedup_ok = true;
+    const seq = try a.alloc(u32, 300 + max_prompt);
+    defer a.free(seq);
+    const ref_prefill = try a.alloc(f32, K * vocab);
+    const ref = try a.alloc(f32, K * T * vocab);
+    var pins: [64]u32 = undefined;
+    for ([_]u32{ 300, 256 }) |plen| {
+        // Sequence i: the common prefix prompts[0][0..plen) and then prompts[i] (its own part).
+        const lens = blk: {
+            var l: [K]u32 = undefined;
+            for (&l, 0..) |*x, i| x.* = plen + @min(prompt_lens[i], max_prompt - 0);
+            break :blk l;
+        };
+        const Seqs = struct {
+            fn fill(buf: []u32, pr: *const [K][max_prompt]u32, prefix_len: u32, i: usize) []const u32 {
+                @memcpy(buf[0..prefix_len], pr[0][0..prefix_len]);
+                @memcpy(buf[prefix_len..][0..prompt_lens[i]], pr[i][0..prompt_lens[i]]);
+                return buf[0 .. prefix_len + prompt_lens[i]];
+            }
+        };
+        // References: each sequence cold in slot 0.
+        for (0..K) |i| {
+            try m.select(0);
+            try m.reset();
+            try m.releasePages(0);
+            try m.ensurePages(0, lens[i] + T);
+            @memcpy(ref_prefill[i * vocab ..][0..vocab], try m.prefill(Seqs.fill(seq, prompts, plen, i)));
+            for (0..T) |t| @memcpy(ref[(i * T + t) * vocab ..][0..vocab], try m.decodeBatch(&.{.{ .slot = 0, .token = xs[i][t] }}));
+        }
+        try m.releasePages(0);
+        // Sequence 0 in slot 3: the prefix, a checkpoint, then its own part (packed segments).
+        const owner: u32 = 3;
+        try m.select(owner);
+        try m.reset();
+        try m.ensurePages(owner, plen);
+        const full0 = Seqs.fill(seq, prompts, plen, 0);
+        _ = try packedPrefill(&m, owner, full0[0..plen]);
+        try m.select(owner);
+        try m.saveSnapshot(0);
+        const pinned = try m.pinPrefix(owner, plen, &pins);
+        @memcpy(pins[32..][0..pinned.len], pinned);
+        const entry = pins[32..][0..pinned.len];
+        try m.ensurePages(owner, lens[0] + T);
+        try check(out, &stats, "prefix-owner-prefill", 0, -1, try packedPrefill(&m, owner, full0[plen..]), ref_prefill[0..vocab]);
+        var slot_of: [K]u32 = undefined;
+        slot_of[0] = owner;
+        var steps: [K]u32 = @splat(0);
+        var live: [K]bool = @splat(false);
+        live[0] = true;
+        // The others restore the checkpoint into their own slots, one at a time, with a
+        // decode batch of every live sequence after each (the owner writes on).
+        for (1..K) |i| {
+            const slot: u32 = @intCast(if (i <= owner) i - 1 else i);
+            slot_of[i] = slot;
+            try m.select(slot);
+            try m.reset();
+            try m.releasePages(slot);
+            const nfull = plen / pt;
+            try m.attachPrefix(slot, entry[0..nfull], if (plen % pt != 0) entry[nfull] else null);
+            attached += 1;
+            if (plen % pt != 0) copied += 1;
+            try m.select(slot);
+            try m.loadSnapshot(0, plen);
+            try m.ensurePages(slot, lens[i] + T);
+            const full = Seqs.fill(seq, prompts, plen, i);
+            try check(out, &stats, "prefix-restored-prefill", i, -1, try packedPrefill(&m, slot, full[plen..]), ref_prefill[i * vocab ..][0..vocab]);
+            live[i] = true;
+            try decodeLive(&m, out, &stats, &slot_of, &live, &steps, xs, ref);
+        }
+        while (true) {
+            var any = false;
+            for (0..K) |i| any = any or (live[i] and steps[i] < T);
+            if (!any) break;
+            try decodeLive(&m, out, &stats, &slot_of, &live, &steps, xs, ref);
+        }
+        try m.unpinPages(entry);
+        for (0..K) |slot| try m.releasePages(@intCast(slot));
+        // Deduplication (radix insert): sequences 0 and 1 prefill the common prefix cold in
+        // slots 0 and 1; slot 1's full prefix pages are rebound to slot 0's (pinned), freeing
+        // its copies; both continue and must stay bitwise equal to their references.
+        {
+            const nfull = plen / pt;
+            var dslot_of: [K]u32 = undefined;
+            var dlive: [K]bool = @splat(false);
+            var dsteps: [K]u32 = @splat(0);
+            for ([_]u32{ 0, 1 }) |i| {
+                dslot_of[i] = i;
+                try m.select(i);
+                try m.reset();
+                try m.ensurePages(i, lens[i] + T);
+                _ = try packedPrefill(&m, i, Seqs.fill(seq, prompts, plen, i)[0..plen]);
+            }
+            const free_before = m.freePages();
+            const held = try m.pinPrefix(0, plen, &pins);
+            @memcpy(pins[32..][0..held.len], held);
+            const dentry = pins[32..][0..held.len];
+            const freed = try m.rebindPages(1, dentry[0..nfull]);
+            if (freed != nfull or m.freePages() != free_before + nfull) dedup_ok = false;
+            for ([_]u32{ 0, 1 }) |i| {
+                const full = Seqs.fill(seq, prompts, plen, i);
+                try m.ensurePages(i, lens[i] + T);
+                try check(out, &stats, "dedup-prefill", i, -1, try packedPrefill(&m, i, full[plen..]), ref_prefill[i * vocab ..][0..vocab]);
+                dlive[i] = true;
+            }
+            while (dsteps[0] < T or dsteps[1] < T) try decodeLive(&m, out, &stats, &dslot_of, &dlive, &dsteps, xs, ref);
+            try m.unpinPages(dentry);
+            for ([_]u32{ 0, 1 }) |i| try m.releasePages(i);
+            dedups += 1;
+        }
+    }
+    const all_free = m.freePages() == pool;
+    const passed = stats.failures == 0 and all_free and attached == 2 * (K - 1) and copied == K - 1 and dedups == 2 and dedup_ok;
+    try out.print("{{\"summary\":true,\"mode\":\"prefix\",\"pool_pages\":{d},\"compared\":{d},\"failures\":{d},\"attached\":{d},\"partial_copies\":{d},\"dedups\":{d},\"dedup_pages_ok\":{},\"all_pages_returned\":{},\"passed\":{}}}\n", .{ pool, stats.compared, stats.failures, attached, copied, dedups, dedup_ok, all_free, passed });
+    try out.flush();
+    if (!passed) std.process.exit(1);
+}
+
+/// Prefill `tokens` for `slot` through one-item packed segments (the server's path); the
+/// last token's logits.
+fn packedPrefill(m: *model.Model, slot: u32, tokens: []const u32) ![]const f32 {
+    var done: usize = 0;
+    var last: []const f32 = &.{};
+    while (done < tokens.len) {
+        const item = [_]model.PackItem{.{ .slot = slot, .tokens = tokens[done..] }};
+        while (true) {
+            const seg = try m.prefillPackedSegment(&item);
+            if (seg.done) {
+                done += seg.consumed[0];
+                if (done == tokens.len) last = seg.logits.?[0..vocab];
+                break;
+            }
+        }
+    }
+    return last;
+}
+
+/// One decode batch of every live sequence with steps left, checked against its reference.
+fn decodeLive(m: *model.Model, out: *std.Io.Writer, stats: *Stats, slot_of: *const [K]u32, live: *const [K]bool, steps: *[K]u32, xs: *const [K][T]u32, ref: []const f32) !void {
+    var rows: [K]model.BatchRow = undefined;
+    var who: [K]u32 = undefined;
+    var b: usize = 0;
+    for (0..K) |i| if (live[i] and steps[i] < T) {
+        rows[b] = .{ .slot = slot_of[i], .token = xs[i][steps[i]] };
+        who[b] = @intCast(i);
+        b += 1;
+    };
+    if (b == 0) return;
+    const logits = try m.decodeBatch(rows[0..b]);
+    for (who[0..b], 0..) |i, r| {
+        try check(out, stats, "prefix-decode", i, steps[i], logits[r * vocab ..][0..vocab], ref[(i * T + steps[i]) * vocab ..][0..vocab]);
+        steps[i] += 1;
+    }
 }

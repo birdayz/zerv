@@ -67,6 +67,11 @@ pub const Stats = struct {
 
 /// `Backend` is called by the scheduler task only, never concurrently:
 ///   reset(slot: u32) !void
+///   begin(slot: u32, prompt: []const u32) !u32   (start a prompt from the longest prefix
+///       checkpoint or a reset; returns the start position; docs/specs/concurrent.md
+///       "18d.4 design")
+///   checkpoint(slot: u32, prefix: []const u32) !void   (keep the slot's state after
+///       `prefix`, its current position, as a checkpoint)
 ///   packFits(remaining: []const usize) bool   (can these prompts' next chunks run as one
 ///       packed chunk? remaining.len >= 1)
 ///   prefillUnit(items: []const Item) !Unit   (starts a chunk holding each item's next chunk
@@ -110,7 +115,7 @@ pub fn Batcher(comptime Backend: type) type {
         /// The chunk in flight: its slots (running until it ends) and which of them lost
         /// their generation meanwhile (completed as canceled; freed when the chunk ends).
         const Pack = struct { n: u32, slots: [max_pack]u32, gone: [max_pack]bool };
-        const Op = enum { none, reset, prefill, step };
+        const Op = enum { none, reset, begin, checkpoint, prefill, step };
         const Hold = enum { none, row, prefill };
         const Slot = struct {
             used: bool = false,
@@ -135,6 +140,10 @@ pub fn Batcher(comptime Backend: type) type {
             /// and whether the backend admitted it (`admit`); a failed admission waits for
             /// a release (`admit_epoch`).
             reserve: usize = 0,
+            /// Where its prompt started (`begin`): admission covers `base` + the prompt.
+            base: usize = 0,
+            /// A `begin`'s start position.
+            value: u32 = 0,
             admitted: bool = false,
             failed_epoch: u64 = std.math.maxInt(u64),
             /// Swapped out to host memory (its step waits until `swapIn`); the release epoch
@@ -218,6 +227,18 @@ pub fn Batcher(comptime Backend: type) type {
 
         pub fn reset(self: *Self, slot: u32) anyerror!void {
             _ = try self.submit(slot, .reset, &.{}, 0);
+        }
+        /// Start `prompt` (instead of `reset`) from the longest prefix checkpoint; the
+        /// position its prefill continues at (0: reset). `prompt` is read during the call.
+        pub fn begin(self: *Self, slot: u32, prompt: []const u32) anyerror!u32 {
+            if (prompt.len == 0) return error.InvalidToken;
+            _ = try self.submit(slot, .begin, prompt, 0);
+            return self.slot[slot].value;
+        }
+        /// Keep the slot's state after `prefix` (all it has processed) as a checkpoint.
+        pub fn checkpoint(self: *Self, slot: u32, prefix: []const u32) anyerror!void {
+            if (prefix.len == 0) return error.InvalidToken;
+            _ = try self.submit(slot, .checkpoint, prefix, 0);
         }
         /// Borrowed logits of the last prompt token (until `sampled`).
         pub fn prefill(self: *Self, slot: u32, tokens: []const u32) anyerror![]const f32 {
@@ -324,6 +345,7 @@ pub fn Batcher(comptime Backend: type) type {
             s.swap_epoch = std.math.maxInt(u64);
             s.admitted = false;
             s.reserve = 0;
+            s.base = 0;
             s.failed_epoch = std.math.maxInt(u64);
             s.used = false;
             s.closing = false;
@@ -337,7 +359,7 @@ pub fn Batcher(comptime Backend: type) type {
         /// admitted, or when it has not failed admission since the last release and no older
         /// prompt is waiting for memory.
         fn eligible(self: *const Self, s: *const Slot) bool {
-            if (s.op == .reset or s.admitted) return true;
+            if (s.op == .reset or s.op == .begin or s.op == .checkpoint or s.admitted) return true;
             if (s.failed_epoch == self.admit_epoch) return false;
             if (self.swapped_slots > 0 and self.first_swapped_ns <= s.wait_ns) return false;
             return self.blocked == null or s.order <= self.blocked.?;
@@ -346,8 +368,8 @@ pub fn Batcher(comptime Backend: type) type {
         /// Prefill order between chunks: resets first (they are cheap), then the fewest
         /// remaining tokens (`.shortest`) or arrival (`.fifo`); ties by arrival.
         fn before(self: *const Self, a: *const Slot, b: *const Slot) bool {
-            const ka: usize = if (a.op == .reset or self.options.order == .fifo) 0 else a.tokens.len - a.done;
-            const kb: usize = if (b.op == .reset or self.options.order == .fifo) 0 else b.tokens.len - b.done;
+            const ka: usize = if (a.op != .prefill or self.options.order == .fifo) 0 else a.tokens.len - a.done;
+            const kb: usize = if (b.op != .prefill or self.options.order == .fifo) 0 else b.tokens.len - b.done;
             if (ka != kb) return ka < kb;
             return a.order < b.order;
         }
@@ -582,14 +604,14 @@ pub fn Batcher(comptime Backend: type) type {
                     if (s.swapped) continue; // waits for `swapIn`
                     if (s.decoding) n_decoding += 1;
                     switch (s.op) {
-                        .reset, .prefill => if (!s.running and self.eligible(s) and (pre == null or self.before(s, &self.slot[pre.?]))) {
+                        .reset, .begin, .checkpoint, .prefill => if (!s.running and self.eligible(s) and (pre == null or self.before(s, &self.slot[pre.?]))) {
                             pre = @intCast(i);
                         },
                         .step => n_steps += 1,
                         .none => {},
                     }
                 }
-                const prefill_ready = self.pack != null or (if (pre) |i| self.slot[i].op == .reset or self.prefill_holds == 0 else false);
+                const prefill_ready = self.pack != null or (if (pre) |i| self.slot[i].op != .prefill or self.prefill_holds == 0 else false);
                 // Nanoseconds the batch still waits for missing slots (null: not ready yet).
                 var wait_ns: ?i96 = null;
                 if (n_steps > 0 and self.held_rows == 0) {
@@ -721,20 +743,36 @@ pub fn Batcher(comptime Backend: type) type {
                         } else s.err = bad[r];
                         self.complete(s);
                     }
-                } else if (self.pack == null and self.slot[pre.?].op == .reset) {
+                } else if (self.pack == null and self.slot[pre.?].op != .prefill) {
+                    // A reset, begin or checkpoint: host bookkeeping and short copies.
                     const s = &self.slot[pre.?];
+                    const op = s.op;
                     s.running = true;
                     self.last_batch = false;
                     self.mutex.unlock(self.io);
                     const t0 = self.now();
-                    const out = self.backend.reset(pre.?);
+                    var start: u32 = 0;
+                    const out: anyerror!void = switch (op) {
+                        .reset => self.backend.reset(pre.?),
+                        .begin => if (self.backend.begin(pre.?, s.tokens)) |v| {
+                            start = v;
+                        } else |e| e,
+                        .checkpoint => self.backend.checkpoint(pre.?, s.tokens),
+                        else => unreachable,
+                    };
                     const t1 = self.now();
                     self.mutex.lockUncancelable(self.io);
                     self.account(&self.stats.prefill_ns, t0, t1);
                     s.op = .none;
-                    // The backend's reset returned the slot's memory to the pool.
-                    s.admitted = false;
-                    self.admit_epoch += 1;
+                    s.tokens = &.{};
+                    if (op != .checkpoint) {
+                        // A reset or begin returned the slot's memory to the pool (a begin
+                        // maps the restored prefix again).
+                        s.admitted = false;
+                        s.base = start;
+                        s.value = start;
+                        self.admit_epoch += 1;
+                    }
                     if (out) |_| {} else |e| s.err = e;
                     self.complete(s);
                 } else {
@@ -753,7 +791,7 @@ pub fn Batcher(comptime Backend: type) type {
                             // Memory for the whole sequence before its prompt starts (the
                             // backend call is host bookkeeping and a page-table copy).
                             if (!s.admitted) {
-                                if (self.backend.admit(i, @max(s.reserve, s.tokens.len))) {
+                                if (self.backend.admit(i, @max(s.reserve, s.base + s.tokens.len))) {
                                     s.admitted = true;
                                     s.resumed_ns = self.now();
                                     if (self.blocked != null and self.blocked.? == s.order) self.blocked = null;

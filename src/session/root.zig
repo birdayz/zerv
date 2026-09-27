@@ -5,6 +5,8 @@ pub const sampler = @import("sampler.zig");
 pub const text = @import("text.zig");
 pub const tools = @import("tools.zig");
 pub const prefix = @import("prefix.zig");
+pub const checkpoint = @import("checkpoint.zig");
+pub const kvcache = @import("kvcache.zig");
 pub const spec = @import("spec.zig");
 pub const media = @import("media.zig");
 pub const Media = media.Media;
@@ -35,6 +37,10 @@ pub const Request = struct {
     /// Reuse processed tokens across requests (docs/specs/prefix-cache.md). The backend
     /// must then provide `saveSnapshot(slot)` and `loadSnapshot(slot, position)`.
     cache: ?*prefix.Cache = null,
+    /// Prefix checkpoints of a shared pool (docs/specs/concurrent.md, "18d.4 design"): the
+    /// message boundary token. The backend must then provide `begin(prompt) !u32` (start
+    /// position) and `checkpoint(prefix)`. Exclusive with `cache`; media prompts start cold.
+    checkpoints: ?u32 = null,
     /// Speculative decoding (backends with `speculative() > 0`): the verify-count policy
     /// (null: verify every draft). Owned by the caller; it learns across requests.
     spec_policy: ?*spec.Policy = null,
@@ -116,6 +122,10 @@ pub fn Generation(comptime Backend: type, comptime Tokenizer: type, comptime Sin
             if (request.cache) |cache| {
                 if (comptime snapshots(Backend)) {
                     logits = try prefillCached(backend, cache, request.prompt, request.media, &begin);
+                } else return error.SnapshotsUnsupported;
+            } else if (request.checkpoints != null and request.media.len == 0) {
+                if (comptime checkpoints(Backend)) {
+                    logits = try prefillCheckpointed(backend, request.prompt, request.checkpoints.?, &begin);
                 } else return error.SnapshotsUnsupported;
             } else {
                 try backend.reset();
@@ -326,6 +336,30 @@ fn prefillCached(backend: anytype, cache: *prefix.Cache, prompt: []const u32, sp
     const logits = try prefillSegment(backend, prompt[at..], spans, at);
     cache.record(prompt[at..], media.within(spans, at, n));
     return logits;
+}
+
+/// Starts `prompt` from the backend's longest prefix checkpoint (or cold), then prefills the
+/// rest in segments ending at the checkpoint positions, taking a checkpoint after each.
+fn prefillCheckpointed(backend: anytype, prompt: []const u32, boundary: u32, begin: *prefix.Begin) ![]const f32 {
+    const start = try backend.begin(prompt);
+    begin.* = .{ .outcome = if (start > 0) .restore else .reset, .start = start };
+    var points: [checkpoint.max_points]u32 = undefined;
+    var at = start;
+    for (checkpoint.candidatePoints(prompt, start, boundary, &points)) |point| {
+        _ = try backend.prefill(prompt[at..point]);
+        try backend.checkpoint(prompt[0..point]);
+        at = point;
+    }
+    return backend.prefill(prompt[at..]);
+}
+
+/// Whether `Backend` (a type or a pointer to one) keeps prefix checkpoints.
+fn checkpoints(comptime Backend: type) bool {
+    const T = switch (@typeInfo(Backend)) {
+        .pointer => |p| p.child,
+        else => Backend,
+    };
+    return @hasDecl(T, "begin") and @hasDecl(T, "checkpoint");
 }
 
 /// Prefills prompt rows `first..first + tokens.len` (never cutting a span): through

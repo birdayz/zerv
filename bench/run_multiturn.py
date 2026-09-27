@@ -7,6 +7,7 @@ conversation is cold, later turns and other conversations repeat a prefix.
 
   tools/py bench/run_multiturn.py --output DIR --engines "zerv-f16@parallel=8,kv-type=f16;vllm-apc;llama-fa-kvu" \\
                    [--levels 1,4,8] [--parallel 8] [--context-per-slot 16384] [--rounds 1] [--zerv-binary PATH]
+                   [--reference RAW.jsonl]  (identity gate: every turn's output equals that run's)
 
 Engines are started as in bench/run_multiuser.py (one at a time, GPU checked free).
 llama-server requests keep its default prompt cache (`cache_prompt` is not sent); vLLM
@@ -115,6 +116,7 @@ def main():
     p.add_argument("--port", type=int, default=18098)
     p.add_argument("--llama-server", type=pathlib.Path, help="another llama-server build to run (default: built in the graph)")
     p.add_argument("--zerv-binary", type=pathlib.Path, help="zerv binary (default: //src:zerv built with Bazel, --config=release)")
+    p.add_argument("--reference", type=pathlib.Path, help="raw.jsonl of an earlier run: every turn's output must match it (identity gate; exit 1 otherwise)")
     a = p.parse_args()
     rs.require_host_gpu()
     if a.llama_server: rs.LLAMA_SERVER_OVERRIDE = str(a.llama_server.resolve(strict=True))
@@ -177,6 +179,14 @@ def main():
     (out / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n")
     if rc.gpu_busy(): print("WARNING: a server is still running after the benchmark", file=sys.stderr)
+    if a.reference:
+        key = lambda r: (r["level"], r["conversation"], r["turn"])
+        ref = {key(r): r.get("output_sha256") for r in map(json.loads, a.reference.read_text().splitlines())}
+        mine = [json.loads(l) for l in (out / "raw.jsonl").read_text().splitlines()]
+        bad = [key(r) for r in mine if r.get("output_sha256") is None or ref.get(key(r)) != r["output_sha256"]]
+        missing = [k for k in ref if k not in {key(r) for r in mine}]
+        print(f"identity gate: {len(mine) - len(bad)}/{len(mine)} turns equal the reference" + (f", mismatches {bad}" if bad else "") + (f", missing {missing}" if missing else ""))
+        if bad or missing: sys.exit(1)
 
 
 if __name__ == "__main__":

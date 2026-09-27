@@ -729,7 +729,12 @@ pub const Model = struct {
     slot_positions: [layout.max_slots]u32 = @splat(0),
     /// Logical KV pages mapped per slot, and the owner slot of every pool page.
     mapped: [layout.max_slots]u32 = @splat(0),
-    page_owner: [max_pool_pages]u8 = @splat(no_owner),
+    /// Holders of every pool page (docs/specs/concurrent.md, "18d.4 design"): the slots
+    /// whose tables map it (a bit each) and the checkpoints that pin it. A page is free
+    /// when it has neither. Shared pages are only ever read (a sequence writes positions at
+    /// or above its own start, and a shared prefix page is full or copied first).
+    page_mask: [max_pool_pages]u64 = @splat(0),
+    page_pins: [max_pool_pages]u8 = @splat(0),
     /// Logical page (index in its owner's table) of every owned pool page.
     page_logical: [max_pool_pages]u16 = @splat(0),
     /// Host swap store (18d.3): per KV buffer, `swap_pages` pages laid out like the pool;
@@ -1441,7 +1446,7 @@ pub const Model = struct {
         if (self.swapped[slot] != 0) return error.SlotSwapped;
         if (pages.len > S.seq_pages - self.mapped[slot]) return error.InvalidToken;
         for (pages, 0..) |page, i| {
-            if (page >= S.pages or self.page_owner[page] != no_owner) return error.PageInUse;
+            if (page >= S.pages or !self.pageFree(page)) return error.PageInUse;
             for (pages[0..i]) |other| if (other == page) return error.PageInUse;
         }
         @memcpy(std.mem.bytesAsSlice(u32, try self.ptab_staging.mapped())[0..pages.len], pages);
@@ -1452,9 +1457,8 @@ pub const Model = struct {
     /// `mapPages` before it runs again). Its state and position are kept.
     pub fn releasePages(self: *Model, slot: u32) Error!void {
         if (slot >= self.state_layout.slots) return error.InvalidSlot;
-        for (self.page_owner[0..self.state_layout.pages]) |*owner| {
-            if (owner.* == slot) owner.* = no_owner;
-        }
+        const bit = @as(u64, 1) << @intCast(slot);
+        for (self.page_mask[0..self.state_layout.pages]) |*mask| mask.* &= ~bit;
         self.mapped[slot] = 0;
         // A swapped sequence's host pages too (it is dropped).
         if (self.swapped[slot] != 0) {
@@ -1550,8 +1554,9 @@ pub const Model = struct {
         try c.copy(&self.state, at, &self.swap_state, slot * self.snapshotBytes(), self.snapshotBytes());
         var h: u32 = 0;
         var pr: PageRun = .{};
-        for (self.page_owner[0..S.pages], 0..) |owner, p| {
-            if (owner != slot) continue;
+        const bit = @as(u64, 1) << @intCast(slot);
+        for (self.page_mask[0..S.pages], 0..) |mask, p| {
+            if (mask & bit == 0) continue;
             while (self.host_owner[h] != no_owner) h += 1;
             self.host_owner[h] = @intCast(slot);
             self.host_logical[h] = self.page_logical[p];
@@ -1567,9 +1572,8 @@ pub const Model = struct {
             };
             return e;
         };
-        for (self.page_owner[0..S.pages]) |*owner| if (owner.* == slot) {
-            owner.* = no_owner;
-        };
+        // Its pages leave its table (shared ones stay with their other holders).
+        for (self.page_mask[0..S.pages]) |*mask| mask.* &= ~bit;
         self.mapped[slot] = 0;
         self.swapped[slot] = n;
     }
@@ -1597,11 +1601,11 @@ pub const Model = struct {
         var pr: PageRun = .{};
         for (self.host_owner[0..self.swap_pages], 0..) |owner, h| {
             if (owner != slot) continue;
-            while (self.page_owner[p] != no_owner) p += 1;
+            while (!self.pageFree(p)) p += 1;
             const i = self.host_logical[h];
             if (i >= n) return error.InvalidState;
             words[i] = p;
-            self.page_owner[p] = @intCast(slot); // taken (commitPages sets it again)
+            self.page_mask[p] |= @as(u64, 1) << @intCast(slot); // taken (commitPages sets it again)
             taken += 1;
             try self.extendRun(&pr, p, @intCast(h), .in);
             p += 1;
@@ -1611,7 +1615,7 @@ pub const Model = struct {
         try c.barrier(.transfer, .compute);
         try c.end();
         c.run(self.options.timeout_ns) catch |e| {
-            for (words[0..n]) |page| self.page_owner[page] = no_owner;
+            for (words[0..n]) |page| self.page_mask[page] = 0;
             return e;
         };
         for (self.host_owner[0..self.swap_pages]) |*owner| if (owner.* == slot) {
@@ -1625,8 +1629,137 @@ pub const Model = struct {
     /// Pool pages no slot holds.
     pub fn freePages(self: *const Model) u32 {
         var n: u32 = 0;
-        for (self.page_owner[0..self.state_layout.pages]) |owner| n += @intFromBool(owner == no_owner);
+        for (0..self.state_layout.pages) |page| n += @intFromBool(self.pageFree(@intCast(page)));
         return n;
+    }
+
+    fn pageFree(self: *const Model, page: u32) bool {
+        return self.page_mask[page] == 0 and self.page_pins[page] == 0;
+    }
+
+    /// Pin the pages holding `slot`'s positions below `tokens` (a checkpoint of its prefix;
+    /// docs/specs/concurrent.md, "18d.4 design") and write them to `out` in logical order;
+    /// they stay allocated until `unpinPages`, whatever the slot does next.
+    pub fn pinPrefix(self: *Model, slot: u32, tokens: u32, out: []u32) Error![]const u32 {
+        const S = self.state_layout;
+        if (slot >= S.slots) return error.InvalidSlot;
+        if (tokens == 0 or tokens > self.slotPosition(slot)) return error.InvalidToken;
+        const n = std.math.divCeil(u32, tokens, S.page) catch unreachable;
+        if (n > self.mapped[slot] or n > out.len) return error.PagesMissing;
+        const bit = @as(u64, 1) << @intCast(slot);
+        var found: u32 = 0;
+        for (self.page_mask[0..S.pages], 0..) |mask, p| {
+            if (mask & bit == 0 or self.page_logical[p] >= n) continue;
+            out[self.page_logical[p]] = @intCast(p);
+            found += 1;
+        }
+        if (found != n) return error.InvalidState;
+        for (out[0..n]) |p| {
+            if (self.page_pins[p] == std.math.maxInt(u8)) return error.PageInUse;
+        }
+        for (out[0..n]) |p| self.page_pins[p] += 1;
+        return out[0..n];
+    }
+
+    /// Release pins taken by `pinPrefix`.
+    pub fn unpinPages(self: *Model, pages: []const u32) Error!void {
+        for (pages) |p| if (p >= self.state_layout.pages or self.page_pins[p] == 0) return error.InvalidState;
+        for (pages) |p| self.page_pins[p] -= 1;
+    }
+
+    /// Map a checkpoint's prefix into empty `slot`: the `full` pages (held by the checkpoint)
+    /// are shared read-only; the `partial` last page, which the slot will write past its
+    /// start, is copied into a free page first. `PoolExhausted` (nothing changes) when a
+    /// partial page needs a free page and there is none.
+    pub fn attachPrefix(self: *Model, slot: u32, full: []const u32, partial: ?u32) Error!void {
+        const S = self.state_layout;
+        if (slot >= S.slots) return error.InvalidSlot;
+        if (self.mapped[slot] != 0 or self.swapped[slot] != 0) return error.InvalidState;
+        const n = full.len + @intFromBool(partial != null);
+        if (n > S.seq_pages) return error.InvalidToken;
+        for (full) |p| if (p >= S.pages or self.pageFree(p)) return error.InvalidState;
+        if (partial) |q| if (q >= S.pages or self.pageFree(q)) return error.InvalidState;
+        var fresh: ?u32 = null;
+        if (partial) |q| {
+            var f: u32 = 0;
+            while (f < S.pages and !self.pageFree(f)) f += 1;
+            if (f == S.pages) return error.PoolExhausted;
+            const c = &self.ptab_commands;
+            try c.reset();
+            try c.begin();
+            try c.barrier(.compute, .transfer);
+            for (0..S.kv_buffers) |g| {
+                const b = self.pageBytes(@intCast(g));
+                try c.copy(&self.kv[g], @as(u64, q) * b, &self.kv[g], @as(u64, f) * b, b);
+            }
+            try c.barrier(.transfer, .compute);
+            try c.end();
+            try c.run(self.options.timeout_ns);
+            fresh = f;
+        }
+        const words = std.mem.bytesAsSlice(u32, try self.ptab_staging.mapped());
+        @memcpy(words[0..full.len], full);
+        if (fresh) |f| words[full.len] = f;
+        try self.commitPages(slot, @intCast(n));
+    }
+
+    /// Replace `slot`'s logical pages 0..pages.len with `pages` (each held by someone else,
+    /// e.g. pinned by a checkpoint). The caller guarantees each new page holds exactly the
+    /// bytes of the page it replaces (docs/specs/concurrent.md, "18d.4 design":
+    /// deduplication on insert). Returns how many of the slot's old pages became free.
+    pub fn rebindPages(self: *Model, slot: u32, pages: []const u32) Error!u32 {
+        const S = self.state_layout;
+        if (slot >= S.slots) return error.InvalidSlot;
+        if (self.swapped[slot] != 0) return error.SlotSwapped;
+        if (pages.len > self.mapped[slot]) return error.PagesMissing;
+        if (self.chunk) |c| if (c.has(slot)) return error.ChunkInFlight;
+        var freed: u32 = 0;
+        var first: usize = 0;
+        while (first < pages.len) : (first += 256) {
+            const n = @min(256, pages.len - first);
+            freed += try self.rebindRange(slot, @intCast(first), pages[first..][0..n]);
+        }
+        return freed;
+    }
+
+    /// `rebindPages` for logical pages first..first + pages.len (at most 256).
+    fn rebindRange(self: *Model, slot: u32, first: u32, pages: []const u32) Error!u32 {
+        const S = self.state_layout;
+        const bit = @as(u64, 1) << @intCast(slot);
+        var old: [256]u32 = undefined;
+        var found: usize = 0;
+        for (self.page_mask[0..S.pages], 0..) |mask, q| {
+            const l = self.page_logical[q];
+            if (mask & bit == 0 or l < first or l >= first + pages.len) continue;
+            old[l - first] = @intCast(q);
+            found += 1;
+        }
+        if (found != pages.len) return error.InvalidState;
+        for (pages, 0..) |q, i| {
+            if (q >= S.pages or self.pageFree(q)) return error.InvalidState;
+            if (q != old[i] and self.page_mask[q] & bit != 0) return error.PageInUse;
+            if (q != old[i] and self.page_logical[q] != first + i) return error.InvalidState;
+        }
+        // The table first (nothing changes if the copy fails), then the ownership.
+        const words = std.mem.bytesAsSlice(u32, try self.ptab_staging.mapped());
+        @memcpy(words[0..pages.len], pages);
+        const A = self.act_layout;
+        const c = &self.ptab_commands;
+        try c.reset();
+        try c.begin();
+        try c.barrier(.compute, .transfer);
+        try c.copy(&self.ptab_staging, 0, &self.act, (@as(u64, A.ptab) + @as(u64, slot) * A.ptab_words + first) * 4, @as(u64, pages.len) * 4);
+        try c.barrier(.transfer, .compute);
+        try c.end();
+        try c.run(self.options.timeout_ns);
+        var freed: u32 = 0;
+        for (pages, 0..) |q, i| {
+            if (q == old[i]) continue;
+            self.page_mask[old[i]] &= ~bit;
+            self.page_mask[q] |= bit;
+            freed += @intFromBool(self.pageFree(old[i]));
+        }
+        return freed;
     }
 
     /// Maps free pool pages to `slot` until its positions below `tokens` are covered
@@ -1647,7 +1780,7 @@ pub const Model = struct {
         while (left > 0) {
             var n: u32 = 0;
             while (n < @min(left, pages.len)) : (next += 1) {
-                if (self.page_owner[next] != no_owner) continue;
+                if (!self.pageFree(@intCast(next))) continue;
                 pages[n] = @intCast(next);
                 n += 1;
             }
@@ -1675,7 +1808,7 @@ pub const Model = struct {
         try c.end();
         try c.run(self.options.timeout_ns);
         for (words[0..n], 0..) |page, k| {
-            self.page_owner[page] = @intCast(slot);
+            self.page_mask[page] |= @as(u64, 1) << @intCast(slot);
             self.page_logical[page] = @intCast(self.mapped[slot] + k);
         }
         self.mapped[slot] += n;
