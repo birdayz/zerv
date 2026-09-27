@@ -20,6 +20,7 @@ RX 7900 XTX, Qwen3.8-27B-Q4_0, f16 KV, `--parallel 8`, host snapshots, 24 checkp
 | --- | --- |
 | `tests/kvcache.zig` (fake device: page contents, snapshots) | flat and radix restore exactly, return every page; radix dedup; 300 random ops keep the tree invariants |
 | `tests/pages.zig` (pure page accounting, 20,000 random ops incl. aborts) | every sequence sees its own content after each op; negative control fails |
+| `tests/kv_system.zig` (real batcher + pool + policies, simulated contents, reads through the tables) | exact under pressure with every policy; 3 negative controls caught (admission bug, shared partial page, pinned pages swapped) |
 | `tests/batcher.zig` | 15 tests; the new "every prompt segment is admitted" reproduced the bug below before the fix |
 | `zerv-batch-check … prefix` ×4 configs | 420/420 bitwise, incl. dedup rebinds and 4 swaps of sequences sharing prefix pages (only private pages moved) ([data](data/2026-09-27-kv-pool-refactor/batch-check/)) |
 | `… shared`, `… swap` ×4 configs (refactored pool) | 168/168 each |

@@ -604,6 +604,16 @@ conversations.
   swap operations (aborts included) with simulated page contents, and checks after each that
   every sequence sees exactly its own content. A negative control (moving pinned pages on
   swap) fails it.
+- **System-level fake** (`tests/kv_system.zig`): the real batcher over a backend made of the
+  real `pages.Pool` and `kvcache` policies. Page contents are simulated, and every logits row
+  reads all earlier positions through the slot's table. Concurrent conversations with shared
+  prefixes run with no cache, flat and radix, on roomy and tight pools (swaps, 1 ms time
+  slice, 4 seeds); every row must equal its solo value and every page must come back.
+  Negative controls, each caught:
+  - admission of the first prompt op only;
+  - a restored slot sharing the partial page instead of copying it;
+  - swaps moving pinned pages.
+  25 consecutive runs pass.
 - **Admission per prompt op** (bug found 2026-09-27): a prompt split at checkpoint points is
   several prefill ops, and each must be admitted for its own positions (`base` advances as
   ops complete). Admitting only the first op left later segments without pages under
