@@ -628,6 +628,29 @@ Proposed order (by impact on bruh use); the user chooses what comes next.
 
 ## Parked
 
+- [ ] **Prefix singleflight** (in-flight prefix sharing) — noted 2026-09-27, deliberately not
+  built. When several requests with the same uncached prefix arrive while it is being
+  prefilled, today each prefills it itself. Singleflight: the first request becomes the
+  leader for that prefix; the others wait until its checkpoint exists and restore it, then
+  prefill only their own part.
+  - **Real cases:**
+    - agent fan-out (parallel subagents or tool calls on one context), the one that
+      matters most for our use;
+    - cold bursts after a restart or a deploy with a new system prompt;
+    - batch jobs with shared instructions.
+    Steady state does not need it once the checkpoint exists.
+  - **Prior art:** vLLM does not do it (requests in one step each compute their blocks).
+    SGLang gets part of it by inserting in-flight prefixes into its radix tree.
+  - **Not a justification:** the 2026-09-27 multi-turn level-8 turn 0 (51 s). That was
+    least-recently-used eviction dropping the shared system-prompt checkpoint (fix:
+    leaf-first eviction), not missing singleflight.
+  - **Before building:**
+    - measure a cold-burst and a fan-out scenario;
+    - specify the leader failure and cancel path (waiters fall back to a cold prefill);
+    - specify the timeout and the prefix-length threshold (waiting beats prefilling only
+      when the prefix is long);
+    - specify the interaction with admission and the time slice.
+
 - [ ] **16 · prefill speed** — parked 2026-09-24 for block 17 (user pivot to tok/s).
   [Design](docs/design/speed.md).
   - **Done:** 16b lab rounds 1–2 ([report](docs/bench/2026-09-24-gemm-f16-lab.md)) and
