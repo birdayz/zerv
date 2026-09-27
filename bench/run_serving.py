@@ -70,13 +70,14 @@ VLLM_MODEL = ROOT/"models/RedHatAI/Qwen3.8-27B-INT4/c063053e004e9783631651df95cf
 VLLM_CACHE = ROOT/"third_party/vllm/cache"
 
 
-def vllm_engine(port, context, extra=()):
+def vllm_engine(port, context, extra=(), prefix_cache=False):
     """`docker run` of vLLM with the GPU device nodes and nothing else: unprivileged user, no
     capabilities, no new privileges, weights and template read-only, compile caches in
     third_party/vllm/cache, the API on 127.0.0.1 only, no telemetry and no Hub access. Same
     chat template file as llama-server (byte-identical to the checkpoint's). `--max-num-seqs`
     and `--max-model-len` are the concurrency and per-request context (run_multiuser sets
-    them); prefix caching is off (cold prefill, like the other engines' runs)."""
+    them); prefix caching is off (cold prefill, like the other engines' runs) unless
+    `prefix_cache` (vLLM's default: automatic prefix caching, engine `vllm-apc`)."""
     name = f"zerv-bench-vllm-{port}"
     VLLM_CACHE.mkdir(parents=True, exist_ok=True)
     cmd = ["docker", "run", "--rm", "--name", name, "--user", f"{os.getuid()}:{os.getgid()}", "--device", "/dev/kfd", "--device", "/dev/dri/renderD128",
@@ -87,7 +88,7 @@ def vllm_engine(port, context, extra=()):
            "/model", "--served-model-name", "qwen3.8-27b", "--host", "0.0.0.0", "--port", str(port),
            "--max-model-len", str(context), "--max-num-seqs", "1", "--gpu-memory-utilization", "0.95",
            "--chat-template", "/template.jinja", "--limit-mm-per-prompt", '{"image":0,"video":0}', "--reasoning-parser", "qwen3",
-           "--no-enable-prefix-caching", *extra]
+           *([] if prefix_cache else ["--no-enable-prefix-caching"]), *extra]
     return dict(cmd=cmd, env={}, stop=["docker", "rm", "-f", name], ready_timeout=1800)
 
 
@@ -135,6 +136,7 @@ def engines(model, port, context, zerv_binary):
         # One KV buffer shared by all slots (-kvu): each sequence may use the whole -c.
         "llama-fa-kvu": dict(cmd=common+["-fa", "on", "-b", "2048", "-ub", "512", "-kvu"], env={}),
         "vllm": vllm_engine(port, context),
+        "vllm-apc": vllm_engine(port, context, prefix_cache=True),
         "rdna3": rdna3_engine(model, port, context, ["--spec-type", "none", "-b", "2048", "-ub", "512"]),
         "rdna3-b512": rdna3_engine(model, port, context, ["--spec-type", "none", "-b", "512", "-ub", "512"]),
         "rdna3-mtp3": rdna3_engine(model, port, context, ["--spec-type", "draft-mtp-adaptive", "--spec-draft-n-max", "3", "-b", "2048", "-ub", "512"]),
