@@ -120,7 +120,7 @@ pub fn main(init: std.process.Init) !void {
         token.* = random.intRangeLessThan(u32, 0, 150000);
     };
 
-    if (swap_mode) return swapCheck(a, &device, &container, out, kv_type, page, context, precision, dkernel, dformats, &prompts, &xs);
+    if (swap_mode) return swapCheck(a, io, &device, &container, out, kv_type, page, context, precision, dkernel, dformats, &prompts, &xs);
     if (shared_mode) return sharedCheck(a, &device, &container, out, kv_type, page, context, precision, dkernel, dformats, &prompts, &xs);
     if (pack_mode) return packCheck(a, io, &device, &container, out, kv_type, page, context, precision, dkernel, dformats, &prompts, &xs);
 
@@ -584,7 +584,7 @@ fn sharedCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artif
 }
 
 /// The swap gate (`swap` mode; docs/specs/concurrent.md, "18d.3 design").
-fn swapCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artifact.gguf.Container, out: *std.Io.Writer, kv_type: model.KvType, page: u32, context: u32, precision: model.DecodePrecision, dkernel: model.DecodeF16Kernel, dformats: model.DecodeF16Formats, prompts: *const [K][max_prompt]u32, xs: *const [K][T]u32) !void {
+fn swapCheck(a: std.mem.Allocator, io: std.Io, device: *gpu.Device, container: *zerv.artifact.gguf.Container, out: *std.Io.Writer, kv_type: model.KvType, page: u32, context: u32, precision: model.DecodePrecision, dkernel: model.DecodeF16Kernel, dformats: model.DecodeF16Formats, prompts: *const [K][max_prompt]u32, xs: *const [K][T]u32) !void {
     const pt = if (page == 0) context else page;
     // The pool holds the prompts of about 3 sequences plus growth only for some.
     const pool: u32 = 3 * ((max_prompt + T + pt - 1) / pt);
@@ -610,6 +610,11 @@ fn swapCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artifac
     var self_swaps: u32 = 0;
     var forced: u32 = 0;
     var batches: u32 = 0;
+    // Swap time and pages moved (both ways).
+    var out_ns: u64 = 0;
+    var in_ns: u64 = 0;
+    var out_pages: u64 = 0;
+    var in_pages: u64 = 0;
     var max_live: u32 = 0;
     // Join order = age (index into `order`); slots rotate as in the shared gate.
     const order = [K]u32{ 6, 0, 7, 2, 5, 1, 4, 3 };
@@ -632,7 +637,11 @@ fn swapCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artifac
         };
         // Swapped sequences come back first (with a spare page per running one).
         if (oldest_swapped) |i| {
+            const pages = m.swappedPages(slot_of[i].?);
+            const t0 = std.Io.Clock.awake.now(io).nanoseconds;
             if (try m.swapIn(slot_of[i].?, running)) {
+                in_ns += @intCast(std.Io.Clock.awake.now(io).nanoseconds - t0);
+                in_pages += pages;
                 swapped[i] = false;
                 swap_ins += 1;
                 continue;
@@ -670,7 +679,10 @@ fn swapCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artifac
                         victim = j;
                     };
                     const v = victim.?;
+                    out_pages += m.mappedPages(slot_of[v].?);
+                    const t0 = std.Io.Clock.awake.now(io).nanoseconds;
                     try m.swapOut(slot_of[v].?);
+                    out_ns += @intCast(std.Io.Clock.awake.now(io).nanoseconds - t0);
                     swapped[v] = true;
                     swap_outs += 1;
                     if (v == i) {
@@ -693,7 +705,10 @@ fn swapCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artifac
                 youngest = i;
             };
             if (live >= 2) {
+                out_pages += m.mappedPages(slot_of[youngest.?].?);
+                const t0 = std.Io.Clock.awake.now(io).nanoseconds;
                 try m.swapOut(slot_of[youngest.?].?);
+                out_ns += @intCast(std.Io.Clock.awake.now(io).nanoseconds - t0);
                 swapped[youngest.?] = true;
                 swap_outs += 1;
                 forced += 1;
@@ -731,9 +746,17 @@ fn swapCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artifac
     if (m.swapOut(1)) |_| errors_ok = false else |e| errors_ok = errors_ok and e == error.SlotSwapped;
     if (m.ensurePages(1, 200)) |_| errors_ok = false else |e| errors_ok = errors_ok and e == error.SlotSwapped;
     try m.releasePages(1);
+    // The arena's last slot (its state region is not padded) swaps out and back.
+    try m.select(K - 1);
+    try m.reset();
+    try m.ensurePages(K - 1, 300);
+    try m.swapOut(K - 1);
+    if (!try m.swapIn(K - 1, 0)) errors_ok = false;
+    errors_ok = errors_ok and m.mappedPages(K - 1) == (300 + pt - 1) / pt;
+    try m.releasePages(K - 1);
     const all_free = m.freePages() == pool and m.hostFreePages() == host_pages;
     const passed = stats.failures == 0 and errors_ok and all_free and swap_outs - forced > 0 and forced >= 10 and swap_ins == swap_outs and max_live >= 2;
-    try out.print("{{\"summary\":true,\"mode\":\"swap\",\"pool_pages\":{d},\"host_pages\":{d},\"compared\":{d},\"failures\":{d},\"swap_outs\":{d},\"swap_ins\":{d},\"self_swaps\":{d},\"forced\":{d},\"max_live\":{d},\"errors_ok\":{},\"all_pages_returned\":{},\"passed\":{}}}\n", .{ pool, host_pages, stats.compared, stats.failures, swap_outs, swap_ins, self_swaps, forced, max_live, errors_ok, all_free, passed });
+    try out.print("{{\"summary\":true,\"mode\":\"swap\",\"pool_pages\":{d},\"host_pages\":{d},\"compared\":{d},\"failures\":{d},\"swap_outs\":{d},\"swap_ins\":{d},\"self_swaps\":{d},\"forced\":{d},\"swap_out_ms\":{d:.3},\"swap_in_ms\":{d:.3},\"pages_out\":{d},\"pages_in\":{d},\"max_live\":{d},\"errors_ok\":{},\"all_pages_returned\":{},\"passed\":{}}}\n", .{ pool, host_pages, stats.compared, stats.failures, swap_outs, swap_ins, self_swaps, forced, @as(f64, @floatFromInt(out_ns)) / 1e6, @as(f64, @floatFromInt(in_ns)) / 1e6, out_pages, in_pages, max_live, errors_ok, all_free, passed });
     try out.flush();
     if (!passed) std.process.exit(1);
 }

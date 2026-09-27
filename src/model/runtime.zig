@@ -1474,7 +1474,7 @@ pub const Model = struct {
     /// Host swap store of `bytes`: the slot state regions first, the rest in pool-shaped pages.
     fn initSwap(self: *Model, bytes: u64) Error!void {
         const S = self.state_layout;
-        const state_bytes = @as(u64, S.slots) * S.slot_words * 4;
+        const state_bytes = @as(u64, S.slots) * self.snapshotBytes();
         var page_bytes: u64 = 0;
         for (0..S.kv_buffers) |g| page_bytes += self.pageBytes(@intCast(g));
         const pages = @min((std.math.sub(u64, bytes, state_bytes) catch return error.NoSwap) / page_bytes, max_pool_pages);
@@ -1488,6 +1488,32 @@ pub const Model = struct {
             self.swap_kv_live += 1;
         }
         self.swap_pages = @intCast(pages);
+    }
+
+    /// Consecutive pool pages that go to (or come from) consecutive host pages: one copy
+    /// region per KV buffer for the whole run.
+    const PageRun = struct { pool: u32 = 0, host: u32 = 0, n: u32 = 0 };
+    const SwapWay = enum { out, in };
+    fn extendRun(self: *Model, pr: *PageRun, pool: u32, host: u32, way: SwapWay) Error!void {
+        if (pr.n > 0 and pool == pr.pool + pr.n and host == pr.host + pr.n) {
+            pr.n += 1;
+            return;
+        }
+        try self.flushRun(pr, way);
+        pr.* = .{ .pool = pool, .host = host, .n = 1 };
+    }
+    fn flushRun(self: *Model, pr: *PageRun, way: SwapWay) Error!void {
+        if (pr.n == 0) return;
+        for (0..self.state_layout.kv_buffers) |g| {
+            const b = self.pageBytes(@intCast(g));
+            const dev = @as(u64, pr.pool) * b;
+            const host = @as(u64, pr.host) * b;
+            switch (way) {
+                .out => try self.swap_commands.copy(&self.kv[g], dev, &self.swap_kv[g], host, pr.n * b),
+                .in => try self.swap_commands.copy(&self.swap_kv[g], host, &self.kv[g], dev, pr.n * b),
+            }
+        }
+        pr.n = 0;
     }
 
     /// Host swap pages no swapped slot holds.
@@ -1519,19 +1545,19 @@ pub const Model = struct {
         try c.reset();
         try c.begin();
         try c.barrier(.compute, .transfer);
-        const region = @as(u64, S.slot_words) * 4;
-        try c.copy(&self.state, slot * region, &self.swap_state, slot * region, region);
+        // The slot's recurrent state (what a snapshot holds; the arena's last slot is not padded).
+        const at = @as(u64, slot) * S.slot_words * 4 + @as(u64, S.ssm) * 4;
+        try c.copy(&self.state, at, &self.swap_state, slot * self.snapshotBytes(), self.snapshotBytes());
         var h: u32 = 0;
+        var pr: PageRun = .{};
         for (self.page_owner[0..S.pages], 0..) |owner, p| {
             if (owner != slot) continue;
             while (self.host_owner[h] != no_owner) h += 1;
             self.host_owner[h] = @intCast(slot);
             self.host_logical[h] = self.page_logical[p];
-            for (0..S.kv_buffers) |g| {
-                const b = self.pageBytes(@intCast(g));
-                try c.copy(&self.kv[g], p * b, &self.swap_kv[g], h * b, b);
-            }
+            try self.extendRun(&pr, @intCast(p), h, .out);
         }
+        try self.flushRun(&pr, .out);
         try c.barrier(.transfer, .host);
         try c.end();
         c.run(self.options.timeout_ns) catch |e| {
@@ -1564,10 +1590,11 @@ pub const Model = struct {
         try c.begin();
         // The fresh pages and the state region were last touched by compute.
         try c.barrier(.compute, .transfer);
-        const region = @as(u64, S.slot_words) * 4;
-        try c.copy(&self.swap_state, slot * region, &self.state, slot * region, region);
+        const at = @as(u64, slot) * S.slot_words * 4 + @as(u64, S.ssm) * 4;
+        try c.copy(&self.swap_state, slot * self.snapshotBytes(), &self.state, at, self.snapshotBytes());
         var p: u32 = 0;
         var taken: u32 = 0;
+        var pr: PageRun = .{};
         for (self.host_owner[0..self.swap_pages], 0..) |owner, h| {
             if (owner != slot) continue;
             while (self.page_owner[p] != no_owner) p += 1;
@@ -1576,12 +1603,10 @@ pub const Model = struct {
             words[i] = p;
             self.page_owner[p] = @intCast(slot); // taken (commitPages sets it again)
             taken += 1;
-            for (0..S.kv_buffers) |g| {
-                const b = self.pageBytes(@intCast(g));
-                try c.copy(&self.swap_kv[g], h * b, &self.kv[g], p * b, b);
-            }
+            try self.extendRun(&pr, p, @intCast(h), .in);
             p += 1;
         }
+        try self.flushRun(&pr, .in);
         if (taken != n) return error.InvalidState;
         try c.barrier(.transfer, .compute);
         try c.end();
