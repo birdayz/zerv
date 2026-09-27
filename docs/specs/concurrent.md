@@ -458,7 +458,8 @@ time. vLLM and SGLang admit on the prompt and preempt under pressure, by recompu
 (docs/research/2026-09-27-kv-admission-preemption.md). Recompute is a full re-prefill,
 46 s at 29k tokens here, and not bitwise identical to an uninterrupted run.
 
-**Design** (knobs; `--kv-admit reserve` keeps the 18d.2 behaviour):
+**Design** (knobs; `--kv-admit reserve` keeps the 18d.2 behaviour; **default `prompt`**
+since 2026-09-27, docs/bench/2026-09-27-kv-swap.md):
 - **`--kv-admit prompt`** (shared pool only): a prompt is admitted when its prompt pages are
   free. Nothing is reserved for the output.
 - **Growth.** Before a decode batch, the scheduler asks the backend to `grow` each row's
@@ -468,11 +469,23 @@ time. vLLM and SGLang admit on the prompt and preempt under pressure, by recompu
   such slot (latest prompt arrival, as vLLM does). Its pages (in logical order) and its
   whole per-slot state region are copied to a host swap store, and its pages return to the
   pool. If no other slot can be swapped, the requesting row's own slot is swapped out.
-- **Swap in.** A swapped slot's pending step waits. While any slot is swapped, no new prompt
-  is admitted. The oldest swapped slot is swapped in as soon as the pool holds its pages
-  plus one spare page per running decoding slot, so it is not evicted again at the next
-  page boundary. Swap in maps fresh pages (any physical pages), rewrites the slot's page
-  table and copies the pages and the state back.
+- **Swap in.** A swapped slot's pending step waits.
+  - Waiters are served in the order they started waiting: swapped slots since their
+    swap-out, prompts that failed admission since they were queued.
+  - A prompt is not admitted while a swapped slot has waited longer.
+  - The first waiting swapped slot comes back as soon as the pool holds its pages plus one
+    spare page per running decoding slot, so it is not evicted again at the next page
+    boundary.
+  - Swap-in maps fresh pages (any physical pages), rewrites the slot's page table and copies
+    the pages and the state back.
+- **Time slice** (`--kv-swap-slice-ms`, default 10000; 0: off). When the first waiter (a
+  swapped sequence or a prompt) has waited a slice and cannot get in, the decoding sequence
+  that has run longest since it last came in (at least a slice, with its next step waiting)
+  is swapped out for it. Repeated until it fits.
+  - Without this, a swapped stream waits until another request finishes, minutes with long
+    answers (measured: 2 client timeouts in the pressure run).
+  - With it, every stream progresses, at the price of a swap pair per slice (~0.2 s for 16k
+    tokens every 10 s: ~2%).
 - **Exactness.** The swapped bytes are identical, and every kernel reads KV through the
   page table. Rows are bitwise independent of physical page placement (18d.2 gate 2) and
   of batch composition (18c). So a swapped sequence continues bitwise as if never swapped.

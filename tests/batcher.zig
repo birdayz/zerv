@@ -150,9 +150,6 @@ const Fake = struct {
     /// it was admitted for until `release` or its reset.
     pub fn admit(self: *Fake, slot: u32, tokens: usize) bool {
         if (self.pool == 0) return true;
-        for (self.swapped) |sw| if (sw) {
-            self.violations += 1; // no admission while a sequence is swapped out
-        };
         const want = (tokens + self.page - 1) / self.page;
         if (want <= self.held[slot]) return true;
         var used: usize = 0;
@@ -773,8 +770,11 @@ test "batcher: shared memory pool: prompts wait for memory, a large prompt is no
 }
 
 fn growingRun(fake: *Fake, slots: u32, n: usize, steps: u32, results: []anyerror!void) !B {
+    return growingRunSliced(fake, slots, n, steps, results, null);
+}
+fn growingRunSliced(fake: *Fake, slots: u32, n: usize, steps: u32, results: []anyerror!void, slice: ?std.Io.Duration) !B {
     const io = t.io;
-    var b = try B.init(io, fake, .{ .slots = slots, .vocab = V, .stall = .{ .ns = 0 }, .order = .shortest, .pack = 3 });
+    var b = try B.init(io, fake, .{ .slots = slots, .vocab = V, .stall = .{ .ns = 0 }, .order = .shortest, .pack = 3, .swap_slice = slice });
     var prompts: [12][6]u32 = undefined;
     for (&prompts, 0..) |*pr, i| for (pr, 0..) |*x, j| {
         x.* = @intCast(1000 * i + j + 1);
@@ -821,4 +821,77 @@ test "batcher: prompt admission without a host store: a row that finds no page f
     try t.expectEqual(@as(u64, failed), b.stats.swap_failures);
     try t.expectEqual(@as(u32, 0), fake.violations);
     for (fake.held) |h| try t.expectEqual(@as(usize, 0), h);
+}
+
+test "batcher: time slice: a swapped sequence waiting a slice swaps out the longest-running one; outputs unchanged" {
+    // 4 slots over 10 pages of 4: two 60-step sequences fill the pool (16 pages each would be
+    // needed), so without the slice the swapped ones wait for a finish. With a 2 ms slice
+    // (batches take 0.3 ms) running sequences are rotated out.
+    var fake: Fake = .{ .io = t.io, .segments = 1, .delay_ns = 300_000, .pool = 10, .page = 4, .pack_cap = 3, .host_pool = 100 };
+    var results: [4]anyerror!void = undefined;
+    const b = try growingRunSliced(&fake, 4, 4, 30, &results, .fromMilliseconds(2));
+    for (results) |r| try r;
+    try t.expectEqual(@as(u32, 0), fake.violations);
+    try t.expect(b.stats.slice_swaps > 0);
+    try t.expectEqual(b.stats.swap_outs, b.stats.swap_ins);
+    for (fake.held, fake.host_held) |h, x| {
+        try t.expectEqual(@as(usize, 0), h);
+        try t.expectEqual(@as(usize, 0), x);
+    }
+}
+
+const Timed = struct { prompt_done_ns: i96 = 0, end_ns: i96 = 0, result: anyerror!void = {} };
+fn timedGeneration(b: *B, prompt: []const u32, steps: u32, start_after_ns: u64, out: *Timed) void {
+    out.result = timed(b, prompt, steps, start_after_ns, out);
+}
+fn timed(b: *B, prompt: []const u32, steps: u32, start_after_ns: u64, out: *Timed) !void {
+    const io = b.io;
+    if (start_after_ns > 0) try io.sleep(.fromNanoseconds(start_after_ns), .awake);
+    const slot = try b.join();
+    defer b.leave(slot);
+    try b.reset(slot);
+    var h: u64 = 7;
+    for (prompt) |token| h = mix(h, token);
+    var logits = try b.prefill(slot, prompt);
+    out.prompt_done_ns = std.Io.Clock.awake.now(io).nanoseconds;
+    var want: [V]f32 = undefined;
+    for (0..steps) |_| {
+        logitsFor(h, &want);
+        if (!std.mem.eql(f32, &want, logits)) return error.WrongLogits;
+        const token = pick(logits);
+        b.sampled(slot);
+        h = mix(h, token);
+        logits = try b.step(slot, token);
+    }
+    b.sampled(slot);
+    out.end_ns = std.Io.Clock.awake.now(io).nanoseconds;
+}
+
+test "batcher: time slice: a new prompt is not starved while long sequences rotate through the pool" {
+    // 3 long sequences (120 steps: 31 pages each, each fits alone) share 40 pages of 4,
+    // rotating by the 2 ms slice. A prompt arriving 20 ms later must start before any long
+    // one ends.
+    const io = t.io;
+    var fake: Fake = .{ .io = io, .segments = 1, .delay_ns = 200_000, .pool = 40, .page = 4, .pack_cap = 1, .host_pool = 200 };
+    var b = try B.init(io, &fake, .{ .slots = 4, .vocab = V, .stall = .{ .ns = 0 }, .order = .fifo, .pack = 1, .swap_slice = .fromMilliseconds(2) });
+    var task = try io.concurrent(B.run, .{&b});
+    const prompts = [4][2]u32{ .{ 1, 2 }, .{ 3, 4 }, .{ 5, 6 }, .{ 7, 8 } };
+    var outs: [4]Timed = @splat(.{});
+    var group: std.Io.Group = .init;
+    defer group.cancel(io);
+    for (0..3) |i| try group.concurrent(io, timedGeneration, .{ &b, &prompts[i], @as(u32, 120), @as(u64, 0), &outs[i] });
+    try group.concurrent(io, timedGeneration, .{ &b, &prompts[3], @as(u32, 4), @as(u64, 20_000_000), &outs[3] });
+    try group.await(io);
+    b.stop();
+    task.await(io);
+    for (outs) |o| try o.result;
+    try t.expectEqual(@as(u32, 0), fake.violations);
+    try t.expect(b.stats.slice_swaps > 0);
+    var first_end: i96 = std.math.maxInt(i96);
+    for (outs[0..3]) |o| first_end = @min(first_end, o.end_ns);
+    try t.expect(outs[3].prompt_done_ns < first_end);
+    for (fake.held, fake.host_held) |h, x| {
+        try t.expectEqual(@as(usize, 0), h);
+        try t.expectEqual(@as(usize, 0), x);
+    }
 }

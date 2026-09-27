@@ -61,6 +61,8 @@ pub const Stats = struct {
     swap_ins: u64 = 0,
     swap_ns: u64 = 0,
     swap_failures: u64 = 0,
+    /// Sequences swapped out by the time slice (not by memory pressure).
+    slice_swaps: u64 = 0,
 };
 
 /// `Backend` is called by the scheduler task only, never concurrently:
@@ -99,6 +101,11 @@ pub fn Batcher(comptime Backend: type) type {
             order: Order = .fifo,
             /// Prompts per packed chunk at most (1: one prompt at a time).
             pack: u32 = 1,
+            /// Time slice of swapped-out sequences (docs/specs/concurrent.md, "18d.3
+            /// design"): once the longest-waiting one has waited this long and cannot come
+            /// back, the sequence that has run longest since it last came in is swapped out
+            /// for it (null: a swapped sequence waits until memory is released).
+            swap_slice: ?std.Io.Duration = null,
         };
         /// The chunk in flight: its slots (running until it ends) and which of them lost
         /// their generation meanwhile (completed as canceled; freed when the chunk ends).
@@ -134,6 +141,12 @@ pub fn Batcher(comptime Backend: type) type {
             /// of its last failed swap-in.
             swapped: bool = false,
             swap_epoch: u64 = std.math.maxInt(u64),
+            /// When it was last swapped out, and when it last started running (admitted or
+            /// swapped in): the time slice orders by these.
+            swapped_ns: i96 = 0,
+            resumed_ns: i96 = 0,
+            /// When its current reset or prompt was submitted (the wait order of prompts).
+            wait_ns: i96 = 0,
         };
 
         io: std.Io,
@@ -163,6 +176,11 @@ pub fn Batcher(comptime Backend: type) type {
         blocked: ?u64 = null,
         /// Slots swapped out: while any is, no new prompt is admitted.
         swapped_slots: u32 = 0,
+        /// When the time slice is next due (0: not waiting for one).
+        slice_wait_ns: i96 = 0,
+        /// Since when the longest-waiting swapped sequence waits (valid while any is
+        /// swapped): prompts queued later are not admitted before it.
+        first_swapped_ns: i96 = 0,
         stats: Stats = .{},
 
         pub fn init(io: std.Io, backend: Backend, options: Options) error{InvalidSlots}!Self {
@@ -251,6 +269,7 @@ pub fn Batcher(comptime Backend: type) type {
             s.result = &.{};
             if (op != .step) {
                 s.decoding = false;
+                s.wait_ns = std.Io.Clock.awake.now(self.io).nanoseconds;
                 s.order = self.arrivals;
                 self.arrivals += 1;
             }
@@ -319,7 +338,8 @@ pub fn Batcher(comptime Backend: type) type {
         /// prompt is waiting for memory.
         fn eligible(self: *const Self, s: *const Slot) bool {
             if (s.op == .reset or s.admitted) return true;
-            if (s.failed_epoch == self.admit_epoch or self.swapped_slots > 0) return false;
+            if (s.failed_epoch == self.admit_epoch) return false;
+            if (self.swapped_slots > 0 and self.first_swapped_ns <= s.wait_ns) return false;
             return self.blocked == null or s.order <= self.blocked.?;
         }
 
@@ -431,17 +451,79 @@ pub fn Batcher(comptime Backend: type) type {
                     self.mutex.unlock(self.io);
                     return;
                 }
-                if (self.swapped_slots > 0) swap: {
-                    // The oldest swapped sequence comes back first, with a spare page per
-                    // running decoding sequence (not evicted again at its next page).
+                if (self.swapped_slots > 0 or (self.options.swap_slice != null and self.blocked != null)) swap: {
+                    // Waiters in order of how long they wait: swapped sequences (since their
+                    // swap-out) and prompts that failed admission (since they were queued).
+                    // A swapped one comes back with a spare page per running decoding
+                    // sequence (not evicted again at its next page).
                     var oldest: ?usize = null;
+                    var first_swapped: ?i96 = null;
+                    var first_prompt: ?i96 = null;
                     var spare: u32 = 0;
                     for (self.slot[0..self.options.slots], 0..) |*s, i| {
                         if (!s.used or s.closing) continue;
-                        if (s.swapped and !s.running and s.swap_epoch != self.admit_epoch and (oldest == null or s.order < self.slot[oldest.?].order)) oldest = i;
+                        if (s.swapped and !s.running) {
+                            if (first_swapped == null or s.swapped_ns < first_swapped.?) first_swapped = s.swapped_ns;
+                            if (s.swap_epoch != self.admit_epoch and (oldest == null or s.swapped_ns < self.slot[oldest.?].swapped_ns)) oldest = i;
+                        }
+                        if (s.op == .prefill and !s.admitted and !s.running and s.failed_epoch != std.math.maxInt(u64)) {
+                            if (first_prompt == null or s.wait_ns < first_prompt.?) first_prompt = s.wait_ns;
+                        }
                         if (s.decoding and !s.swapped) spare += 1;
                     }
-                    const i = oldest orelse break :swap;
+                    self.first_swapped_ns = first_swapped orelse 0;
+                    // A prompt that has waited longer goes first (it is eligible then).
+                    if (oldest != null and first_prompt != null and first_prompt.? < self.slot[oldest.?].swapped_ns) oldest = null;
+                    if (oldest == null) {
+                        // Time slice: the longest waiter waited a slice; the sequence that has
+                        // run longest since it came in (at least a slice) makes room.
+                        const slice = self.options.swap_slice orelse break :swap;
+                        const since = @min(first_swapped orelse std.math.maxInt(i96), first_prompt orelse std.math.maxInt(i96));
+                        if (since == std.math.maxInt(i96)) break :swap;
+                        const t = self.now();
+                        if (t - since < slice.nanoseconds) {
+                            self.slice_wait_ns = since + slice.nanoseconds;
+                            break :swap;
+                        }
+                        var victim: ?usize = null;
+                        for (self.slot[0..self.options.slots], 0..) |*v, j| {
+                            // Only a sequence whose next step waits (a finished one is about
+                            // to leave; swapping it would be a wasted copy).
+                            if (!v.used or v.closing or v.swapped or v.running or !v.decoding or v.op != .step) continue;
+                            if (t - v.resumed_ns < slice.nanoseconds) continue;
+                            if (victim == null or v.resumed_ns < self.slot[victim.?].resumed_ns) victim = j;
+                        }
+                        const j = victim orelse {
+                            self.slice_wait_ns = t + slice.nanoseconds; // try again later
+                            break :swap;
+                        };
+                        const v = &self.slot[j];
+                        v.running = true;
+                        self.mutex.unlock(self.io);
+                        const t0 = self.now();
+                        const out = self.backend.swapOut(@intCast(j));
+                        const t1 = self.now();
+                        self.mutex.lockUncancelable(self.io);
+                        v.running = false;
+                        if (out) |ok| {
+                            if (ok) {
+                                v.swapped = true;
+                                v.swapped_ns = t1;
+                                self.swapped_slots += 1;
+                                self.stats.swap_outs += 1;
+                                self.stats.slice_swaps += 1;
+                                self.account(&self.stats.swap_ns, t0, t1);
+                                self.admit_epoch += 1; // its memory is free: swap-ins retry
+                            } else v.resumed_ns = t1; // no room on the host: next slice
+                        } else |_| v.resumed_ns = t1;
+                        if (v.closing) {
+                            self.release(v);
+                            self.free(v);
+                        }
+                        self.mutex.unlock(self.io);
+                        continue;
+                    }
+                    const i = oldest.?;
                     const s = &self.slot[i];
                     s.running = true;
                     self.mutex.unlock(self.io);
@@ -453,6 +535,7 @@ pub fn Batcher(comptime Backend: type) type {
                     if (in) |ok| {
                         if (ok) {
                             s.swapped = false;
+                            s.resumed_ns = t1;
                             self.swapped_slots -= 1;
                             self.stats.swap_ins += 1;
                             self.account(&self.stats.swap_ns, t0, t1);
@@ -515,6 +598,12 @@ pub fn Batcher(comptime Backend: type) type {
                 }
                 const batch_ready = if (wait_ns) |w| w == 0 else false;
                 if (!prefill_ready and !batch_ready) {
+                    // A pending time slice wakes the scheduler too.
+                    if (self.swapped_slots > 0 and self.slice_wait_ns > 0) {
+                        const left = @max(self.slice_wait_ns - self.now(), 0);
+                        wait_ns = if (wait_ns) |w| @min(w, left) else left;
+                    }
+                    self.slice_wait_ns = 0;
                     self.mutex.unlock(self.io);
                     const timeout: std.Io.Timeout = if (wait_ns) |w| .{ .duration = .{ .raw = .{ .nanoseconds = w }, .clock = .awake } } else .none;
                     self.io.futexWaitTimeout(u32, &self.wake.raw, seen, timeout) catch {};
@@ -611,6 +700,7 @@ pub fn Batcher(comptime Backend: type) type {
                             // Swapped out: its step stays queued until `swapIn` (unless its
                             // generation went away meanwhile).
                             s.swapped = true;
+                            s.swapped_ns = t1;
                             self.swapped_slots += 1;
                             self.stats.swap_outs += 1;
                             if (s.canceled or s.closing) {
@@ -665,6 +755,7 @@ pub fn Batcher(comptime Backend: type) type {
                             if (!s.admitted) {
                                 if (self.backend.admit(i, @max(s.reserve, s.tokens.len))) {
                                     s.admitted = true;
+                                    s.resumed_ns = self.now();
                                     if (self.blocked != null and self.blocked.? == s.order) self.blocked = null;
                                 } else {
                                     s.failed_epoch = self.admit_epoch;

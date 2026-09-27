@@ -226,11 +226,12 @@ the llama-server A/B on an idle machine, the Zig caches outside the output base.
       whole pool (91.9–101k tokens at `--parallel 8`); **default `--kv-pool shared`**. Long
       context: only zerv keeps other users streaming (157 ms gaps, 1.4 s short TTFT; llama
       2.9 s / 7–141 s, vLLM 5 s / 221–311 s); llama prefills 70k 7% faster.
-    - [ ] 18d.3 prompt admission + exact swap to host ([report](docs/bench/2026-09-27-kv-swap.md)):
-      implemented behind `--kv-admit prompt` / `--kv-swap-mib`; gates 1–3 passed (host tests,
-      batch-check swap 168/168 x4, serving identity with 10 real swaps). No-`max_tokens`
-      clients: 109 tok/s and 16/16 done vs reserve 47 tok/s and 11/16 timeouts. Open before
-      the default flip: ABBA reserve vs prompt; a swap-pressure run at scale; swap copy cost.
+    - [x] 18d.3 prompt admission + exact swap to host ([report](docs/bench/2026-09-27-kv-swap.md)):
+      **default `--kv-admit prompt`** (8 GiB host swap store, 10 s time slice). Gates: host
+      tests (incl. starvation, negative control), batch-check swap 168/168 x4, serving identity
+      with 10 and 1,358 swaps. No-`max_tokens` clients: 109 tok/s, 16/16 vs reserve 47 tok/s,
+      11/16 timeouts, vLLM ~21 tok/s unfinished. ABBA vs reserve: no difference. Open: long
+      pauses under heavy oversubscription (82–236 s for 3 streams at 3.4×).
     - [ ] Steady gap p99 vs vLLM (145 vs 55 ms at 8 users): stall sweep, then mixed
       prefill+decode steps (needs decode rows bitwise equal inside a prefill pass).
     - [ ] 18d speculation per slot, per-slot prefix cache, async scheduling.

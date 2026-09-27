@@ -1,0 +1,77 @@
+{
+ "started_at": "2026-09-27T05:23:08.509582+00:00",
+ "argv": [
+  "/home/USER/projects/zerv/bench/run_multiuser.py",
+  "--output",
+  "docs/bench/data/2026-09-27-kv-swap/open-pressure-slice",
+  "--zerv-binary",
+  "third_party/multiuser/zerv-swap3",
+  "--engines",
+  "zerv-f16@parallel=8,kv-type=f16,kv-admit=prompt,kv-pool-pages=300,context=max",
+  "--context-per-slot",
+  "98304",
+  "--scenarios",
+  "open",
+  "--levels",
+  "8",
+  "--reps",
+  "1"
+ ],
+ "host": {
+  "sysname": "Linux",
+  "nodename": "benchmark-host",
+  "release": "7.2.6-arch2-1",
+  "version": "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000",
+  "machine": "x86_64"
+ },
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "zerv_sha256": "c57617cc5183b6fd4d8f620c02ae17e4420fcc56b0a9c0c48ca0cb737f6cb768",
+ "llama_server_sha256": "f6a09ab1a41b0bd75c0268af3cff2618c34f1f547ecf0b1a2a1158b8a8fb4b40",
+ "llama_server": "/home/USER/projects/zerv/bazel-out/k8-fastbuild/bin/bench/llama-server",
+ "vllm_image": "vllm/vllm-openai-rocm@sha256:2e7da1ad1c66836802072588adea75f9f4991da5f9545b4318e91d422c22ce6a",
+ "vllm_model": "models/RedHatAI/Qwen3.8-27B-INT4/c063053e004e9783631651df95cf55d0bbf88b32",
+ "workloads": {
+  "bench/workloads/hyperqwen-real-v1-greedy.json": "7be0cfd863a1d03756c8c1f52371c41e28942dedc84b416f7b63ae6975944922",
+  "bench/workloads/long-6k-v1.json": "2907f5282c3aae44cc0643880b9c735864c125e084c516d2d74c8213e0f6c45e"
+ },
+ "scenarios": [
+  "open"
+ ],
+ "parallel": 8,
+ "context_per_slot": 98304,
+ "reps": 1,
+ "rounds": 1,
+ "prompt_cache": "off",
+ "engines": {
+  "zerv-f16@parallel=8,kv-type=f16,kv-admit=prompt,kv-pool-pages=300,context=max": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/multiuser/zerv-swap3",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18098",
+    "--context",
+    "98304",
+    "--prefill-precision",
+    "f16",
+    "--spec-draft",
+    "0",
+    "--parallel",
+    "8",
+    "--kv-type",
+    "f16",
+    "--kv-admit",
+    "prompt",
+    "--kv-pool-pages",
+    "300",
+    "--context",
+    "max"
+   ],
+   "env": {},
+   "vram_loaded": [
+    19918180352
+   ]
+  }
+ },
+ "finished_at": "2026-09-27T06:10:52.572757+00:00"
+}

@@ -302,3 +302,6 @@ finish independent tests and benchmark gates before advancing.
 97. [Prompt admission with exact swap to host](bench/2026-09-27-kv-swap.md) (18d.3): `--kv-admit prompt`, bitwise
     exact swaps (batch-check and serving); clients without `max_tokens`: 109 tok/s, 16/16 finished, against reserve
     47 tok/s with 11/16 timeouts and vLLM ~21 tok/s unfinished after 2.7 h.
+98. [Prefill stall sweep](bench/2026-09-27-prefill-stall.md): steady gap p99 vs TTFT for `--prefill-stall-ms`
+    0/25/50/100. Stall 0: 8-user p99 65 ms (vLLM 51–55), TTFT p50 ~0.9 s (vLLM 1.07 s), but a 4.9k prompt under load 11.6 s
+    (vLLM 4.9 s). No setting beats vLLM everywhere; default stays 100 ms.

@@ -22,8 +22,9 @@ const usage =
     \\            [--prefill-order shortest]  (--parallel > 1: pending prompt with the fewest remaining tokens next; fifo: arrival order)
     \\            [--kv-pool shared]  (--parallel > 1: static = each request owns --context tokens of KV; shared = one pool (admission: --kv-admit), --context is the per-request maximum (max: the whole pool))
     \\            [--kv-pool-pages 0]  (shared pool size in 128-token pages; 0: all memory left)
-    \\            [--kv-admit reserve]  (shared pool: reserve = admit prompt + max_tokens; prompt = admit the prompt, grow page by page, swap sequences to host memory when the pool runs out)
+    \\            [--kv-admit prompt]  (shared pool: reserve = admit prompt + max_tokens; prompt = admit the prompt, grow page by page, swap sequences to host memory when the pool runs out)
     \\            [--kv-swap-mib 8192 with --kv-admit prompt, else 0]  (host memory for swapped sequences)
+    \\            [--kv-swap-slice-ms 10000]  (a sequence swapped out this long takes the place of the one that has run longest; 0: it waits for memory to be released)
     \\            [--prefill-pack 8]  (--parallel > 1, f16 prefill: up to N pending prompts prefill together in one chunk, each bit-identical to alone; 1: one at a time)
     \\            [--f16-split shape]  (f16 prefill: split-K of the small FP32 projections fixed per shape, as packing needs; plan: per chunk size, the rule before 2026-09-26)
     \\            [--kv-page-tokens 128]  (KV page size, a multiple of 128; context: one page, the layout before paging; same values)
@@ -71,8 +72,9 @@ pub fn main(init: std.process.Init) !void {
     var prefill_pack: u32 = 8;
     var kv_share = true;
     var kv_pool_pages: u32 = 0;
-    var kv_admission: zerv.serve.Admission = .reserve;
+    var kv_admit_arg: ?zerv.serve.Admission = null;
     var kv_swap_mib: ?u64 = null;
+    var kv_swap_slice_ms: u64 = 10000;
     var f16_split: zerv.model.F16Split = .shape;
     var decode_fusion = true;
     var verify_fusion = true;
@@ -118,8 +120,9 @@ pub fn main(init: std.process.Init) !void {
         else if (std.mem.eql(u8, arg, "--prefill-pack")) prefill_pack = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--kv-pool")) kv_share = if (std.mem.eql(u8, value, "shared")) true else if (std.mem.eql(u8, value, "static")) false else return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--kv-pool-pages")) kv_pool_pages = try std.fmt.parseInt(u32, value, 10) //
-        else if (std.mem.eql(u8, arg, "--kv-admit")) kv_admission = std.meta.stringToEnum(zerv.serve.Admission, value) orelse return error.InvalidArguments //
+        else if (std.mem.eql(u8, arg, "--kv-admit")) kv_admit_arg = std.meta.stringToEnum(zerv.serve.Admission, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--kv-swap-mib")) kv_swap_mib = try std.fmt.parseInt(u64, value, 10) //
+        else if (std.mem.eql(u8, arg, "--kv-swap-slice-ms")) kv_swap_slice_ms = try std.fmt.parseInt(u64, value, 10) //
         else if (std.mem.eql(u8, arg, "--f16-split")) f16_split = std.meta.stringToEnum(zerv.model.F16Split, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--kv-page-tokens")) kv_page = if (std.mem.eql(u8, value, "context")) 0 else try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--embedding-memory")) embedding_memory = std.meta.stringToEnum(zerv.gpu.Location, value) orelse return error.InvalidArguments //
@@ -175,6 +178,8 @@ pub fn main(init: std.process.Init) !void {
     // The allocation cap counts every buffer; host snapshots and a host embedding are not
     // VRAM, so they add to it.
     const snapshot_host: u64 = if (snapshot_memory == .host) @as(u64, snapshot_slots) * (zerv.model.snapshot_bytes + @as(u64, if (spec_draft > 0) zerv.model.config.hidden * 4 else 0)) else 0;
+    // Prompt admission (the default) needs the shared pool; a static pool reserves anyway.
+    const kv_admission: zerv.serve.Admission = kv_admit_arg orelse if (kv_share and parallel > 1) .prompt else .reserve;
     if (kv_admission == .prompt and !(kv_share and parallel > 1)) {
         std.debug.print("zerv: --kv-admit prompt needs --kv-pool shared and --parallel > 1\n", .{});
         return error.InvalidArguments;
@@ -228,7 +233,7 @@ pub fn main(init: std.process.Init) !void {
     native.admission = kv_admission;
     // --parallel N > 1: the batcher owns the model on its scheduler task.
     var model_backend: zerv.serve.ModelBackend = .{ .m = &model };
-    var batch = try zerv.serve.Batcher.init(io, &model_backend, .{ .slots = parallel, .vocab = zerv.model.config.vocab, .stall = stall, .order = prefill_order, .pack = if (model.packable()) @max(1, @min(prefill_pack, model.pack_seqs)) else 1 });
+    var batch = try zerv.serve.Batcher.init(io, &model_backend, .{ .slots = parallel, .vocab = zerv.model.config.vocab, .stall = stall, .order = prefill_order, .swap_slice = if (model.swap_pages > 0 and kv_swap_slice_ms > 0) std.Io.Duration.fromMilliseconds(@intCast(kv_swap_slice_ms)) else null, .pack = if (model.packable()) @max(1, @min(prefill_pack, model.pack_seqs)) else 1 });
     var scheduler: ?std.Io.Future(void) = null;
     if (parallel > 1) {
         try native.attachBatcher(&batch, &model_backend);
@@ -239,7 +244,7 @@ pub fn main(init: std.process.Init) !void {
         task.await(io);
         const st = batch.stats;
         const span: f64 = @floatFromInt(@max(st.last_ns - st.first_ns, 1));
-        std.debug.print("zerv: batcher: {d} batches ({d} rows, {d} partial, {d} inside prefill chunks), {d} prefill chunks ({d} packed, {d} units, {d} aborted, {d} admission waits, {d} swaps out, {d} in, {d:.1} ms swapping, {d} rows failed for memory); GPU busy {d:.1}% (decode {d:.1}%, prefill {d:.1}%) over {d:.1} s; batches by rows:", .{ st.batches, st.batch_rows, st.partial_batches, st.batches_in_chunk, st.prefill_chunks, st.packed_chunks, st.prefill_units, st.aborted_chunks, st.admission_waits, st.swap_outs, st.swap_ins, @as(f64, @floatFromInt(st.swap_ns)) / 1e6, st.swap_failures, 100 * @as(f64, @floatFromInt(st.batch_ns + st.prefill_ns)) / span, 100 * @as(f64, @floatFromInt(st.batch_ns)) / span, 100 * @as(f64, @floatFromInt(st.prefill_ns)) / span, span / 1e9 });
+        std.debug.print("zerv: batcher: {d} batches ({d} rows, {d} partial, {d} inside prefill chunks), {d} prefill chunks ({d} packed, {d} units, {d} aborted, {d} admission waits, {d} swaps out ({d} by time slice), {d} in, {d:.1} ms swapping, {d} rows failed for memory); GPU busy {d:.1}% (decode {d:.1}%, prefill {d:.1}%) over {d:.1} s; batches by rows:", .{ st.batches, st.batch_rows, st.partial_batches, st.batches_in_chunk, st.prefill_chunks, st.packed_chunks, st.prefill_units, st.aborted_chunks, st.admission_waits, st.swap_outs, st.slice_swaps, st.swap_ins, @as(f64, @floatFromInt(st.swap_ns)) / 1e6, st.swap_failures, 100 * @as(f64, @floatFromInt(st.batch_ns + st.prefill_ns)) / span, 100 * @as(f64, @floatFromInt(st.batch_ns)) / span, 100 * @as(f64, @floatFromInt(st.prefill_ns)) / span, span / 1e9 });
         for (st.sizes[1 .. parallel + 1], 1..) |n, rows| std.debug.print(" {d}:{d}", .{ rows, n });
         std.debug.print("\n", .{});
     };

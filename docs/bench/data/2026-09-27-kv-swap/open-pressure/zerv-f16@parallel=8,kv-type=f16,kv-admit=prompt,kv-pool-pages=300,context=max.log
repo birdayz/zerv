@@ -1,0 +1,29 @@
+zerv: --parallel 8: speculative decoding and the prefix cache are off (per-slot versions: block 18d)
+zerv: loading /home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf on AMD Radeon RX 7900 XTX (RADV NAVI31) (context max, prefill chunk 512, prefill precision f16, KV f16, prefix cache slots 0 = 0 MiB of device memory, speculative drafts 0, adaptive)
+zerv: context max = 38400 tokens
+zerv: gemm_f16x: native
+zerv: KV cache: 300 pages of 128 tokens (shared pool, prompts admitted, pages grown per step)
+zerv: swap store: 8192 MiB of host memory, 874 KV pages
+zerv: parallel: 8 sequences of up to 38400 tokens, batched decode, prefill order shortest, decode steps at least every 100 ms during prefill (16 segments per chunk)
+zerv: prefill packing: up to 8 prompts per chunk
+zerv: FFN input fused in 63 (decode) and 63 (verify) of 64 layers
+zerv: VRAM: needed 19009 MiB of 24342 MiB free
+zerv: serving qwen3.8-27b at http://127.0.0.1:18098/v1/chat/completions
+info: decode time: 298.999 ms total, 297.251 ms in backend calls, 1.173 ms sampling, 0.575 ms other host work
+info: decode time: 26138.903 ms total, 26006.590 ms in backend calls, 116.908 ms sampling, 15.405 ms other host work
+info: decode time: 26459.933 ms total, 26300.365 ms in backend calls, 134.243 ms sampling, 25.324 ms other host work
+info: decode time: 154681.924 ms total, 153827.907 ms in backend calls, 741.744 ms sampling, 112.274 ms other host work
+info: decode time: 502656.669 ms total, 497803.240 ms in backend calls, 3132.682 ms sampling, 1720.747 ms other host work
+info: decode time: 606651.405 ms total, 601191.266 ms in backend calls, 3608.069 ms sampling, 1852.070 ms other host work
+info: decode time: 991800.758 ms total, 981088.020 ms in backend calls, 6379.433 ms sampling, 4333.305 ms other host work
+info: decode time: 1191488.426 ms total, 1185953.222 ms in backend calls, 3855.354 ms sampling, 1679.850 ms other host work
+info: decode time: 463241.410 ms total, 460918.818 ms in backend calls, 1747.016 ms sampling, 575.575 ms other host work
+info: decode time: 1465058.364 ms total, 1459878.770 ms in backend calls, 3823.532 ms sampling, 1356.062 ms other host work
+info: decode time: 708546.070 ms total, 705517.715 ms in backend calls, 2284.621 ms sampling, 743.734 ms other host work
+info: decode time: 748082.334 ms total, 745087.856 ms in backend calls, 2199.021 ms sampling, 795.456 ms other host work
+info: decode time: 1276850.472 ms total, 1267830.340 ms in backend calls, 5445.635 ms sampling, 3574.497 ms other host work
+info: decode time: 1188966.821 ms total, 1183067.689 ms in backend calls, 3661.919 ms sampling, 2237.213 ms other host work
+info: decode time: 1139885.130 ms total, 1133111.527 ms in backend calls, 3869.800 ms sampling, 2903.803 ms other host work
+info: shutting down: draining 0 admitted request(s)
+zerv: stopped
+zerv: batcher: 94071 batches (245686 rows, 88 partial, 16 inside prefill chunks), 11 prefill chunks (3 packed, 176 units, 0 aborted, 0 admission waits, 23 swaps out, 23 in, 2735.5 ms swapping, 0 rows failed for memory); GPU busy 98.1% (decode 98.0%, prefill 0.1%) over 2606.3 s; batches by rows: 1:32712 2:24747 3:15455 4:5617 5:5507 6:4251 7:4650 8:1132
