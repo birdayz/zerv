@@ -55,4 +55,33 @@ Multi-turn TTFT (one run each; the vLLM and llama-server rows are from
   - TTFT was equal: there was no memory pressure, and the 8 cold prefills themselves
     dominate (turn 0 up to 63 s). Prefix singleflight would address that; it is parked.
 - Flat and radix differ only when a prefix is prefilled twice cold; the saved memory pays
-  under pressure. **Default stays flat** until a pressure benchmark shows radix's gain.
+  under pressure.
+
+## Under memory pressure: flat vs radix (cold burst, 400-page pool, 2 rounds ABBA)
+
+```
+tools/py bench/run_multiturn.py --output docs/bench/data/2026-09-27-kv-pool-refactor/pressure-burst \
+  --zerv-binary third_party/multiuser/zerv-pool3 \
+  --engines "zerv-f16@parallel=8,kv-type=f16,kv-pool-pages=400,prefix-cache=flat;…,prefix-cache=radix" \
+  --context-per-slot 12288 --levels 8 --rounds 2 --reference docs/bench/data/2026-09-27-multiturn/zerv-noprefix/raw.jsonl
+```
+
+8 conversations need about 8 × 76 pages without sharing; the pool holds 400.
+`zerv-pool3` sha256 `99686b2c…`.
+
+| | flat | radix |
+| --- | --- | --- |
+| wall | 132.6 / 152.6 s | **98.5 / 96.9 s** |
+| follow-up turns, TTFT p50 | 1.33–1.83 s | 1.09–1.67 s |
+| follow-up turns, TTFT max | 14.9–58.0 s | **1.8–2.3 s** |
+| lookups restored | 20 / 18 of 32 | 24 / 24 of 32 |
+| checkpoints dropped for memory | 26 / 25 | 0 |
+| prefill chunks | 290 / 328 | 213 / 212 |
+| pages deduplicated | 0 | 518 |
+| identity | 128/128 turns equal the reference, both | |
+
+Flat holds 8 copies of the system prompt. Under pressure it evicts checkpoints and
+re-prefills (up to 58 s for a follow-up). Radix keeps one copy, and nothing is evicted.
+Turn 0 is the cold burst itself (~51 s p50, both).
+
+**Decision: default `--prefix-cache radix`** (flat stays selectable).

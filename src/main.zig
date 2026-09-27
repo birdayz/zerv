@@ -10,7 +10,7 @@ const usage =
     \\            [--prefill-precision fp32]  (fp32 | f16: explicit f16 WMMA prompt projections)
     \\            [--gemm-code native]  (f16 mode, Q4_0 prompt projections: native = our RDNA3 machine code for gemm_f16x, same values, ~12% lower TTFT; spirv = the compiled SPIR-V; native falls back to spirv on other drivers)
     \\            [--prefix-cache-slots 8, with --parallel N: 3N]  (recurrent-state snapshots, ~150 MiB each; 0 = no prefix cache)
-    \\            [--prefix-cache flat]  (--parallel > 1: the prefix-cache policy: flat = checkpoint list; radix = prefix tree with deduplication of pages on insert)
+    \\            [--prefix-cache radix]  (--parallel > 1: the prefix-cache policy: flat = checkpoint list; radix = prefix tree with deduplication of pages on insert)
     \\            [--prefix-cache-memory device, with --parallel: host]  (device: snapshots in VRAM; host: in system RAM, no VRAM, ~10 ms TTFT per save)
     \\            [--matvec-accumulation fma]  (decode/verify dot products: fma one rounding per step; separate: the pre-2026-09-24 multiply+add)
     \\            [--decode-fusion on]  (fused decode FFN input: same values, one dispatch fewer per layer; off: separate)
@@ -62,7 +62,7 @@ pub fn main(init: std.process.Init) !void {
     var precision: zerv.model.gemm.Precision = .fp32;
     var snapshot_slots_arg: ?u32 = null;
     var snapshot_memory_arg: ?zerv.gpu.Location = null;
-    var prefix_cache_kind: zerv.session.kvcache.Kind = .flat;
+    var prefix_cache_kind: zerv.session.kvcache.Kind = .radix;
     var embedding_memory: zerv.gpu.Location = .host;
     var reserve_mib: u64 = 1024;
     var kv_type: zerv.model.KvType = .f32;

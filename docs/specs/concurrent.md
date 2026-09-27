@@ -581,7 +581,8 @@ conversations.
 - **Cache interface (`session.kvcache.Cache`)**: `restore(slot, prompt) → start`,
   `checkpoint(slot, prefix)`, `evict(keep) → bool` (memory pressure), `stats()`. A bad policy
   can make the server slower, never wrong: it can only choose among mechanism operations.
-- **Implementations** (`--prefix-cache flat|radix`):
+- **Implementations** (`--prefix-cache flat|radix`, default radix since the 2026-09-27 pressure
+  benchmark, docs/bench/2026-09-27-prefix-cache.md):
   - **flat**: the first version. A list of checkpoints, longest-prefix lookup by scanning,
     leaf-first then least-recently-used eviction.
   - **radix**: a prefix tree of checkpoints (each node's parent is its longest live prefix).
