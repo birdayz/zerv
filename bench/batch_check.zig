@@ -262,7 +262,7 @@ pub fn main(init: std.process.Init) !void {
         errors_ok = false;
     } else |e| errors_ok = errors_ok and e == error.InvalidBatch;
     const owned = blk: {
-        for (0..m.state_layout.pages) |p| if (m.page_mask[p] == (1 << 2)) break :blk @as(u32, @intCast(p));
+        for (0..m.state_layout.pages) |p| if (m.pool.mask[p] == (1 << 2)) break :blk @as(u32, @intCast(p));
         unreachable;
     };
     try m.releasePages(6);
@@ -298,7 +298,7 @@ pub fn main(init: std.process.Init) !void {
     {
         var free: [model.max_pool_pages]u32 = undefined;
         var nfree: usize = 0;
-        for (0..m.state_layout.pages) |p| if (m.page_mask[p] == 0 and m.page_pins[p] == 0) {
+        for (0..m.state_layout.pages) |p| if (m.pool.isFree(@intCast(p))) {
             free[nfree] = @intCast(p);
             nfree += 1;
         };
@@ -646,7 +646,7 @@ fn swapCheck(a: std.mem.Allocator, io: std.Io, device: *gpu.Device, container: *
         };
         // Swapped sequences come back first (with a spare page per running one).
         if (oldest_swapped) |i| {
-            const pages = m.swappedPages(slot_of[i].?);
+            const pages = m.hostPagesOf(slot_of[i].?);
             const t0 = std.Io.Clock.awake.now(io).nanoseconds;
             if (try m.swapIn(slot_of[i].?, running)) {
                 in_ns += @intCast(std.Io.Clock.awake.now(io).nanoseconds - t0);
@@ -775,7 +775,7 @@ fn prefixCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artif
     const pt = if (page == 0) context else page;
     const pool: u32 = K * ((300 + max_prompt + T + pt - 1) / pt) + 4;
     var m: model.Model = undefined;
-    try m.init(device, container, .{ .context = context, .prefill_rows = 512, .prefill_precision = .f16, .kv_type = kv_type, .kv_page_tokens = page, .slots = K, .batch_rows = K, .kv_pages = pool, .kv_share = true, .snapshots = 2, .snapshot_memory = .host, .decode_precision = precision, .decode_f16_kernel = dkernel, .decode_f16_formats = dformats });
+    try m.init(device, container, .{ .context = context, .prefill_rows = 512, .prefill_precision = .f16, .kv_type = kv_type, .kv_page_tokens = page, .slots = K, .batch_rows = K, .kv_pages = pool, .kv_share = true, .snapshots = 2, .snapshot_memory = .host, .swap_bytes = 3 << 30, .decode_precision = precision, .decode_f16_kernel = dkernel, .decode_f16_formats = dformats });
     defer m.deinit();
     if (!m.packable()) return error.NotPackable;
     var stats: Stats = .{};
@@ -783,6 +783,8 @@ fn prefixCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artif
     var copied: u32 = 0;
     var dedups: u32 = 0;
     var dedup_ok = true;
+    var shared_swaps: u32 = 0;
+    var shared_swap_ok = true;
     const seq = try a.alloc(u32, 300 + max_prompt);
     defer a.free(seq);
     const ref_prefill = try a.alloc(f32, K * vocab);
@@ -850,6 +852,20 @@ fn prefixCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artif
             try check(out, &stats, "prefix-restored-prefill", i, -1, try packedPrefill(&m, slot, full[plen..]), ref_prefill[i * vocab ..][0..vocab]);
             live[i] = true;
             try decodeLive(&m, out, &stats, &slot_of, &live, &steps, xs, ref);
+            // Every third one is swapped out and back while the others decode: only its
+            // private pages move; its shared prefix pages stay resident and are re-mapped.
+            if (i % 3 == 0) {
+                const free_before = m.freePages();
+                const private = m.mappedPages(slot) - nfull;
+                try m.swapOut(slot);
+                if (m.freePages() != free_before + private or m.hostPagesOf(slot) != private) shared_swap_ok = false;
+                live[i] = false;
+                try decodeLive(&m, out, &stats, &slot_of, &live, &steps, xs, ref);
+                if (!try m.swapIn(slot, 0)) shared_swap_ok = false;
+                if (m.freePages() != free_before or m.hostPagesOf(slot) != 0) shared_swap_ok = false;
+                live[i] = true;
+                shared_swaps += 1;
+            }
         }
         while (true) {
             var any = false;
@@ -893,8 +909,8 @@ fn prefixCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artif
         }
     }
     const all_free = m.freePages() == pool;
-    const passed = stats.failures == 0 and all_free and attached == 2 * (K - 1) and copied == K - 1 and dedups == 2 and dedup_ok;
-    try out.print("{{\"summary\":true,\"mode\":\"prefix\",\"pool_pages\":{d},\"compared\":{d},\"failures\":{d},\"attached\":{d},\"partial_copies\":{d},\"dedups\":{d},\"dedup_pages_ok\":{},\"all_pages_returned\":{},\"passed\":{}}}\n", .{ pool, stats.compared, stats.failures, attached, copied, dedups, dedup_ok, all_free, passed });
+    const passed = stats.failures == 0 and all_free and attached == 2 * (K - 1) and copied == K - 1 and dedups == 2 and dedup_ok and shared_swaps == 4 and shared_swap_ok;
+    try out.print("{{\"summary\":true,\"mode\":\"prefix\",\"pool_pages\":{d},\"compared\":{d},\"failures\":{d},\"attached\":{d},\"partial_copies\":{d},\"dedups\":{d},\"dedup_pages_ok\":{},\"shared_swaps\":{d},\"shared_swap_ok\":{},\"all_pages_returned\":{},\"passed\":{}}}\n", .{ pool, stats.compared, stats.failures, attached, copied, dedups, dedup_ok, shared_swaps, shared_swap_ok, all_free, passed });
     try out.flush();
     if (!passed) std.process.exit(1);
 }

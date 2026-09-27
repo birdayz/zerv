@@ -141,8 +141,8 @@ const Fake = struct {
             }
             self.flight = items.len;
             self.members.store(items.len, .release);
-            for (items) |item| if (self.pool != 0 and self.held[item.slot] == 0) {
-                self.violations += 1; // a prompt started without its memory
+            for (items) |item| if (self.pool != 0 and self.held[item.slot] * self.page < self.pos[item.slot] + @min(3, item.tokens.len)) {
+                self.violations += 1; // a chunk without memory for its positions
             };
             for (items, 0..) |item, i| {
                 for (item.tokens) |token| if (token == poison) {
@@ -994,4 +994,21 @@ test "batcher: begin restores the longest checkpoint; checkpoints are taken mid-
     try t.expectEqual(@as(u32, 3), restored);
     try t.expectEqual(@as(usize, 1), fake.ck_count); // restored requests start at the point: no new checkpoint
     for (fake.held) |h| try t.expectEqual(@as(usize, 0), h);
+}
+
+test "batcher: every prompt segment is admitted (checkpoint points split a prompt; tight pool)" {
+    const io = t.io;
+    // Pages of 2 positions: a 12-token prompt split at 5 needs its later segment admitted
+    // too (the first admission covers 5 positions only).
+    var fake: Fake = .{ .io = io, .segments = 1, .pool = 30, .page = 2, .pack_cap = 1, .host_pool = 100 };
+    var b = try B.init(io, &fake, .{ .slots = 2, .vocab = V, .stall = .{ .ns = 0 }, .order = .fifo, .pack = 1 });
+    var task = try io.concurrent(B.run, .{&b});
+    const prompt = [_]u32{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+    var restored: u32 = 0;
+    var r: anyerror!void = undefined;
+    cachedGeneration(&b, &prompt, 5, 4, &r, &restored);
+    b.stop();
+    task.await(io);
+    try r;
+    try t.expectEqual(@as(u32, 0), fake.violations);
 }

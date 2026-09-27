@@ -184,7 +184,7 @@ def main():
         ref = {key(r): r.get("output_sha256") for r in map(json.loads, a.reference.read_text().splitlines())}
         mine = [json.loads(l) for l in (out / "raw.jsonl").read_text().splitlines()]
         bad = [key(r) for r in mine if r.get("output_sha256") is None or ref.get(key(r)) != r["output_sha256"]]
-        missing = [k for k in ref if k not in {key(r) for r in mine}]
+        missing = [k for k in ref if k[0] in levels and k not in {key(r) for r in mine}]  # levels this run covers
         print(f"identity gate: {len(mine) - len(bad)}/{len(mine)} turns equal the reference" + (f", mismatches {bad}" if bad else "") + (f", missing {missing}" if missing else ""))
         if bad or missing: sys.exit(1)
 

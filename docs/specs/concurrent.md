@@ -595,8 +595,20 @@ conversations.
 - **Not cached, by design:** generated tokens. Their KV is written by decode (FP32 matvec),
   while a later prompt containing them is prefilled (f16 GEMM by default): restoring it would
   differ from a cold run. SGLang caches finished requests; we cannot, exactly.
-- **Not deduplicated yet:** a swapped-out sequence copies its shared pages too and returns
-  on private pages (to fix: skip pinned pages, re-map them on return).
+- **Swap keeps sharing** (2026-09-27): a swap moves only the pages the slot holds alone
+  (no other holder, no pin). Shared and pinned pages stay resident, held by the swapped
+  slot, and are mapped again at their logical index on swap-in.
+- **Page accounting is pure** (`model/pages.zig`, `Pool`): holders, pins, logical indices and
+  the host store, with plan / commit / abort steps around each copy. `Model` only does the
+  device work. `tests/pages.zig` runs 20,000 random map / release / pin / attach / rebind /
+  swap operations (aborts included) with simulated page contents, and checks after each that
+  every sequence sees exactly its own content. A negative control (moving pinned pages on
+  swap) fails it.
+- **Admission per prompt op** (bug found 2026-09-27): a prompt split at checkpoint points is
+  several prefill ops, and each must be admitted for its own positions (`base` advances as
+  ops complete). Admitting only the first op left later segments without pages under
+  pressure (`PagesMissing`). It was masked when page rounding covered short trailing
+  segments. Regression test: "every prompt segment is admitted".
 
 **Gates.**
 1. **`zerv-batch-check … prefix`:**

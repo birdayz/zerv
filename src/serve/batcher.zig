@@ -140,7 +140,8 @@ pub fn Batcher(comptime Backend: type) type {
             /// and whether the backend admitted it (`admit`); a failed admission waits for
             /// a release (`admit_epoch`).
             reserve: usize = 0,
-            /// Where its prompt started (`begin`): admission covers `base` + the prompt.
+            /// Positions processed before its current prompt op (a restored prefix and earlier
+            /// segments): admission covers `base` + the op's tokens.
             base: usize = 0,
             /// A `begin`'s start position.
             value: u32 = 0,
@@ -288,6 +289,9 @@ pub fn Batcher(comptime Backend: type) type {
             s.token = token;
             s.err = null;
             s.result = &.{};
+            // A prompt segment needs memory for its own positions (a prompt split at checkpoint
+            // points is several ops; each is admitted: `base` is where it starts).
+            if (op == .prefill) s.admitted = false;
             if (op != .step) {
                 s.decoding = false;
                 s.wait_ns = std.Io.Clock.awake.now(self.io).nanoseconds;
@@ -429,6 +433,7 @@ pub fn Batcher(comptime Backend: type) type {
                 s.done += u.consumed[i];
                 if (s.done == s.tokens.len) {
                     s.op = .none;
+                    s.base += s.tokens.len;
                     if (u.logits) |l| {
                         s.result = l[i * self.options.vocab ..][0..self.options.vocab];
                         s.hold = .prefill;
