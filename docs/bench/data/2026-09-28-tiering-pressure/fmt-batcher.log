@@ -1,0 +1,25 @@
+INFO: Invocation ID: 0b163c2b-fc8d-4cca-a089-d1e5128b1bda
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+WARNING: Build option --compilation_mode has changed, discarding analysis cache (this can be expensive, see https://bazel.build/advanced/performance/iteration-speed).
+Analyzing: target //bazel:zig (0 packages loaded, 0 targets configured)
+Analyzing: target //bazel:zig (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed target //bazel:zig (0 packages loaded, 681 targets configured).
+INFO: Found 1 target...
+Target //bazel:zig up-to-date:
+  bazel-bin/bazel/zig
+INFO: Elapsed time: 0.189s, Critical Path: 0.00s
+INFO: 1 process: 5 action cache hit, 1 internal.
+INFO: Build completed successfully, 1 total action
+INFO: Running command line: bazel-bin/bazel/zig <args omitted>
+/home/USER/projects/zerv/tests/batcher.zig:101:9: error: declarations are not allowed between container fields
+    pub fn pollMaintenance(self: *Fake, stopping: bool, reads_pending: bool) !batcher.MaintenancePoll {
+        ^~
+/home/USER/projects/zerv/tests/batcher.zig:99:5: note: field before declarations here
+    maintenance_resume: std.Io.Event = .unset,
+    ^~~~~~~~~~~~~~~~~~
+/home/USER/projects/zerv/tests/batcher.zig:117:5: note: field after declarations here
+    io_pause_poll: bool = false,
+    ^~~~~~~~~~~~~

@@ -274,9 +274,11 @@ pub const ModelBackend = struct {
     /// behind `session.kvcache.Cache`; this backend is its `Device`. Scheduler thread only.
     cache: ?session.kvcache.Cache = null,
     disk_archive: ?*disk.Disk = null,
+    pressure_reclaim: bool = false,
 
     pub fn initDisk(self: *ModelBackend, allocator: std.mem.Allocator, io: std.Io, options: disk.Options) !void {
         if (self.disk_archive != null) return error.InvalidOptions;
+        if (self.cache) |c| _ = try c.sourceCapacity();
         self.disk_archive = try disk.Disk.create(allocator, io, self.m, options);
     }
     pub fn deinitDisk(self: *ModelBackend) void {
@@ -289,9 +291,54 @@ pub const ModelBackend = struct {
         return .{ .done = p.done, .progressed = p.progressed, .position = p.position };
     }
 
+    /// One optional ownership/selection quantum, independent of request-slot lifetimes.
+    pub fn pollMaintenance(self: *ModelBackend, stopping: bool, reads_pending: bool) !batcher.MaintenancePoll {
+        const d = self.disk_archive orelse return .{};
+        if (d.source) |held| {
+            const h = held.view.lease.handle;
+            const p = d.pollSourceWith(stopping or self.pressure_reclaim or d.source_cancel_requested, !reads_pending) catch |e| {
+                d.failed_generation[h.index] = h.generation;
+                if (e != error.Canceled) self.noteFailure();
+                return .{ .progressed = true, .reclaimed = true };
+            };
+            if (p.done) {
+                // Disk failures are an optional-cache miss; never immediately retry forever.
+                if (!d.catalog.containsReady(held.view.tokens)) d.failed_generation[h.index] = h.generation;
+                return .{ .pending = !stopping, .progressed = true, .reclaimed = true };
+            }
+            return .{ .pending = true, .progressed = p.progressed };
+        }
+        if (stopping or self.pressure_reclaim or reads_pending) return .{};
+        const c = self.cache orelse return .{};
+        const capacity = try c.sourceCapacity();
+        if (capacity.slots != self.m.snapshot_slots) return error.InvalidOptions;
+        var select: session.pressure.Select = .{ .usage = .{ .slots = capacity.slots, .free_slots = capacity.free_slots, .slot_headroom = d.headroom_slots, .host_pages = self.m.swap_pages, .free_host_pages = self.m.hostFreePages(), .host_headroom = d.headroom_pages } };
+        try select.usage.validate();
+        if (!select.usage.pressured()) return .{};
+        for (0..capacity.slots) |i| if (c.sourceCandidate(@intCast(i))) |candidate| {
+            const bytes = try self.m.archiveBytes(@intCast(candidate.tokens.len));
+            select.consider(.{ .handle = candidate.handle, .used = candidate.used, .has_host = candidate.has_host, .backed = d.catalog.containsReady(candidate.tokens), .fits = bytes <= d.store.file_bytes and d.failed_generation[i] != candidate.handle.generation });
+        };
+        const decision = select.decision() orelse return .{};
+        switch (decision.action) {
+            .discard => {
+                try c.discardSource(self.device(), decision.handle);
+                return .{ .pending = true, .progressed = true, .reclaimed = true };
+            },
+            .preserve => {
+                const started = d.startSourceHandle(c, decision.handle) catch |e| {
+                    d.failed_generation[decision.handle.index] = decision.handle.generation;
+                    return self.check(e);
+                };
+                if (!started) d.failed_generation[decision.handle.index] = decision.handle.generation;
+                return .{ .pending = started, .progressed = started };
+            },
+        }
+    }
+
     pub fn initCache(self: *ModelBackend, allocator: std.mem.Allocator, kind: session.kvcache.Kind, boundary: u32, tier: bool) !void {
         const m = self.m;
-        if (!m.options.kv_share or m.snapshot_slots == 0) return error.InvalidOptions;
+        if (!m.options.kv_share or m.snapshot_slots == 0 or (self.disk_archive != null and kind != .radix)) return error.InvalidOptions;
         self.cache = try session.kvcache.createTiered(allocator, kind, m.snapshot_slots, m.state_layout.context, m.state_layout.seq_pages, boundary, tier and m.swap_pages > 0);
     }
     pub fn deinitCache(self: *ModelBackend, allocator: std.mem.Allocator) void {
@@ -370,9 +417,6 @@ pub const ModelBackend = struct {
     pub fn checkpoint(self: *ModelBackend, slot: u32, prefix: []const u32) !void {
         if (self.m.slotPosition(slot) != prefix.len) return error.InvalidToken;
         if (self.cache) |c| try c.checkpoint(self.device(), slot, prefix);
-        if (self.disk_archive) |d| {
-            if (d.startWrite(slot, prefix) catch |e| return self.check(e)) return error.PendingIo;
-        }
     }
     /// Memory pressure: demote or drop one cached checkpoint; when none frees a page, a
     /// swapped sequence other than `except` gives up the pool pages it still holds (a deep
@@ -380,6 +424,11 @@ pub const ModelBackend = struct {
     /// False: nothing left to free.
     fn makeRoom(self: *ModelBackend, except: ?u32) bool {
         if (self.cache) |c| if (c.evict(self.device())) return true;
+        if (self.disk_archive) |d| if (d.source != null) {
+            self.pressure_reclaim = true;
+            d.source_cancel_requested = true;
+            return false;
+        };
         if (self.m.swap_pages == 0) return false;
         for (0..self.m.state_layout.slots) |i| {
             const slot: u32 = @intCast(i);
@@ -426,10 +475,12 @@ pub const ModelBackend = struct {
                 if (e == error.PoolExhausted and self.makeRoom(null)) continue;
                 return false;
             };
+            self.pressure_reclaim = false;
             return true;
         }
     }
     pub fn release(self: *ModelBackend, slot: u32) void {
+        self.pressure_reclaim = false;
         if (!self.m.options.kv_share) return;
         self.m.releasePages(slot) catch self.noteFailure();
     }
@@ -440,9 +491,13 @@ pub const ModelBackend = struct {
             self.m.ensurePages(slot, self.m.slotPosition(slot) + 1) catch |e| {
                 // Unused checkpoints go before any sequence is swapped out.
                 if (e == error.PoolExhausted and self.makeRoom(null)) continue;
-                if (e == error.PoolExhausted) return false;
+                if (e == error.PoolExhausted) {
+                    if (self.disk_archive) |d| if (d.source != null and d.source_cancel_requested) return error.CacheReclaimPending;
+                    return false;
+                }
                 return self.check(e);
             };
+            self.pressure_reclaim = false;
             return true;
         }
     }

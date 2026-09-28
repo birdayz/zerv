@@ -340,3 +340,52 @@ test "archive additional source job is independent of all 64 request identities"
     try t.expectError(error.Canceled, a.advance(fake.device(), 64, true));
     try t.expect(!a.active(64));
 }
+
+test "archive optional issue gate yields to reads, reserves tickets and retains clean backing" {
+    var tmp = t.tmpDir(.{});
+    defer tmp.cleanup();
+    const mem = try t.allocator.alignedAlloc(u8, .fromByteUnits(4096), 4 * 4096);
+    defer t.allocator.free(mem);
+    const store = try open(tmp.dir, mem);
+    defer store.destroy() catch @panic("pending disk");
+    var a = try archive.Archive.init(t.allocator, store, opts);
+    defer a.deinit() catch @panic("pending archive");
+    var fake: Fake = .{};
+    try t.expect(try a.startWrite(0, &.{1}, 8193));
+    try t.expect(!a.containsReady(&.{1}));
+    _ = try finish(&a, &fake, 0, false);
+    const record = a.lookup(&.{ 1, 2 }).?;
+    try t.expect(a.containsReady(&.{1}));
+    try t.expect(try a.startWrite(1, &.{2}, 5 * 4096));
+    _ = try a.advanceWith(fake.device(), 1, false, .{ .max_pending = 2 });
+    try t.expectEqual(@as(u32, 1), a.device_pending.?.slot);
+    try a.startRead(0, record);
+    _ = try a.advance(fake.device(), 0, false);
+    // Acknowledge the old write, but never steal the device back from the new read.
+    _ = try a.advanceWith(fake.device(), 1, false, .{ .allow_start = false, .max_pending = 2 });
+    try t.expectEqual(@as(u32, 1), a.jobs[1].next);
+    try t.expect(a.device_pending == null);
+    _ = try finish(&a, &fake, 0, false);
+    try t.expectEqualSlices(u8, fixture[0..8193], fake.output[0][0..8193]);
+    try t.expect(a.containsReady(&.{1}) and !a.containsReady(&.{2}));
+    for (0..10000) |_| {
+        const p = try a.advanceWith(fake.device(), 1, false, .{ .max_pending = 2 });
+        try t.expect(a.jobs[1].pending <= 2);
+        // These are physically available, not merely accounted as reserved.
+        const r0 = try store.acquire();
+        const r1 = try store.acquire();
+        try store.release(r0);
+        try store.release(r1);
+        if (p.done) break;
+        try std.Io.sleep(t.io, .fromMicroseconds(100), .awake);
+    }
+    try t.expect(!a.active(1) and a.containsReady(&.{2}));
+    try t.expect(!try a.startWrite(1, &.{2}, 5 * 4096));
+    try t.expectEqual(@as(u64, 2), a.stats.writes);
+    try t.expect(try a.startWrite(2, &.{3}, 4096));
+    const starts = a.stats.device_starts;
+    _ = try a.advanceWith(fake.device(), 2, false, .{ .max_pending = 0 });
+    try t.expectEqual(starts, a.stats.device_starts);
+    try t.expectError(error.Canceled, a.advanceWith(fake.device(), 2, true, .{ .allow_start = false, .max_pending = 0 }));
+    try t.expect(!a.containsReady(&.{3}));
+}

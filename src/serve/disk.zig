@@ -8,7 +8,7 @@ const archive = @import("session").archive;
 const kvcache = @import("session").kvcache;
 const linux = std.os.linux;
 pub const staging_bytes = 8 << 20;
-pub const Options = struct { directory: []const u8, bytes: u64, records: u32 = 64, alignment: ?storage.Alignment = null };
+pub const Options = struct { directory: []const u8, bytes: u64, records: u32 = 64, alignment: ?storage.Alignment = null, headroom_slots: ?u32 = null, headroom_mib: ?u64 = null };
 pub const Disk = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
@@ -27,9 +27,25 @@ pub const Disk = struct {
     cpu_copy: bool = false,
     source_cpu_quanta: u64 = 0,
     source_gpu_quanta: u64 = 0,
+    headroom_slots: u32,
+    headroom_pages: u32,
+    failed_generation: [model.max_snapshots]u64 = @splat(0),
+    source_cancel_requested: bool = false,
+    source_started_ns: i96 = 0,
+    source_hold_ns: i96 = 0,
+    source_max_hold_ns: i96 = 0,
 
     pub fn create(a: std.mem.Allocator, io: std.Io, m: *model.Model, o: Options) !*Disk {
         if (m.options.mtp or !m.options.kv_share or m.state_layout.slots < 2 or o.bytes == 0 or o.bytes % (1 << 20) != 0) return error.InvalidOptions;
+        if (m.snapshot_slots == 0) return error.InvalidOptions;
+        const headroom_slots = o.headroom_slots orelse @as(u32, if (m.snapshot_slots >= 3) 1 else 0);
+        const S = m.state_layout;
+        const page_bytes = @as(u64, S.caches) * S.piece() * S.kv.bytes();
+        const headroom_pages = if (o.headroom_mib) |mib|
+            std.math.divCeil(u64, std.math.mul(u64, mib, 1 << 20) catch return error.InvalidOptions, page_bytes) catch return error.InvalidOptions
+        else
+            @min(std.math.divCeil(u64, 256 << 20, page_bytes) catch unreachable, m.swap_pages / 4);
+        if (headroom_slots >= m.snapshot_slots or (if (m.swap_pages == 0) headroom_pages != 0 else headroom_pages >= m.swap_pages)) return error.InvalidOptions;
         const max_bytes = try m.archiveBytes(m.state_layout.context);
         const alignment: usize = @intCast(@max(4096, m.device.host_import_alignment, if (o.alignment) |al| al.memory else 1));
         if (alignment > 1 << 20 or !std.math.isPowerOfTwo(alignment)) return error.InvalidAlignment;
@@ -52,7 +68,7 @@ pub const Disk = struct {
         errdefer catalog.deinit() catch @panic("new archive busy");
         const maps = try a.alloc(u32, (@as(usize, m.state_layout.slots) + 1) * m.state_layout.seq_pages);
         errdefer a.free(maps);
-        self.* = .{ .allocator = a, .io = io, .m = m, .raw = raw, .memory = memory, .store = store, .catalog = catalog, .maps = maps, .imported = undefined, .commands = undefined };
+        self.* = .{ .allocator = a, .io = io, .m = m, .raw = raw, .memory = memory, .store = store, .catalog = catalog, .maps = maps, .imported = undefined, .commands = undefined, .headroom_slots = headroom_slots, .headroom_pages = @intCast(headroom_pages) };
         self.imported = try gpu.Buffer.initImported(m.device, memory);
         errdefer self.imported.deinit() catch @panic("new import busy");
         self.commands = try gpu.Commands.init(m.device);
@@ -89,8 +105,10 @@ pub const Disk = struct {
     }
     /// One optional write job independent of all request slots. No request-state pause.
     pub fn startSource(self: *Disk, cache: kvcache.Cache) !bool {
+        return self.startSourceHandle(cache, cache.coldSource() orelse return false);
+    }
+    pub fn startSourceHandle(self: *Disk, cache: kvcache.Cache, handle: kvcache.Handle) !bool {
         if (self.source != null) return false;
-        const handle = cache.coldSource() orelse return false;
         const view = try cache.acquireSource(handle);
         errdefer cache.releaseSource(view.lease) catch @panic("invalid cache source lease");
         const n: u32 = @intCast(view.tokens.len);
@@ -99,6 +117,8 @@ pub const Disk = struct {
             return false;
         }
         self.source = .{ .cache = cache, .view = view };
+        self.source_cancel_requested = false;
+        self.source_started_ns = std.Io.Clock.awake.now(self.io).nanoseconds;
         self.positions[self.m.state_layout.slots] = n;
         return true;
     }
@@ -106,10 +126,16 @@ pub const Disk = struct {
         const held = self.source.?;
         held.cache.releaseSource(held.view.lease) catch @panic("invalid cache source lease");
         self.source = null;
+        const held_ns = std.Io.Clock.awake.now(self.io).nanoseconds - self.source_started_ns;
+        self.source_hold_ns += held_ns;
+        self.source_max_hold_ns = @max(self.source_max_hold_ns, held_ns);
     }
     pub fn pollSource(self: *Disk, cancel: bool) !archive.Progress {
+        return self.pollSourceWith(cancel, true);
+    }
+    pub fn pollSourceWith(self: *Disk, cancel: bool, allow_start: bool) !archive.Progress {
         if (self.source == null) return .{ .done = true, .progressed = false };
-        const p = self.poll(self.m.state_layout.slots, cancel) catch |err| {
+        const p = self.pollWith(self.m.state_layout.slots, cancel, .{ .allow_start = allow_start, .max_pending = staging_bytes / (1 << 20) - 2 }) catch |err| {
             self.releaseSource(); // archive errors are returned only after both owners drain
             return err;
         };
@@ -156,8 +182,11 @@ pub const Disk = struct {
         return done;
     }
     pub fn poll(self: *Disk, slot: u32, cancel: bool) !archive.Progress {
+        return self.pollWith(slot, cancel, .{});
+    }
+    fn pollWith(self: *Disk, slot: u32, cancel: bool, options: archive.Advance) !archive.Progress {
         const writing = self.catalog.writing(slot);
-        const p = self.catalog.advance(.{ .ctx = self, .start = startCopy, .poll = pollCopy }, slot, cancel) catch |e| {
+        const p = self.catalog.advanceWith(.{ .ctx = self, .start = startCopy, .poll = pollCopy }, slot, cancel, options) catch |e| {
             if (!writing) {
                 try self.m.select(slot);
                 try self.m.reset();

@@ -1,7 +1,9 @@
 # Pressure-driven archive admission (C.3, specification before implementation)
 
-2026-09-28. **Not implemented.** C.2 verification must close before coding this
-increment. [Integration audit](../design/tiering-policy-integration.md),
+2026-09-28. Specified before implementation; C.2 gates closed in `68fb7bc`.
+C.3 correctness/component/serving evaluation gates are closed; immediate-turn disk
+preservation remains ineffective and no speedup is claimed. [Results](../bench/2026-09-28-tiering-pressure.md),
+[integration audit](../design/tiering-policy-integration.md),
 [paper/code research and pinned ledger](../research/2026-09-28-kv-tier-papers.md),
 [source ownership](cache-source-leases.md), [source bytes](cache-source-bytes.md).
 
@@ -73,8 +75,10 @@ rather than pretending to support source persistence.
 A pure session policy accepts scalar capacities and candidate descriptions and
 returns none / preserve(handle) / discard(handle). The serving adapter supplies
 model-specific byte sizes, ready backing and pool usage. The policy neither calls
-Vulkan/storage nor owns token buffers. All arrays are bounded by the existing
-256-entry radix limit; no steady-state allocation.
+Vulkan/storage nor owns token buffers. The selector streams candidates without an intermediate array. The adapter is
+bounded by the model's 64 physical snapshot slots; the generic radix accepts larger
+configured capacities (the metadata benchmark also tests 256). No steady-state
+allocation.
 
 ## Transfer priority
 
@@ -111,16 +115,26 @@ Once the optional source drains, ordinary swap/eviction/capacity failures retain
 their existing semantics. Never extend optional-cache drop rules to live swap.
 
 Disk failure/corruption produces a cache miss after full drain and cannot publish
-backing. Source leases release exactly once. Unexpected device pending ownership
+backing. A failed, canceled or skipped source generation is excluded from further
+optional captures until that snapshot slot is reused for a new generation. This
+bounded per-slot suppression prevents an idle failure/retry loop; existing ready
+backing can still be discarded normally. Urgent cancellation is latched per source,
+so a different row's successful allocation cannot undo it before the next poll. Source leases release exactly once. Unexpected device pending ownership
 or device loss remains fail-stop; known optional commands are accounted explicitly.
 
-## Independent executable acceptance mechanism (required before native code)
+## Independent executable acceptance mechanism (defined before native code)
 
-Create `tests/reference/generate_tiering_pressure_fixture.py`: a Python declarative
+`tests/reference/generate_tiering_pressure_fixture.py` supplies a Python declarative
 object-set/event model with stable logical IDs, separate snapshot slots, disk ready
 sets and ancestor ownership. Determine LRU by sorting independently of native scans.
-Use fixed seeds and retain full event inputs, decisions, resident/pending counts,
-source generation/lease and ready backing after every transition. Ordinary native
+Fixed seeds retain full event inputs, decisions, resident/pending counts,
+source generation/lease and ready backing after every transition. Generated before
+native implementation: 2,048 scalar capacity/selection cases and 1,560 prefix-set
+events, reusing the pinned C.1 independent prefix-set oracle with both generator
+hashes embedded. Native tests drive actual cache acquire/discard/release and compare
+all states and decisions. Byte-only/mixed candidate eligibility is covered by the
+scalar matrix plus the actual mixed-ancestor device fake; the event traces do not
+simulate DMA or substitute for the separate archive/scheduler interleaving gates. Ordinary native
 tests consume the checked-in JSON, without Python or third-party dependencies.
 
 Directed plus randomized traces must cover:

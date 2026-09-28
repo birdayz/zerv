@@ -1,0 +1,9 @@
+identity (text hash + prompt/generated token counts) vs native baseline: {"zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=2,kv-swap-mib=4096,prefix-cache-tier=off,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096": [8, 8]}
+zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=2,kv-swap-mib=4096,prefix-cache-tier=off,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096 23.534 ± 0.000 | 23.242 ± 0.000 | 69.969 ± 0.000 | 8.490 ± 0.000 | 145.128 ± 0.000 peak VRAM 18252476416
+ round 0 disk prefix archive 1 writes, 0 restores, 326107136 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 3 cancellations
+ round 0 disk source retention total 48.267 s, maximum 29.161 s; 305 CPU and 9 GPU quanta
+ round 0 prefix checkpoints 15 taken, 0 of 9 lookups restored (0 prompt tokens reused), 10 dropped for new ones, 3 for memory, 0 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+capture_ns ms 138.3425348 sample_sd 27.416114808951214
+disk_write_ns ms 247.3456598 sample_sd 15.565804603458242
+restore_ns ms 198.891212 sample_sd 12.404391751436702
+long component [{'prefix': 80000, 'state_bytes': 5399773184, 'exact_state': True, 'exact_vocab_rows': 4, 'elapsed_ns': 162784686328, 'capture_ns': 4612727581, 'restore_ns': 6013316340, 'disk_write_ns': 7420557023, 'disk': True, 'independent_rows': 2, 'device_starts': 25744, 'device_pending_polls': 65912, 'max_poll_ns': 3725376, 'source': True, 'source_cpu_quanta': 305, 'source_gpu_quanta': 9995, 'pressure': True}]

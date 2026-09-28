@@ -5,6 +5,7 @@ pub const gemm = @import("gemm.zig");
 pub const attention = @import("attention.zig");
 pub const pages = @import("pages.zig");
 pub const Model = @import("runtime.zig").Model;
+pub const max_snapshots = @import("runtime.zig").max_snapshots;
 pub const Options = @import("runtime.zig").Options;
 pub const BatchRow = @import("runtime.zig").BatchRow;
 pub const prefill_segments = @import("runtime.zig").prefill_segments;

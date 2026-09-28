@@ -1,0 +1,11 @@
+identity (text hash + prompt/generated token counts) vs native baseline: {"zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096": [8, 8]}
+zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096 24.786 ± 0.000 | 9.013 ± 0.000 | 55.295 ± 0.000 | 10.742 ± 0.000 | 145.224 ± 0.000 peak VRAM 18405564416
+ resources [{"vram_peak": 18405564416, "host_memory": {"VmHWM": "15487392 kB", "VmRSS": "84000 kB"}, "host_memory_details": {"values": {"VmHWM": "15487392 kB", "VmRSS": "84000 kB"}, "scope": "server-process", "pid": 856625}}]
+ round 0 disk prefix archive 2 writes, 1 restores, 958398464 bytes written, 668991488 read, 0 evictions, 0 skips, 0 failures, 1 cancellations
+ round 0 disk source retention total 24.947 s, maximum 12.427 s; 915 CPU and 0 GPU quanta
+ round 0 prefix checkpoints 13 taken, 2 of 9 lookups restored (18351 prompt tokens reused), 3 dropped for new ones, 2 for memory, 0 pages deduplicated, 10 demoted to host (415 pages), 2 promoted (144 pages), 0 dropped from the host
+positive HTTP disk-restore gate PASSED: 1
+capture_ns ms 138.3425348 sample_sd 27.416114808951214
+disk_write_ns ms 247.3456598 sample_sd 15.565804603458242
+restore_ns ms 198.891212 sample_sd 12.404391751436702
+long component [{'prefix': 80000, 'state_bytes': 5399773184, 'exact_state': True, 'exact_vocab_rows': 4, 'elapsed_ns': 162784686328, 'capture_ns': 4612727581, 'restore_ns': 6013316340, 'disk_write_ns': 7420557023, 'disk': True, 'independent_rows': 2, 'device_starts': 25744, 'device_pending_polls': 65912, 'max_poll_ns': 3725376, 'source': True, 'source_cpu_quanta': 305, 'source_gpu_quanta': 9995, 'pressure': True}]

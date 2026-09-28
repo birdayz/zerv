@@ -1,7 +1,10 @@
 # Pressure-policy integration audit (C.3)
 
-2026-09-28; research/design, **not implemented or an acceptance result**. C.2
-verification remains the active increment. Ordered plan: [async-tiering.md](async-tiering.md).
+2026-09-28; pre-code research/design, followed by the implementation notes below.
+C.2 and C.3 evaluation gates are complete; C.3 retains a negative performance
+result ([report](../bench/2026-09-28-tiering-pressure.md)). The source observations
+below describe the pre-C.3 tree. Ordered plan:
+[async-tiering.md](async-tiering.md).
 Paper/revision ledger: [KV tier papers](../research/2026-09-28-kv-tier-papers.md).
 
 ## Source cross-check
@@ -84,3 +87,43 @@ llama-server. Report bytes written, retained-source duration, drops, avoided
 recompute, TTFT/gaps, throughput and peak host/VRAM. A single-queue submit API is
 not evidence of hardware overlap; proactive GPU→RAM and queued-demand prefetch
 remain D, after C gates. No throughput improvement is inferred from this audit.
+
+## C.3 implementation decisions and verification history
+
+After C.2 closed (`68fb7bc`), the pre-code fixture generated 2,048 scalar selection
+cases and 1,560 prefix-set transitions, including generation/ancestor leases and
+ready backing. It imports the C.1 oracle and records both generator hashes. The
+first random matrix was unnecessarily 23 MiB; bounded it to 2.4 MiB before native
+code, preserving 1/2/3/8/64/256 capacity and 0/1/16/65,536 host-page coverage.
+Native cache tests compare every prefix, generation, serial, reference count,
+pending source, ready set and decision; static cases cover byte-only pressure.
+Actual archive/scheduler tests, not the pure event model, cover transfer priority.
+
+The selector streams candidates (no stack array/heap allocation). The earlier
+text's "256-entry radix limit" was inaccurate: the generic Radix accepts up to
+u16 entries, while this model has 64 physical snapshots. The serving suppression
+array uses the exported model limit, not the request-slot limit.
+
+During integration review, a retry-loop gap was identified: disk failure can leave
+pressure unchanged, so a naive idle maintenance loop would reacquire the same
+source forever. Added a bounded failed/canceled/skipped generation per physical
+snapshot slot. This excludes another optional capture of that incarnation; ready
+backing remains usable, and a new incarnation can be tried. This is an explicit
+best-effort policy amendment, not Mooncake's data-preserving retry semantics.
+Urgent source cancellation is separately latched so another row's successful grow
+or request release cannot accidentally undo it before the maintenance poll.
+
+Working-tree implementation removes checkpoint-triggered writes; the old paused
+write is explicit in the regression checker. Initial server/checker compilation
+caught an undeclared diagnostic variable and discarded error-set value; fixed,
+raw failed build logs retained. Scheduler test compilation caught field/declaration
+ordering and a shadowed helper name; fixed, logs retained.
+
+CPU gate 81/81, cache/archive/batcher both modes ×20 pass. Read-priority negative
+control (ignore allow_start) fails both archive modes. Removing only the public
+discard guard still passed because the internal removal guard also protects the
+source; removing **both** fails both modes. Both guards restored. Subsequent
+GPU/model, component and serving evaluations are complete in the linked report:
+96 immediate-turn native responses exact, a positive idle HTTP disk restore,
+and no immediate-turn disk speedup. D's preparation/cadence/demand work remains
+open. Raw data: `docs/bench/data/2026-09-28-tiering-pressure/`.

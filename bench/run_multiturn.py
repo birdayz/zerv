@@ -37,6 +37,24 @@ def log_name(name, rnd):
     return f"{label}-r{rnd}.log"
 
 
+def host_memory(spec, launcher_pid):
+    """Container launcher RSS is not server RSS; resolve the container's host PID."""
+    pid = launcher_pid
+    scope = "server-process"
+    try:
+        if spec.get("container"):
+            scope = "container-init-process"
+            pid = int(subprocess.check_output(["docker", "inspect", "--format", "{{.State.Pid}}", spec["container"]], text=True))
+            if pid <= 0: raise ValueError("container has no running process")
+        elif spec["cmd"][0] == "docker":
+            return dict(values={}, scope="unavailable", error="container identity not supplied")
+        status = pathlib.Path(f"/proc/{pid}/status").read_text()
+        values = {k: v.strip() for k, v in (line.split(":", 1) for line in status.splitlines()) if k in ("VmRSS", "VmHWM")}
+        return dict(values=values, scope=scope, pid=pid)
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        return dict(values={}, scope="unavailable", error=str(error))
+
+
 def turn(port, body, rec):
     """One streaming turn: rec gets send and token times, usage, and the answer text."""
     conn = None
@@ -98,9 +116,9 @@ def pct(xs, q):
     return xs[min(len(xs) - 1, int(round(q * (len(xs) - 1))))] if xs else None
 
 
-def level_run(port, w, level, raw, engine, rnd, phased=False):
+def level_run(port, w, level, raw, engine, rnd, phased=False, phase_idle_s=0):
     recs = []
-    barrier = threading.Barrier(level) if phased else None
+    barrier = threading.Barrier(level, action=(lambda: time.sleep(phase_idle_s)) if phase_idle_s else None) if phased else None
     threads = [threading.Thread(target=conversation, args=(port, w, w["conversations"][i], recs, engine, level, rnd, barrier)) for i in range(level)]
     t0 = time.perf_counter()
     for t in threads: t.start()
@@ -137,6 +155,7 @@ def main():
     p.add_argument("--rounds", type=int, default=1, help="start every engine this many times, order alternating per round")
     p.add_argument("--warmup", action="store_true", help="one untimed short request before measured conversations")
     p.add_argument("--phased", action="store_true", help="all conversations finish turn t before any sends turn t+1 (isolates the cache from queueing behind first turns)")
+    p.add_argument("--phase-idle-s", type=float, default=0, help="explicit idle time between phased turns, included in wall time (default: no pause)")
     p.add_argument("--port", type=int, default=18098)
     p.add_argument("--llama-cache-ram-mib", type=int, default=0, help="llama-server RAM prompt cache budget (0 retains the old harness baseline)")
     p.add_argument("--llama-checkpoints", type=int, help="llama-server context checkpoints per slot (omit: server default)")
@@ -144,6 +163,7 @@ def main():
     p.add_argument("--zerv-binary", type=pathlib.Path, help="zerv binary (default: //src:zerv built with Bazel, --config=release)")
     p.add_argument("--reference", type=pathlib.Path, help="raw.jsonl of an earlier run: every turn's output must match it (identity gate; exit 1 otherwise)")
     a = p.parse_args()
+    if not 0 <= a.phase_idle_s <= 60 or (a.phase_idle_s and not a.phased): p.error("phase idle requires --phased and 0..60 seconds")
     rs.require_host_gpu()
     if a.llama_server: rs.LLAMA_SERVER_OVERRIDE = str(a.llama_server.resolve(strict=True))
     if a.zerv_binary is None:
@@ -163,7 +183,7 @@ def main():
                     model_sha256=rs.sha(a.model), zerv_sha256=rs.sha(zb), llama_server=str(rs.llama_server()), llama_server_sha256=rs.sha(rs.llama_server()),
                     vllm_image=rs.VLLM_IMAGE, vllm_model=str(rs.VLLM_MODEL.relative_to(rs.ROOT)),
                     workload={str(a.workload.resolve().relative_to(ROOT)): rs.sha(a.workload)}, levels=levels, phased=a.phased, warmup=a.warmup,
-                    parallel=a.parallel, context_per_slot=a.context_per_slot, rounds=a.rounds, engines={})
+                    parallel=a.parallel, context_per_slot=a.context_per_slot, rounds=a.rounds, phase_idle_s=a.phase_idle_s, engines={})
     sys.path.insert(0, str(ROOT / "tools"))
     import zerv_build
     manifest["build"] = zerv_build.provenance()
@@ -205,14 +225,13 @@ def main():
                                   max_tokens=8, temperature=0, **w["options"]), warm)
                 if "error" in warm: raise RuntimeError(warm["error"])
             for level in levels:
-                s = level_run(a.port, w, level, raw, name, rnd, a.phased)
+                s = level_run(a.port, w, level, raw, name, rnd, a.phased, a.phase_idle_s)
                 summary[name].append(s)
                 print(name, json.dumps({k: (round(v, 1) if isinstance(v, float) else v) for k, v in s.items() if k != "turns"}), flush=True)
                 for t in s["turns"]:
                     print("   ", json.dumps({k: (round(v, 1) if isinstance(v, float) else v) for k, v in t.items()}), flush=True)
-            status = pathlib.Path(f"/proc/{proc.pid}/status").read_text()
-            rss = {k: v.strip() for k, v in (line.split(":", 1) for line in status.splitlines()) if k in ("VmRSS", "VmHWM")}
-            manifest["engines"][name].setdefault("resources", []).append(dict(round=rnd, log=log_name(name, rnd), vram_peak=peak[0], host_memory=rss))
+            memory = host_memory(spec, proc.pid)
+            manifest["engines"][name].setdefault("resources", []).append(dict(round=rnd, log=log_name(name, rnd), vram_peak=peak[0], host_memory=memory["values"], host_memory_details=memory))
         except BaseException as e:
             manifest.update(status="failed", error=f"{type(e).__name__}: {e}", finished_at=datetime.now(timezone.utc).isoformat())
             raw.flush()

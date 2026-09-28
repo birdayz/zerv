@@ -1,0 +1,99 @@
+INFO: Invocation ID: fdb38059-f987-4773-8bfe-a74038265c75
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (0 packages loaded, 0 targets configured).
+[1 / 7] zig test //tests:kvcache; 1s disk-cache, linux-sandbox ... (2 actions running)
+[2 / 7] zig test //tests:kvcache; 3s disk-cache, linux-sandbox ... (2 actions, 1 running)
+[3 / 8] zig test //tests:kvcache; 5s disk-cache, linux-sandbox ... (2 actions running)
+FAIL: //tests:kvcache (Aborted) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kvcache/test.log)
+INFO: From Testing //tests:kvcache:
+==================== Test output for //tests:kvcache:
+1/12 kvcache.test.kvcache flat: interleaved conversations restore exactly; every page comes back...OK
+2/12 kvcache.test.kvcache radix: interleaved conversations restore exactly; every page comes back...OK
+3/12 kvcache.test.kvcache radix: prefixes prefilled cold at the same time are deduplicated on insert...OK
+4/12 kvcache.test.kvcache radix: tree invariants under random inserts, restores and evictions...OK
+5/12 kvcache.test.kvcache radix tiering: pressure demotes leaves to host; a later hit promotes them back, exact...OK
+6/12 kvcache.test.kvcache radix tiering: an internal node's segment (a long document) demotes; its child restores it...OK
+7/12 kvcache.test.cache sources: independent prefix-set ownership traces and generator provenance...OK
+8/12 kvcache.test.cache sources: mixed ancestry survives eviction, blocked promotion, reparenting and unrelated progress...OK
+9/12 kvcache.test.cache sources: allocation rollback, generation and serial exhaustion, unsupported flat...OK
+10/12 kvcache.test.cache sources: GPU-only hits and new descendants retain overlapping leases...OK
+11/12 kvcache.test.pressure policy: independent capacity decisions and source/drop event traces...
+====== expected this output: =========
+Busy␃
+
+======== instead found this: =========
+ok␃
+
+======================================
+First difference occurs on line 1:
+expected:
+Busy
+^ ('\x42')
+found:
+ok
+^ ('\x6f')
+pressure trace cap=1 row=4 op=discard
+thread 12 panic: source cleanup failed
+error return context:
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7271/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:682:9: 0x126cd95 in expectEqualStrings (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7271/execroot/_main/src/session/kvcache.zig:379:117: 0x12d720e in validateSource (root.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7271/execroot/_main/src/session/kvcache.zig:400:19: 0x12dbb6f in releaseSource (root.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7271/execroot/_main/src/session/kvcache.zig:161:9: 0x1262faa in releaseSource (root.zig)
+
+stack trace:
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7271/execroot/_main/tests/kvcache.zig:409:129: 0x12c4dab in releaseAllSources (kvcache.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7271/execroot/_main/tests/kvcache.zig:621:30: 0x1271668 in test.pressure policy: independent capacity decisions and source/drop event traces (kvcache.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7271/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/compiler/test_runner.zig:291:25: 0x121bd56 in mainTerminal (test_runner.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7271/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/compiler/test_runner.zig:73:28: 0x121b572 in main (test_runner.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7271/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/start.zig:699:88: 0x1217d85 in callMain (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7271/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/start.zig:190:5: 0x1217761 in _start (std.zig)
+================================================================================
+[4 / 8] 1 / 2 tests, 1 failed; zig test //tests:kvcache; 6s disk-cache, linux-sandbox
+[5 / 8] 1 / 2 tests, 1 failed; [Prepa] Creating symlink tests/kvcache_release_fast
+FAIL: //tests:kvcache_release_fast (Aborted) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kvcache_release_fast/test.log)
+INFO: From Testing //tests:kvcache_release_fast:
+==================== Test output for //tests:kvcache_release_fast:
+1/12 kvcache.test.kvcache flat: interleaved conversations restore exactly; every page comes back...OK
+2/12 kvcache.test.kvcache radix: interleaved conversations restore exactly; every page comes back...OK
+3/12 kvcache.test.kvcache radix: prefixes prefilled cold at the same time are deduplicated on insert...OK
+4/12 kvcache.test.kvcache radix: tree invariants under random inserts, restores and evictions...OK
+5/12 kvcache.test.kvcache radix tiering: pressure demotes leaves to host; a later hit promotes them back, exact...OK
+6/12 kvcache.test.kvcache radix tiering: an internal node's segment (a long document) demotes; its child restores it...OK
+7/12 kvcache.test.cache sources: independent prefix-set ownership traces and generator provenance...OK
+8/12 kvcache.test.cache sources: mixed ancestry survives eviction, blocked promotion, reparenting and unrelated progress...OK
+9/12 kvcache.test.cache sources: allocation rollback, generation and serial exhaustion, unsupported flat...OK
+10/12 kvcache.test.cache sources: GPU-only hits and new descendants retain overlapping leases...OK
+11/12 kvcache.test.pressure policy: independent capacity decisions and source/drop event traces...
+====== expected this output: =========
+Busy␃
+
+======== instead found this: =========
+ok␃
+
+======================================
+First difference occurs on line 1:
+expected:
+Busy
+^ ('\x42')
+found:
+ok
+^ ('\x6f')
+pressure trace cap=1 row=4 op=discard
+thread 12 panic: source cleanup failed
+Cannot print stack trace: stack tracing is disabled
+================================================================================
+INFO: Found 2 test targets...
+INFO: Elapsed time: 15.936s, Critical Path: 14.60s
+INFO: 9 processes: 5 internal, 6 linux-sandbox.
+INFO: Build completed, 2 tests FAILED, 9 total actions
+//tests:kvcache                                                          FAILED in 1.3s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kvcache/test.log
+//tests:kvcache_release_fast                                             FAILED in 0.5s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kvcache_release_fast/test.log
+
+Executed 2 out of 2 tests: 2 fail locally.

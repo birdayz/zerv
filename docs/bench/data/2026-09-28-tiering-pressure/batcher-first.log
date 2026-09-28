@@ -1,0 +1,27 @@
+INFO: Invocation ID: 80f6e780-34c0-4219-8083-c21820431379
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (0 packages loaded, 909 targets configured).
+ERROR: /home/USER/projects/zerv/tests/BUILD.bazel:186:10: zig test //tests:batcher failed: (Exit 1): zig failed: error executing ZigBuildTest command (from zig_test rule target //tests:batcher) external/rules_zig++zig+zig_0.16.0_x86_64-linux/zig test --test-no-exec --zig-lib-dir external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib --cache-dir /tmp/zig-cache --global-cache-dir /tmp/zig-cache -O ... (remaining 80 arguments skipped)
+
+Use --sandbox_debug to see verbose messages from the sandbox and retain the sandbox build root for debugging
+tests/batcher.zig:101:9: error: declarations are not allowed between container fields
+    pub fn pollMaintenance(self: *Fake, stopping: bool, reads_pending: bool) !batcher.MaintenancePoll {
+        ^~
+tests/batcher.zig:99:5: note: field before declarations here
+    maintenance_resume: std.Io.Event = .unset,
+    ^~~~~~~~~~~~~~~~~~
+tests/batcher.zig:117:5: note: field after declarations here
+    io_pause_poll: bool = false,
+    ^~~~~~~~~~~~~
+Use --verbose_failures to see the command lines of failed build steps.
+INFO: Elapsed time: 0.261s, Critical Path: 0.07s
+INFO: 3 processes: 33 action cache hit, 3 internal.
+ERROR: Build did NOT complete successfully
+//tests:batcher                                                 FAILED TO BUILD
+
+Executed 0 out of 2 tests: 1 fails to build and 1 was skipped.

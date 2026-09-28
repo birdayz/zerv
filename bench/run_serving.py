@@ -100,7 +100,7 @@ def vllm_engine(port, context, extra=(), prefix_cache=False):
 RDNA3_BUILD = ROOT/"third_party/competitors/rdna3-15995a12"
 
 
-def rdna3_engine(model, port, context, extra):
+def rdna3_engine(model, port, context, extra, disable_fusion=False):
     name = f"zerv-bench-rdna3-{port}"
     cmd = ["docker", "run", "--rm", "--name", name, "--user", f"{os.getuid()}:{os.getgid()}", "--device", "/dev/kfd", "--device", "/dev/dri/renderD128",
            "--security-opt", "no-new-privileges", "--cap-drop", "ALL", "-p", f"127.0.0.1:{port}:{port}",
@@ -109,7 +109,9 @@ def rdna3_engine(model, port, context, extra):
            "-m", "/model.gguf", "--host", "0.0.0.0", "--port", str(port), "-c", str(context), "-np", "1", "-ngl", "99",
            "--no-context-shift", "--no-webui", "--jinja", "--chat-template-file", "/template.jinja",
            "--reasoning-format", "deepseek", "--cache-ram", "0", "-a", "qwen3.8-27b", "-fa", "on", *extra]
-    return dict(cmd=cmd, env={}, stop=["docker", "rm", "-f", name], ready_timeout=900)
+    if disable_fusion:
+        cmd[cmd.index("--entrypoint"):cmd.index("--entrypoint")] = ["-e", "GGML_CUDA_DISABLE_FUSION=1"]
+    return dict(cmd=cmd, env={}, stop=["docker", "rm", "-f", name], container=name, ready_timeout=900)
 
 
 def engines(model, port, context, zerv_binary):
@@ -139,6 +141,9 @@ def engines(model, port, context, zerv_binary):
         "vllm-apc": vllm_engine(port, context, prefix_cache=True),
         "rdna3": rdna3_engine(model, port, context, ["--spec-type", "none", "-b", "2048", "-ub", "512"]),
         "rdna3-b512": rdna3_engine(model, port, context, ["--spec-type", "none", "-b", "512", "-ub", "512"]),
+        # Pinned fork's fused MMVQ asserts at concurrent dense rows; supported external opt-out.
+        "rdna3-nofusion": rdna3_engine(model, port, context, ["--spec-type", "none", "-b", "2048", "-ub", "512"], disable_fusion=True),
+        "rdna3-b512-nofusion": rdna3_engine(model, port, context, ["--spec-type", "none", "-b", "512", "-ub", "512"], disable_fusion=True),
         "rdna3-mtp3": rdna3_engine(model, port, context, ["--spec-type", "draft-mtp-adaptive", "--spec-draft-n-max", "3", "-b", "2048", "-ub", "512"]),
         "vllm-mtp3": vllm_engine(port, context, ["--speculative-config", '{"method":"mtp","num_speculative_tokens":3}']),
         # Prefill chunks of 512 tokens (default 2048): shorter stalls for running requests.

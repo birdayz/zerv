@@ -1,0 +1,59 @@
+INFO: Invocation ID: cb87f75d-250b-491b-825e-72d24faa7474
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (0 packages loaded, 0 targets configured).
+[3 / 8] zig test //tests:archive; 1s disk-cache, linux-sandbox ... (2 actions running)
+FAIL: //tests:archive (Aborted) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/archive/test.log)
+INFO: From Testing //tests:archive:
+==================== Test output for //tests:archive:
+1/9 archive.test.archive independent POSIX SHA256 goldens, eviction, exact partial tails and no steady allocation...OK
+2/9 archive.test.archive cancellation drains, leases block eviction, corruption and I/O failures never publish...OK
+3/9 archive.test.archive options, longest prefix and device-error drain...OK
+4/9 archive.test.async capture keeps staging leased, submits no early disk write, cancellation waits for device...OK
+5/9 archive.test.async upload keeps disk-done ticket until acknowledgment, other slot disk progress and cancel...OK
+6/9 archive.test.async device start and completion faults drain before slot reuse...OK
+7/9 archive.test.archive additional source job is independent of all 64 request identities...OK
+8/9 archive.test.archive optional issue gate yields to reads, reserves tickets and retains clean backing...expected 1, found 2
+thread 12 panic: pending archive
+error return context:
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7261/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:118:17: 0x1264514 in expectEqualInner__anon_44562 (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7261/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:83:5: 0x1269b3b in expectEqual (archive.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7261/execroot/_main/src/session/archive.zig:101:43: 0x125f503 in deinit (root.zig)
+
+stack trace:
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7261/execroot/_main/tests/archive.zig:352:28: 0x1269bbf in test.archive optional issue gate yields to reads, reserves tickets and retains clean backing (archive.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7261/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/compiler/test_runner.zig:291:25: 0x1211d56 in mainTerminal (test_runner.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7261/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/compiler/test_runner.zig:73:28: 0x1211572 in main (test_runner.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7261/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/start.zig:699:88: 0x120dd85 in callMain (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7261/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/start.zig:190:5: 0x120d761 in _start (std.zig)
+================================================================================
+[4 / 8] 1 / 2 tests, 1 failed; zig test //tests:archive; 2s disk-cache, linux-sandbox
+[5 / 8] 1 / 2 tests, 1 failed; [Prepa] runfiles for //tests:archive
+FAIL: //tests:archive_release_fast (Aborted) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/archive_release_fast/test.log)
+INFO: From Testing //tests:archive_release_fast:
+==================== Test output for //tests:archive_release_fast:
+1/9 archive.test.archive independent POSIX SHA256 goldens, eviction, exact partial tails and no steady allocation...OK
+2/9 archive.test.archive cancellation drains, leases block eviction, corruption and I/O failures never publish...OK
+3/9 archive.test.archive options, longest prefix and device-error drain...OK
+4/9 archive.test.async capture keeps staging leased, submits no early disk write, cancellation waits for device...OK
+5/9 archive.test.async upload keeps disk-done ticket until acknowledgment, other slot disk progress and cancel...OK
+6/9 archive.test.async device start and completion faults drain before slot reuse...OK
+7/9 archive.test.archive additional source job is independent of all 64 request identities...OK
+8/9 archive.test.archive optional issue gate yields to reads, reserves tickets and retains clean backing...expected 1, found 2
+thread 12 panic: pending archive
+Cannot print stack trace: stack tracing is disabled
+================================================================================
+INFO: Found 2 test targets...
+INFO: Elapsed time: 8.714s, Critical Path: 8.53s
+INFO: 9 processes: 5 internal, 6 linux-sandbox.
+INFO: Build completed, 2 tests FAILED, 9 total actions
+//tests:archive                                                          FAILED in 0.8s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/archive/test.log
+//tests:archive_release_fast                                             FAILED in 0.3s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/archive_release_fast/test.log
+
+Executed 2 out of 2 tests: 2 fail locally.

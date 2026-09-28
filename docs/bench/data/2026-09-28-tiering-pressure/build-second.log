@@ -1,0 +1,24 @@
+INFO: Invocation ID: 9af2ad80-5e6b-4660-858e-ec57df803bc2
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (0 packages loaded, 0 targets configured).
+ERROR: /home/USER/projects/zerv/bench/BUILD.bazel:78:15: zig build-exe //bench:zerv-archive-model-check failed: (Exit 1): zig failed: error executing ZigBuildExe command (from zig_binary rule target //bench:zerv-archive-model-check) external/rules_zig++zig+zig_0.16.0_x86_64-linux/zig build-exe --zig-lib-dir external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib --cache-dir /tmp/zig-cache --global-cache-dir /tmp/zig-cache -O ... (remaining 110 arguments skipped)
+
+Use --sandbox_debug to see verbose messages from the sandbox and retain the sandbox build root for debugging
+src/serve/engine.zig:301:56: error: error set is discarded
+                if (e != error.Canceled) _ = self.check(e);
+                                             ~~~~~~~~~~^~~
+referenced by:
+    main: bench/archive_model_check.zig:65:53
+    callMain [inlined]: external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/start.zig:737:30
+    callMainWithArgs [inlined]: external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/start.zig:638:20
+    main: external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/start.zig:663:28
+    1 reference(s) hidden; use '-freference-trace=5' to see all references
+Use --verbose_failures to see the command lines of failed build steps.
+INFO: Elapsed time: 0.976s, Critical Path: 0.83s
+INFO: 3 processes: 3 internal.
+ERROR: Build did NOT complete successfully

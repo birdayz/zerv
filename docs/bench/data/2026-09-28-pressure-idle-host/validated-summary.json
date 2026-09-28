@@ -1,0 +1,114 @@
+{
+  "native_identical": 8,
+  "serving": {
+    "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096": {
+      "wall_s": {
+        "n": 1,
+        "mean": 55.29479101698962,
+        "stdev": null,
+        "minimum": 55.29479101698962,
+        "maximum": 55.29479101698962
+      },
+      "aggregate_tok_s": {
+        "n": 1,
+        "mean": 10.74242237062602,
+        "stdev": null,
+        "minimum": 10.74242237062602,
+        "maximum": 10.74242237062602
+      },
+      "ttft_p50_ms": {
+        "n": 1,
+        "mean": 11808.22764900222,
+        "stdev": null,
+        "minimum": 11808.22764900222,
+        "maximum": 11808.22764900222
+      },
+      "ttft_p95_ms": {
+        "n": 1,
+        "mean": 33483.822134003276,
+        "stdev": null,
+        "minimum": 33483.822134003276,
+        "maximum": 33483.822134003276
+      },
+      "gap_p99_ms": {
+        "n": 1,
+        "mean": 145.22419100103434,
+        "stdev": null,
+        "minimum": 145.22419100103434,
+        "maximum": 145.22419100103434
+      },
+      "turn_0_ttft_p50_ms": {
+        "n": 1,
+        "mean": 24786.011225995026,
+        "stdev": null,
+        "minimum": 24786.011225995026,
+        "maximum": 24786.011225995026
+      },
+      "turn_1_ttft_p50_ms": {
+        "n": 1,
+        "mean": 9013.108447994455,
+        "stdev": null,
+        "minimum": 9013.108447994455,
+        "maximum": 9013.108447994455
+      },
+      "resources": [
+        {
+          "round": 0,
+          "log": "engine-610a077529fd1514-r0.log",
+          "vram_peak": 18405564416,
+          "host_memory": {
+            "VmHWM": "15487392 kB",
+            "VmRSS": "84000 kB"
+          },
+          "host_memory_details": {
+            "values": {
+              "VmHWM": "15487392 kB",
+              "VmRSS": "84000 kB"
+            },
+            "scope": "server-process",
+            "pid": 856625
+          }
+        }
+      ]
+    }
+  },
+  "component": {
+    "short_after_warmup": {
+      "disk_write_ms": {
+        "n": 5,
+        "mean": 247.3456598,
+        "stdev": 15.565804603458242,
+        "minimum": 237.506414,
+        "maximum": 274.864347
+      },
+      "restore_ms": {
+        "n": 5,
+        "mean": 198.891212,
+        "stdev": 12.404391751436702,
+        "minimum": 188.558251,
+        "maximum": 218.798147
+      }
+    },
+    "long": [
+      {
+        "prefix": 80000,
+        "state_bytes": 5399773184,
+        "exact_state": true,
+        "exact_vocab_rows": 4,
+        "elapsed_ns": 162784686328,
+        "capture_ns": 4612727581,
+        "restore_ns": 6013316340,
+        "disk_write_ns": 7420557023,
+        "disk": true,
+        "independent_rows": 2,
+        "device_starts": 25744,
+        "device_pending_polls": 65912,
+        "max_poll_ns": 3725376,
+        "source": true,
+        "source_cpu_quanta": 305,
+        "source_gpu_quanta": 9995,
+        "pressure": true
+      }
+    ]
+  }
+}

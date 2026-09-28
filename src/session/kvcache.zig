@@ -101,6 +101,9 @@ pub const Lease = struct { handle: Handle, serial: u64 };
 /// unused partial-page tails require the byte adapter's canonicalization/dependencies.
 pub const Source = struct { lease: Lease, snapshot: u32, tokens: []const u32, pages: []const u32 };
 pub const SourceState = struct { generation: u64 = 0, serial: u64 = 0, active: bool = false, refs: u32 = 0 };
+pub const Capacity = struct { slots: u32, free_slots: u32 };
+/// Borrowed until the next cache mutation; retaining bytes requires acquireSource.
+pub const Candidate = struct { handle: Handle, tokens: []const u32, used: u64, host_pages: u32, has_host: bool };
 
 /// A prefix-cache policy.
 pub const Cache = struct {
@@ -117,6 +120,9 @@ pub const Cache = struct {
         evict: *const fn (ctx: *anyopaque, dev: Device) bool,
         /// Host-store pressure: drop one demoted checkpoint; false: none.
         evictHost: *const fn (ctx: *anyopaque, dev: Device) bool,
+        sourceCapacity: ?*const fn (ctx: *anyopaque) Capacity = null,
+        sourceCandidate: ?*const fn (ctx: *anyopaque, index: u32) ?Candidate = null,
+        discardSource: ?*const fn (ctx: *anyopaque, dev: Device, handle: Handle) anyerror!void = null,
         coldSource: ?*const fn (ctx: *anyopaque) ?Handle = null,
         acquireSource: ?*const fn (ctx: *anyopaque, handle: Handle) anyerror!Source = null,
         releaseSource: ?*const fn (ctx: *anyopaque, lease: Lease) anyerror!void = null,
@@ -134,6 +140,15 @@ pub const Cache = struct {
     }
     pub fn evictHost(c: Cache, dev: Device) bool {
         return c.vtable.evictHost(c.ctx, dev);
+    }
+    pub fn sourceCapacity(c: Cache) !Capacity {
+        return (c.vtable.sourceCapacity orelse return error.UnsupportedSource)(c.ctx);
+    }
+    pub fn sourceCandidate(c: Cache, index: u32) ?Candidate {
+        return if (c.vtable.sourceCandidate) |f| f(c.ctx, index) else null;
+    }
+    pub fn discardSource(c: Cache, dev: Device, handle: Handle) !void {
+        return (c.vtable.discardSource orelse return error.UnsupportedSource)(c.ctx, dev, handle);
     }
     pub fn coldSource(c: Cache) ?Handle {
         return if (c.vtable.coldSource) |f| f(c.ctx) else null;
@@ -333,8 +348,28 @@ pub const Radix = struct {
     pub fn cache(self: *Radix) Cache {
         return .{ .ctx = self, .vtable = &vtable };
     }
-    const vtable: Cache.VTable = .{ .restore = restore, .checkpoint = take, .evict = evict, .evictHost = evictHost, .stats = stats, .deinit = deinit, .coldSource = coldSource, .acquireSource = acquireSource, .releaseSource = releaseSource };
+    const vtable: Cache.VTable = .{ .restore = restore, .checkpoint = take, .evict = evict, .evictHost = evictHost, .stats = stats, .deinit = deinit, .coldSource = coldSource, .acquireSource = acquireSource, .releaseSource = releaseSource, .sourceCapacity = sourceCapacity, .sourceCandidate = sourceCandidate, .discardSource = discardSource };
 
+    fn sourceCapacity(ctx: *anyopaque) Capacity {
+        const self: *Radix = @ptrCast(@alignCast(ctx));
+        var free: u32 = 0;
+        for (self.store.entries, self.sources) |e, s| free += @intFromBool(e.len == 0 and s.generation != std.math.maxInt(u64));
+        return .{ .slots = @intCast(self.store.entries.len), .free_slots = free };
+    }
+    fn sourceCandidate(ctx: *anyopaque, index: u32) ?Candidate {
+        const self: *Radix = @ptrCast(@alignCast(ctx));
+        if (index >= self.sources.len or !self.live(index) or self.children[index] != 0 or self.sources[index].refs != 0) return null;
+        var host: u32 = 0;
+        for (self.segment(index)) |q| host += @intFromBool(q & Device.host_flag != 0);
+        return .{ .handle = .{ .index = index, .generation = self.sources[index].generation }, .tokens = self.tokens(index), .used = self.store.entries[index].used, .host_pages = host, .has_host = host != 0 or self.ancestorHost(index) };
+    }
+    fn discardSource(ctx: *anyopaque, dev: Device, h: Handle) anyerror!void {
+        const self: *Radix = @ptrCast(@alignCast(ctx));
+        const i = try self.validateSource(h);
+        if (self.children[i] != 0 or self.sources[i].refs != 0) return error.Busy;
+        try self.remove(dev, i);
+        self.st.pressure_drops += 1;
+    }
     fn coldSource(ctx: *anyopaque) ?Handle {
         const self: *Radix = @ptrCast(@alignCast(ctx));
         const i = self.leaf(null) orelse return null;

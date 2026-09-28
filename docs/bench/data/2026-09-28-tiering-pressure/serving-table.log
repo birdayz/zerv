@@ -1,0 +1,59 @@
+DEBUG: /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/external/rules_python+/python/private/py_executable.bzl:1595:14: 
+======================================================================
+WARNING: Target @@//tools:py is using implicit __init__.py creation.
+  This diabolic behavior is deprecated and will be disabled by default in a
+  future release.
+  See https://github.com/bazel-contrib/rules_python/issues/2945
+
+  Ensure all __init__.py files are explicitly created and
+  added to the srcs or deps of your targets.
+
+  Disable implicit creation for your module in MODULE.bazel:
+
+    rules_python_config = use_extension("@rules_python//python/extensions:config.bzl", "config")
+    rules_python_config.explicit_init_py(default = True)
+
+  Or for a specific target by setting:
+
+    legacy_create_init = 0
+
+  Or globally with the following Bazel flag:
+
+    --incompatible_default_to_explicit_init_py
+======================================================================
+OVERALL RUN FAILED; incomplete engines have no performance score: {"rdna3": {"attempted": 12, "failed": 12, "unattempted": 12, "errors": ["RemoteDisconnected: Remote end closed connection without response", "RuntimeError: stream ended without [DONE]"], "performance": null}, "rdna3-b512": {"attempted": 12, "failed": 12, "unattempted": 12, "errors": ["RemoteDisconnected: Remote end closed connection without response", "RuntimeError: stream ended without [DONE]"], "performance": null}}
+identity (text hash + prompt/generated token counts) vs native baseline: {"zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=2,kv-swap-mib=4096,prefix-cache-tier=off": [24, 24], "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host": [24, 24], "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=2,kv-swap-mib=4096,prefix-cache-tier=off,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096": [24, 24], "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096": [24, 24], "llama-fa-kvu": [8, 24], "llama-fa-b512": [14, 24]}
+zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=2,kv-swap-mib=4096,prefix-cache-tier=off 25.436 ± 0.716 | 22.321 ± 3.726 | 66.987 ± 3.753 | 8.887 ± 0.514 | 145.352 ± 0.419 peak VRAM 18249367552
+ resources [{"vram_peak": 18249367552, "host_memory": {"VmHWM": "15473600 kB", "VmRSS": "76752 kB"}, "host_memory_details": null}, {"vram_peak": 18167418880, "host_memory": {"VmHWM": "15477384 kB", "VmRSS": "74476 kB"}, "host_memory_details": null}, {"vram_peak": 18156392448, "host_memory": {"VmHWM": "15477968 kB", "VmRSS": "81852 kB"}, "host_memory_details": null}]
+zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host 24.845 ± 0.679 | 4.568 ± 2.489 | 47.965 ± 0.475 | 12.385 ± 0.122 | 145.127 ± 0.623 peak VRAM 18301853696
+ resources [{"vram_peak": 18250563584, "host_memory": {"VmHWM": "15471904 kB", "VmRSS": "70500 kB"}, "host_memory_details": null}, {"vram_peak": 18301853696, "host_memory": {"VmHWM": "15474360 kB", "VmRSS": "68924 kB"}, "host_memory_details": null}, {"vram_peak": 18172375040, "host_memory": {"VmHWM": "15473376 kB", "VmRSS": "77164 kB"}, "host_memory_details": null}]
+zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=2,kv-swap-mib=4096,prefix-cache-tier=off,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096 24.596 ± 0.292 | 20.901 ± 4.208 | 65.108 ± 4.077 | 9.146 ± 0.555 | 145.531 ± 0.451 peak VRAM 18327126016
+ resources [{"vram_peak": 18248507392, "host_memory": {"VmHWM": "15475936 kB", "VmRSS": "83332 kB"}, "host_memory_details": null}, {"vram_peak": 18327126016, "host_memory": {"VmHWM": "15483712 kB", "VmRSS": "78920 kB"}, "host_memory_details": null}, {"vram_peak": 18158227456, "host_memory": {"VmHWM": "15483560 kB", "VmRSS": "89044 kB"}, "host_memory_details": null}]
+ round 0 disk prefix archive 1 writes, 0 restores, 275775488 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 2 cancellations
+ round 0 disk source retention total 46.544 s, maximum 28.330 s; 256 CPU and 9 GPU quanta
+ round 0 prefix checkpoints 12 taken, 1 of 9 lookups restored (8251 prompt tokens reused), 7 dropped for new ones, 3 for memory, 0 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+ round 1 disk prefix archive 1 writes, 0 restores, 303038464 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 2 cancellations
+ round 1 disk source retention total 45.499 s, maximum 27.772 s; 282 CPU and 9 GPU quanta
+ round 1 prefix checkpoints 12 taken, 1 of 9 lookups restored (7718 prompt tokens reused), 7 dropped for new ones, 3 for memory, 0 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+ round 2 disk prefix archive 1 writes, 0 restores, 248512512 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 4 cancellations
+ round 2 disk source retention total 37.793 s, maximum 27.939 s; 231 CPU and 9 GPU quanta
+ round 2 prefix checkpoints 15 taken, 0 of 9 lookups restored (0 prompt tokens reused), 9 dropped for new ones, 4 for memory, 0 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096 25.730 ± 1.300 | 6.601 ± 3.624 | 51.383 ± 4.020 | 11.610 ± 0.950 | 144.938 ± 0.493 peak VRAM 18402226176
+ resources [{"vram_peak": 18253590528, "host_memory": {"VmHWM": "15472928 kB", "VmRSS": "83592 kB"}, "host_memory_details": null}, {"vram_peak": 18402226176, "host_memory": {"VmHWM": "15473556 kB", "VmRSS": "83104 kB"}, "host_memory_details": null}, {"vram_peak": 18158587904, "host_memory": {"VmHWM": "15486872 kB", "VmRSS": "81552 kB"}, "host_memory_details": null}]
+ round 0 disk prefix archive 1 writes, 0 restores, 314572800 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 1 cancellations
+ round 0 disk source retention total 29.287 s, maximum 17.130 s; 301 CPU and 0 GPU quanta
+ round 0 prefix checkpoints 14 taken, 2 of 9 lookups restored (18351 prompt tokens reused), 5 dropped for new ones, 1 for memory, 0 pages deduplicated, 7 demoted to host (348 pages), 1 promoted (79 pages), 0 dropped from the host
+ round 1 disk prefix archive 1 writes, 0 restores, 266338304 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 1 cancellations
+ round 1 disk source retention total 27.162 s, maximum 14.548 s; 255 CPU and 0 GPU quanta
+ round 1 prefix checkpoints 14 taken, 2 of 9 lookups restored (18351 prompt tokens reused), 5 dropped for new ones, 1 for memory, 0 pages deduplicated, 7 demoted to host (348 pages), 1 promoted (79 pages), 0 dropped from the host
+ round 2 disk prefix archive 1 writes, 0 restores, 287309824 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 1 cancellations
+ round 2 disk source retention total 20.538 s, maximum 12.525 s; 275 CPU and 0 GPU quanta
+ round 2 prefix checkpoints 14 taken, 3 of 9 lookups restored (26100 prompt tokens reused), 5 dropped for new ones, 1 for memory, 0 pages deduplicated, 7 demoted to host (271 pages), 1 promoted (65 pages), 0 dropped from the host
+llama-fa-kvu 30.332 ± 0.680 | 5.735 ± 1.001 | 52.641 ± 3.089 | 10.963 ± 0.329 | 1966.651 ± 157.571 peak VRAM 17819561984
+ resources [{"vram_peak": 17819561984, "host_memory": {"VmHWM": "15816548 kB", "VmRSS": "6348392 kB"}, "host_memory_details": null}, {"vram_peak": 17819561984, "host_memory": {"VmHWM": "15817392 kB", "VmRSS": "6385188 kB"}, "host_memory_details": null}, {"vram_peak": 17740050432, "host_memory": {"VmHWM": "15817548 kB", "VmRSS": "6356680 kB"}, "host_memory_details": null}]
+llama-fa-b512 30.744 ± 0.230 | 4.810 ± 0.657 | 50.552 ± 1.089 | 11.741 ± 0.164 | 591.605 ± 43.473 peak VRAM 17805946880
+ resources [{"vram_peak": 17805930496, "host_memory": {"VmHWM": "15817612 kB", "VmRSS": "6355952 kB"}, "host_memory_details": null}, {"vram_peak": 17805946880, "host_memory": {"VmHWM": "15817712 kB", "VmRSS": "6358444 kB"}, "host_memory_details": null}, {"vram_peak": 17723600896, "host_memory": {"VmHWM": "15817332 kB", "VmRSS": "6355188 kB"}, "host_memory_details": null}]
+capture_ns ms 138.3425348 sample_sd 27.416114808951214
+disk_write_ns ms 247.3456598 sample_sd 15.565804603458242
+restore_ns ms 198.891212 sample_sd 12.404391751436702
+long component [{'prefix': 80000, 'state_bytes': 5399773184, 'exact_state': True, 'exact_vocab_rows': 4, 'elapsed_ns': 162784686328, 'capture_ns': 4612727581, 'restore_ns': 6013316340, 'disk_write_ns': 7420557023, 'disk': True, 'independent_rows': 2, 'device_starts': 25744, 'device_pending_polls': 65912, 'max_poll_ns': 3725376, 'source': True, 'source_cpu_quanta': 305, 'source_gpu_quanta': 9995, 'pressure': True}]

@@ -574,3 +574,173 @@ test "cache sources: GPU-only hits and new descendants retain overlapping leases
     try t.expectEqual(@as(u32, pool), fake.freeCount());
     try t.expectEqual(@as(u32, 0), fake.violations);
 }
+
+const PressureRow = struct {
+    op: enum { take, pressure, finish, discard },
+    tokens: []const u32 = &.{},
+    headroom: u32 = 0,
+    max_tokens: u32 = 64,
+    index: u32 = 0,
+    generation: u64 = 0,
+    success: bool = false,
+    result: []const u8,
+    decision: ?session.pressure.Decision,
+    state: @FieldType(SourceRow, "state"),
+    pending: ?u32,
+    ready: []const []const u32,
+};
+
+test "pressure policy: independent capacity decisions and source/drop event traces" {
+    const p = session.pressure;
+    const Fixture = struct {
+        generator_sha256: []const u8,
+        source_oracle_sha256: []const u8,
+        cases: []const struct { usage: p.Usage, candidates: []const p.Candidate, decision: ?p.Decision },
+        traces: []const struct { capacity: u32, steps: []const PressureRow },
+    };
+    const parsed = try std.json.parseFromSlice(Fixture, t.allocator, @embedFile("fixtures/tiering-pressure.json"), .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+    inline for (.{ .{ "reference/generate_tiering_pressure_fixture.py", "generator_sha256" }, .{ "reference/generate_cache_source_fixture.py", "source_oracle_sha256" } }) |entry| {
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(@embedFile(entry[0]), &digest, .{});
+        try t.expectEqualStrings(@field(parsed.value, entry[1]), &std.fmt.bytesToHex(digest, .lower));
+    }
+    for (parsed.value.cases) |case| {
+        try case.usage.validate();
+        var select: p.Select = .{ .usage = case.usage };
+        for (case.candidates) |candidate| select.consider(candidate);
+        try t.expectEqualDeep(case.decision, select.decision());
+    }
+    var transitions: usize = 0;
+    for (parsed.value.traces) |trace| {
+        var fake: Fake = .{};
+        const r = try kvcache.Radix.create(t.allocator, trace.capacity, ctx_max, ctx_max / P + 1, B);
+        const c = r.cache();
+        r.tier = false;
+        defer {
+            releaseAllSources(r);
+            c.deinit(t.allocator);
+        }
+        var pending: ?kvcache.Source = null;
+        var ready: [16][ctx_max]u32 = undefined;
+        var lengths: [16]usize = @splat(0);
+        for (trace.steps, 0..) |row, ri| {
+            errdefer std.debug.print("pressure trace cap={d} row={d} op={s}\n", .{ trace.capacity, ri, @tagName(row.op) });
+            var decision: ?p.Decision = null;
+            var result: []const u8 = "ok";
+            switch (row.op) {
+                .take => {
+                    fake.release(0);
+                    try fake.run(0, row.tokens);
+                    try c.checkpoint(fake.device(), 0, row.tokens);
+                    fake.release(0);
+                },
+                .pressure => if (pending == null) {
+                    const capacity = try c.sourceCapacity();
+                    var select: p.Select = .{ .usage = .{ .slots = capacity.slots, .free_slots = capacity.free_slots, .slot_headroom = row.headroom, .host_pages = 0, .free_host_pages = 0, .host_headroom = 0 } };
+                    try select.usage.validate();
+                    for (0..capacity.slots) |i| if (c.sourceCandidate(@intCast(i))) |candidate| {
+                        var backed = false;
+                        for (&ready, lengths) |*tokens, n| if (std.mem.eql(u32, tokens[0..n], candidate.tokens)) {
+                            backed = true;
+                        };
+                        select.consider(.{ .handle = candidate.handle, .used = candidate.used, .has_host = candidate.has_host, .backed = backed, .fits = candidate.tokens.len <= row.max_tokens });
+                    };
+                    decision = select.decision();
+                    if (decision) |d| switch (d.action) {
+                        .preserve => pending = try c.acquireSource(d.handle),
+                        .discard => try c.discardSource(fake.device(), d.handle),
+                    };
+                },
+                .finish => if (pending) |source| {
+                    if (row.success) {
+                        var exists = false;
+                        for (&ready, lengths) |*tokens, n| if (std.mem.eql(u32, tokens[0..n], source.tokens)) {
+                            exists = true;
+                        };
+                        if (!exists) {
+                            const at = std.mem.indexOfScalar(usize, &lengths, 0) orelse return error.TooManyReady;
+                            @memcpy(ready[at][0..source.tokens.len], source.tokens);
+                            lengths[at] = source.tokens.len;
+                        }
+                    }
+                    try c.releaseSource(source.lease);
+                    pending = null;
+                },
+                .discard => c.discardSource(fake.device(), .{ .index = row.index, .generation = row.generation }) catch |err| {
+                    result = @errorName(err);
+                },
+            }
+            try t.expectEqualStrings(row.result, result);
+            try t.expectEqualDeep(row.decision, decision);
+            try t.expectEqual(row.pending, if (pending) |s| s.lease.handle.index else null);
+            var live: u32 = 0;
+            for (row.state, 0..) |want, i| {
+                try t.expectEqualSlices(u32, want.tokens, r.store.entryTokens(i));
+                try t.expectEqualDeep(kvcache.SourceState{ .generation = want.generation, .serial = want.serial, .active = want.active, .refs = want.refs }, r.sources[i]);
+                live += @intFromBool(want.tokens.len != 0);
+            }
+            try t.expectEqualDeep(kvcache.Capacity{ .slots = trace.capacity, .free_slots = trace.capacity - live }, try c.sourceCapacity());
+            var ready_count: usize = 0;
+            for (&ready, lengths) |*tokens, n| if (n > 0) {
+                ready_count += 1;
+                var found = false;
+                for (row.ready) |want| if (std.mem.eql(u32, want, tokens[0..n])) {
+                    found = true;
+                };
+                try t.expect(found);
+            };
+            try t.expectEqual(row.ready.len, ready_count);
+            try t.expect(r.checkTree());
+            try t.expectEqual(null, r.ownViolation());
+            try t.expectEqual(@as(u32, 0), fake.violations);
+            transitions += 1;
+        }
+    }
+    try t.expectEqual(@as(usize, 2048), parsed.value.cases.len);
+    try t.expectEqual(@as(usize, 1560), transitions);
+}
+
+test "pressure metadata: host ancestry, leaf-only discard, generation and capacity validation" {
+    var fake: Fake = .{ .host_n = 16 };
+    const r = try kvcache.Radix.create(t.allocator, 4, ctx_max, ctx_max / P + 1, B);
+    const c = r.cache();
+    defer c.deinit(t.allocator);
+    try fake.run(0, &.{ 1, 2, 3, 4 });
+    try c.checkpoint(fake.device(), 0, &.{ 1, 2, 3, 4 });
+    try fake.run(0, &.{ 5, 6, 7, 8 });
+    try c.checkpoint(fake.device(), 0, &.{ 1, 2, 3, 4, 5, 6, 7, 8 });
+    fake.release(0);
+    try t.expect(c.sourceCandidate(0) == null and c.sourceCandidate(4) == null);
+    try t.expectError(error.Busy, c.discardSource(fake.device(), .{ .index = 0, .generation = 1 }));
+    try t.expect(c.evict(fake.device())); // demote ancestor only
+    const candidate = c.sourceCandidate(1).?;
+    try t.expect(candidate.has_host);
+    try t.expectEqual(@as(u32, 0), candidate.host_pages);
+    const s = try c.acquireSource(candidate.handle);
+    try t.expect(c.sourceCandidate(1) == null);
+    try t.expectError(error.Busy, c.discardSource(fake.device(), candidate.handle));
+    try c.releaseSource(s.lease);
+    try c.discardSource(fake.device(), candidate.handle);
+    try t.expectError(error.InvalidSource, c.discardSource(fake.device(), candidate.handle));
+    const parent = c.sourceCandidate(0).?;
+    try t.expectEqual(@as(u32, 1), parent.host_pages);
+    try c.discardSource(fake.device(), parent.handle);
+    r.sources[0].generation = std.math.maxInt(u64);
+    try t.expectEqual(@as(u32, 3), (try c.sourceCapacity()).free_slots);
+    const flat = try kvcache.create(t.allocator, .flat, 1, ctx_max, ctx_max / P + 1, B);
+    defer flat.deinit(t.allocator);
+    try t.expectError(error.UnsupportedSource, flat.sourceCapacity());
+    try t.expectError(error.UnsupportedSource, flat.discardSource(fake.device(), candidate.handle));
+    const p = session.pressure;
+    const valid: p.Usage = .{ .slots = 2, .free_slots = 2, .slot_headroom = 0, .host_pages = 4, .free_host_pages = 4, .host_headroom = 1 };
+    inline for (.{ "slots", "free_slots", "slot_headroom", "free_host_pages", "host_headroom" }) |field| {
+        var bad = valid;
+        @field(bad, field) = if (std.mem.eql(u8, field, "slots")) 0 else std.math.maxInt(u32);
+        try t.expectError(error.InvalidCapacity, bad.validate());
+    }
+    var bad = valid;
+    bad.host_pages = 0;
+    bad.free_host_pages = 0;
+    try t.expectError(error.InvalidCapacity, bad.validate());
+}

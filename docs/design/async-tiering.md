@@ -107,24 +107,54 @@ bounds, repeated loaded serving against tuned competitors. Cost-based restore vs
 recompute and disk block deduplication remain subsequent increments, not hidden
 scope in this plan.
 
+C.3's measured follow-up order (one increment at a time, not parallel tracks):
+
+1. Resolve bounded archive issue cadence: segmented prefill currently suppresses
+   optional progress for an entire chunk, and the immediate-turn matrix has zero
+   NVMe restores. Audit safe progress between units and chunk/window tradeoffs;
+   add independent interleaving gates before changing either. This alone is **not**
+   proactive preparation or full D completion.
+2. GPU→RAM preparation transaction: bounded host reservations and a separate GPU
+   command owner; start/poll/drain/commit/abort; preserve GPU hits acquired after
+   planning, and distinguish pages copied from pages actually freed. Own-segment
+   rename must be atomic with source ownership. Spec and object-set oracle first.
+3. Queued-demand protection and prefetch: qualify request/record generations,
+   preserve token lifetimes across unlocked callbacks, and prevent optional
+   persistence from forcing soon-needed host hits to recompute. Specify staging-only
+   versus whole-image host prefetch explicitly; do not claim one implements the other.
+4. Repeat zero-idle burst/churn, long-state exactness and loaded serving, tuning
+   headroom/windows against compatible Vulkan and RDNA3/HIP configurations. Retain
+   all failures and regressions. Close D only with the actual features and evidence,
+   and close the user goal only when the quality-matched performance target holds.
+
+[Detailed native ownership and scheduling audit](tiering-preparation-audit.md).
+
 ## Status
 
 A completed ([ownership gates and matched component results](../bench/2026-09-28-async-ownership.md));
 B completed ([archive correctness, components and fresh serving comparison](../bench/2026-09-28-async-archive.md)).
-The original checkpoint-triggered write-through policy is still production behavior,
-now with nonblocking archive GPU ownership. No serving speedup established; the 80k
-restore regression is retained. Snapshot/page transfers remain synchronous.
+C.3 replaces checkpoint-triggered write-through with pressure-driven capture and
+passes correctness/component/serving evaluation gates, but establishes **no disk
+speedup**. The 80k restore regression is retained. Snapshot/page transfers remain
+synchronous; D is active at pre-code research/specification.
 
-C is active. C.1 source leases are implemented with full ancestor protection and
+C is complete as a functionality/verification increment, not as the performance goal. C.1 source leases are implemented with full ancestor protection and
 independent prefix-set oracle ([report](../bench/2026-09-28-cache-sources.md)).
 C.2's independent canonical partial-tail fixture (60 layouts, 4,804 windows) and
 mixed-source adapter pass CPU 81/81, both modes ×20, negative control, GPU/spill 3/3,
 host GPU 2/2, independent model oracle 337/337 and exact 257/80k model gates.
 Repeated component timings retain substantial variance and the historical restore
 regression; [C.2 report](../bench/2026-09-28-cache-source-bytes.md).
-C.3 is active at [specification/oracle](../specs/tiering-pressure.md):
-pressure-triggered persistence is not integrated. [Partial-page finding](../research/2026-09-28-async-transfers.md#c-readiness-finding-partial-pages-are-not-immutable-full-byte-images).
-D stays queued. The overall requested pressure-driven policy is **not complete**.
+C.3's [contract](../specs/tiering-pressure.md) and pre-code oracle cover 2,048
+selection decisions and 1,560 transitions. CPU 81/81, relevant modes ×20, negative
+controls, GPU/spill 3/3, host GPU 2/2, model oracle 337/337 and 257/80k exactness pass.
+Three-round serving preserves all 96 native responses/token counts; immediate reuse
+has zero disk restores. A separate six-second-idle HTTP gate restores 669 MB with
+eight exact responses. Native host+disk is 51.383 ± 4.020 s versus the supported
+RDNA3/HIP nofusion reference's 49.783 ± 1.320 s, with differing generated streams.
+Failures and policy limitations are retained in the [C.3 report](../bench/2026-09-28-tiering-pressure.md).
+[Partial-page finding](../research/2026-09-28-async-transfers.md#c-readiness-finding-partial-pages-are-not-immutable-full-byte-images).
+D's research audit is active; no D implementation exists. The overall plan is **not complete**.
 The user's active session goal also requires rigorously verified faster-or-on-par
 serving against tuned compatible competitors; A/B/C.1 component gates do not close
 that goal or erase the observed long-restore regression.

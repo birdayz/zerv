@@ -1,0 +1,24 @@
+INFO: Invocation ID: 36d221c1-87d2-4e0b-b82d-d0176fb70482
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (0 packages loaded, 0 targets configured).
+ERROR: /home/USER/projects/zerv/tests/BUILD.bazel:186:10: zig test //tests:batcher failed: (Exit 1): zig failed: error executing ZigBuildTest command (from zig_test rule target //tests:batcher) external/rules_zig++zig+zig_0.16.0_x86_64-linux/zig test --test-no-exec --zig-lib-dir external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib --cache-dir /tmp/zig-cache --global-cache-dir /tmp/zig-cache -O ... (remaining 81 arguments skipped)
+
+Use --sandbox_debug to see verbose messages from the sandbox and retain the sandbox build root for debugging
+tests/batcher.zig:1281:15: error: local constant shadows declaration of 'queued'
+        const queued = b.slot[reused].op == .begin;
+              ^~~~~~
+tests/batcher.zig:802:1: note: declared here
+fn queued(b: *B, op: anytype) usize {
+^~
+Use --verbose_failures to see the command lines of failed build steps.
+INFO: Elapsed time: 0.539s, Critical Path: 0.37s
+INFO: 3 processes: 3 internal.
+ERROR: Build did NOT complete successfully
+//tests:batcher_release_fast                                    FAILED TO BUILD
+
+Executed 0 out of 2 tests: 1 fails to build and 1 was skipped.

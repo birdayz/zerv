@@ -1,6 +1,6 @@
 # Controlled work queue
 
-Active block: **18d.7c · immutable cache-source ownership and pressure policy (`src/session`), pressure-policy specification/oracle stage**. User requested a research-based plan and implementation; [ordered plan](docs/design/async-tiering.md). A/B gates closed: CPU 81/81, GPU/spill 3/3, host GPU 2/2, independent model oracle 337/337, 80k exact restoration and 72 identical native HTTP responses ([A](docs/bench/2026-09-28-async-ownership.md), [B](docs/bench/2026-09-28-async-archive.md)). No serving speedup; long restore regression retained. C.1 source leases implemented and verified ([report](docs/bench/2026-09-28-cache-sources.md)); C.2 canonical mixed-source capture passes device/model/oracle/component gates ([report](docs/bench/2026-09-28-cache-source-bytes.md)); C.3 pressure-policy integration remains active; D is not implemented. Active session goal: finish the full plan, with rigorous correctness gates and faster-or-on-par performance against tuned compatible competitors. No completion claim until full-serving evidence meets it. 18d.6e remains completed; the retired hang goal stays closed. Active goal (resumed by the user after 08c): native Qwen3.8-27B through
+Active block: **18d.7d · proactive preparation and demand prefetch (`src/serve`), pre-code scheduling/ownership research stage**. User requested a research-based plan and implementation; [ordered plan](docs/design/async-tiering.md). A/B gates closed: CPU 81/81, GPU/spill 3/3, host GPU 2/2, independent model oracle 337/337, 80k exact restoration and 72 identical native HTTP responses ([A](docs/bench/2026-09-28-async-ownership.md), [B](docs/bench/2026-09-28-async-archive.md)). No serving speedup; long restore regression retained. C.1 source leases implemented and verified ([report](docs/bench/2026-09-28-cache-sources.md)); C.2 canonical mixed-source capture passes device/model/oracle/component gates ([report](docs/bench/2026-09-28-cache-source-bytes.md)); C.3 pressure-policy integration gates are closed ([report](docs/bench/2026-09-28-tiering-pressure.md)): CPU 81/81, exact 257/80k state, model oracle 337/337, 96 identical immediate-turn native responses and a positive idle HTTP disk restore. Immediate reuse yields zero disk restores; native host+disk 51.383 ± 4.020 s versus tuned RDNA3/HIP 49.783 ± 1.320 s, with non-identical reference token streams. No disk speedup. D is active at research/specification and is not implemented. Active session goal: finish the full plan, with rigorous correctness gates and faster-or-on-par performance against tuned compatible competitors. No completion claim until full-serving evidence meets it. 18d.6e remains completed; the retired hang goal stays closed. Active goal (resumed by the user after 08c): native Qwen3.8-27B through
 `POST /v1/chat/completions`, fully verified. Not achieved yet. No proxy, mock
 inference, or external engine in the production path.
 
@@ -147,7 +147,7 @@ the bounded asynchronous disk-store increment, then cache/scheduler integration.
   tests, 80k exact state and continuation, independent FP64/libllama 337/337,
   component and three-round serving comparison. No speedup claim; source pause
   and eager write-through remain. [Report](docs/bench/2026-09-28-async-archive.md).
-- [ ] **18d.7c · immutable sources and pressure policy (active)**:
+- [x] **18d.7c · immutable sources and pressure policy**:
   - [x] C.1 radix source leases: generation-qualified handles, explicit snapshot ID,
     ancestor protection and guarded mutations. Independent oracle 2,345 transitions,
     both modes ×20, CPU/Python/format 81/81, two component runs.
@@ -157,11 +157,26 @@ the bounded asynchronous disk-store increment, then cache/scheduler integration.
     GPU/spill 3/3, host GPU 2/2, independent model oracle 337/337. 257/80k state and
     vocabulary exact; repeated component timings retain variance/regression.
     [Report](docs/bench/2026-09-28-cache-source-bytes.md).
-  - [ ] C.3 byte/slot pressure and retained disk backing (active specification/oracle),
-    then repeated serving gates. [Pre-code contract](docs/specs/tiering-pressure.md).
-    Production still uses checkpoint-triggered writes; no policy speedup claimed.
-- [ ] **18d.7d · proactive GPU→RAM preparation and demand prefetch (queued)**:
-  bounded headroom, read priority; actual overlap requires separate evidence.
+  - [x] C.3 byte/slot pressure and retained disk backing: independent 2,048 decisions /
+    1,560 transitions; background scheduler ownership, read priority/reserved staging,
+    lease-blocked retry and headroom controls. CPU 81/81, relevant modes ×20,
+    negative controls, GPU/spill 3/3, host GPU 2/2, model oracle 337/337; 257/80k exact.
+    Three-round serving: 96/96 native responses and token counts match the baseline.
+    Zero-idle disk has no restores; six-second-idle host+disk gate reads 669 MB and
+    preserves all eight outputs. RDNA3 fusion crashes retained; supported nofusion
+    configurations pass 48 turns. No policy speedup; [report](docs/bench/2026-09-28-tiering-pressure.md).
+- [ ] **18d.7d · proactive GPU→RAM preparation and demand prefetch (active research)**:
+  - [ ] Specify/oracle-gate bounded archive progress between prefill units and window
+    size; current whole-chunk deferral produces source holds of 12–29 s. No tuning
+    may be mislabeled implementation of proactive preparation/prefetch.
+  - [ ] Async GPU→RAM start/poll/commit/abort with host reservations, qualified source
+    ownership, hits after planning, copied-vs-freed accounting and atomic radix rename.
+  - [ ] Qualified queued-demand protection/prefetch with explicit token/record lifetime;
+    read priority and bounded host/staging headroom.
+  - [ ] Exact state/logits, adversarial interleavings, repeated loaded serving against
+    tuned Vulkan and runnable RDNA3/HIP; full performance target remains open.
+    [Native audit / proposed transaction](docs/design/tiering-preparation-audit.md).
+    No D code or hardware-overlap result yet.
 - [ ] **19 · image input: Qwen3.8-27B vision through `/v1/chat/completions`** (parked).
   - Why: bruh sends tool screenshots as `image_url` user content (PNG data URLs); zerv answers
     400 and the turn fails. llama-server serves them with `--mmproj`.

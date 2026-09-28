@@ -34,6 +34,8 @@ pub const Stall = union(enum) { chunk, ns: u64 };
 pub const Order = enum { shortest, fifo };
 /// Optional backend pollCache(slot, cancel): error only after all I/O is drained.
 pub const CachePoll = struct { done: bool = false, progressed: bool = false, position: u32 = 0 };
+/// Optional background owner: terminal errors mean all its borrowed state drained.
+pub const MaintenancePoll = struct { pending: bool = false, progressed: bool = false, reclaimed: bool = false };
 
 pub const Stats = struct {
     batches: u64 = 0,
@@ -105,6 +107,7 @@ pub fn Batcher(comptime Backend: type) type {
             else => Backend,
         };
         const can_poll = @hasDecl(BackendType, "pollCache");
+        const can_maintain = @hasDecl(BackendType, "pollMaintenance");
         pub const Options = struct {
             slots: u32,
             vocab: usize,
@@ -133,6 +136,8 @@ pub fn Batcher(comptime Backend: type) type {
             op: Op = .none,
             running: bool = false,
             io_pending: bool = false,
+            /// Decode waiting for an optional source to drain; retry only on a new epoch.
+            reclaim_epoch: ?u64 = null,
             /// Its waiter was canceled while the operation ran: drop it after the running unit.
             canceled: bool = false,
             order: u64 = 0,
@@ -176,6 +181,7 @@ pub fn Batcher(comptime Backend: type) type {
         slot: [max_slots]Slot = @splat(.{}),
         stopping: bool = false,
         io_cursor: u32 = 0,
+        maintenance_pending: bool = false,
         held_rows: u32 = 0,
         /// Completed prompts whose logits are not yet sampled (a new chunk would overwrite them).
         prefill_holds: u32 = 0,
@@ -361,6 +367,7 @@ pub fn Batcher(comptime Backend: type) type {
             s.base = 0;
             s.failed_epoch = std.math.maxInt(u64);
             s.io_pending = false;
+            s.reclaim_epoch = null;
             s.used = false;
             s.closing = false;
             s.decoding = false;
@@ -509,6 +516,18 @@ pub fn Batcher(comptime Backend: type) type {
             return .{};
         }
 
+        fn pollBackground(self: *Self, reads_pending: bool) MaintenancePoll {
+            if (comptime !can_maintain) return .{};
+            if (self.pack != null) return .{ .pending = self.maintenance_pending };
+            const stopping = self.stopping;
+            self.mutex.unlock(self.io);
+            const p = self.backend.pollMaintenance(stopping, reads_pending) catch MaintenancePoll{ .progressed = true, .reclaimed = true };
+            self.mutex.lockUncancelable(self.io);
+            self.maintenance_pending = p.pending;
+            if (p.reclaimed) self.admit_epoch += 1;
+            return p;
+        }
+
         /// The scheduler task: runs operations until `stop`.
         pub fn run(self: *Self) void {
             var rows: [max_slots]Row = undefined;
@@ -535,8 +554,11 @@ pub fn Batcher(comptime Backend: type) type {
                     self.mutex.unlock(self.io);
                     continue;
                 }
-                const io_progress = self.pollIo();
-                // pollIo unlocks: a client may leave and reuse a slot in that window.
+                var io_progress = self.pollIo();
+                const background = self.pollBackground(io_progress.pending);
+                io_progress.pending = io_progress.pending or background.pending;
+                io_progress.progressed = io_progress.progressed or background.progressed;
+                // Both poll callbacks unlock: a client may leave and reuse a slot in that window.
                 // Drain its OLD release before a new begin can map pages in that slot.
                 if (self.to_release != 0) {
                     self.mutex.unlock(self.io);
@@ -694,7 +716,9 @@ pub fn Batcher(comptime Backend: type) type {
                         .reset, .begin, .checkpoint, .prefill => if (!s.running and self.eligible(s) and (pre == null or self.before(s, &self.slot[pre.?]))) {
                             pre = @intCast(i);
                         },
-                        .step => n_steps += 1,
+                        .step => if (s.reclaim_epoch == null or s.reclaim_epoch.? != self.admit_epoch) {
+                            n_steps += 1;
+                        },
                         .none => {},
                     }
                 }
@@ -729,7 +753,7 @@ pub fn Batcher(comptime Backend: type) type {
                 if (batch_ready and (!prefill_ready or (!self.last_batch and preempt))) {
                     var n: usize = 0;
                     var ages: [max_slots]u64 = undefined;
-                    for (self.slot[0..self.options.slots], 0..) |*s, i| if (s.used and !s.closing and !s.swapped and s.op == .step) {
+                    for (self.slot[0..self.options.slots], 0..) |*s, i| if (s.used and !s.closing and !s.swapped and s.op == .step and (s.reclaim_epoch == null or s.reclaim_epoch.? != self.admit_epoch)) {
                         rows[n] = .{ .slot = @intCast(i), .token = s.token };
                         ages[n] = s.order;
                         s.running = true;
@@ -751,6 +775,7 @@ pub fn Batcher(comptime Backend: type) type {
                     // pool is exhausted, the youngest row still in the batch is swapped out
                     // (itself, last). Rows are running: no other thread frees their slots.
                     var out_rows: [max_slots]bool = @splat(false);
+                    var retry_reclaim: [max_slots]bool = @splat(false);
                     var by_age: [max_slots]usize = undefined;
                     for (0..n) |r| {
                         var j = r;
@@ -762,6 +787,7 @@ pub fn Batcher(comptime Backend: type) type {
                         if (out_rows[r] or !ok[r]) continue;
                         while (true) {
                             const grown = self.backend.grow(rows[r].slot) catch |e| {
+                                retry_reclaim[r] = e == error.CacheReclaimPending;
                                 bad[r] = e;
                                 ok[r] = false;
                                 break;
@@ -809,6 +835,16 @@ pub fn Batcher(comptime Backend: type) type {
                     self.last_batch_end = t1;
                     for (rows[0..n], 0..) |row, r| {
                         const s = &self.slot[row.slot];
+                        if (retry_reclaim[r]) {
+                            s.reclaim_epoch = self.admit_epoch;
+                            if (s.canceled or s.closing or self.stopping) {
+                                s.op = .none;
+                                s.err = error.Canceled;
+                                self.complete(s);
+                            } else s.running = false;
+                            continue;
+                        }
+                        s.reclaim_epoch = null;
                         if (out_rows[r]) {
                             // Swapped out: its step stays queued until `swapIn` (unless its
                             // generation went away meanwhile).

@@ -1,0 +1,561 @@
+{
+  "run_status": "failed",
+  "native_identical": 96,
+  "failed_engines": {
+    "rdna3": {
+      "attempted": 12,
+      "failed": 12,
+      "unattempted": 12,
+      "errors": [
+        "RemoteDisconnected: Remote end closed connection without response",
+        "RuntimeError: stream ended without [DONE]"
+      ],
+      "performance": null
+    },
+    "rdna3-b512": {
+      "attempted": 12,
+      "failed": 12,
+      "unattempted": 12,
+      "errors": [
+        "RemoteDisconnected: Remote end closed connection without response",
+        "RuntimeError: stream ended without [DONE]"
+      ],
+      "performance": null
+    }
+  },
+  "serving": {
+    "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=2,kv-swap-mib=4096,prefix-cache-tier=off": {
+      "wall_s": {
+        "n": 3,
+        "mean": 66.98714765733651,
+        "stdev": 3.7530859568235417,
+        "minimum": 62.666076321009314,
+        "maximum": 69.43388444199809
+      },
+      "aggregate_tok_s": {
+        "n": 3,
+        "mean": 8.886575333255147,
+        "stdev": 0.514123559620517,
+        "minimum": 8.554900892750723,
+        "maximum": 9.47881269855181
+      },
+      "ttft_p50_ms": {
+        "n": 3,
+        "mean": 22090.068856996368,
+        "stdev": 3453.658017988191,
+        "minimum": 18168.15250599757,
+        "maximum": 24676.872705997084
+      },
+      "ttft_p95_ms": {
+        "n": 3,
+        "mean": 33791.509919664044,
+        "stdev": 185.29437018282792,
+        "minimum": 33581.730104997405,
+        "maximum": 33932.84602899803
+      },
+      "gap_p99_ms": {
+        "n": 3,
+        "mean": 145.3516806650441,
+        "stdev": 0.4194710223851403,
+        "minimum": 144.93711100658402,
+        "maximum": 145.77588699467015
+      },
+      "turn_0_ttft_p50_ms": {
+        "n": 3,
+        "mean": 25435.962584999896,
+        "stdev": 715.6057586018757,
+        "minimum": 24676.872705997084,
+        "maximum": 26098.22384599829
+      },
+      "turn_1_ttft_p50_ms": {
+        "n": 3,
+        "mean": 22321.322578330484,
+        "stdev": 3725.96465434594,
+        "minimum": 18168.15250599757,
+        "maximum": 25370.633869999438
+      },
+      "resources": [
+        {
+          "round": 0,
+          "log": "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=2,kv-swap-mib=4096,prefix-cache-tier=off-r0.log",
+          "vram_peak": 18249367552,
+          "host_memory": {
+            "VmHWM": "15473600 kB",
+            "VmRSS": "76752 kB"
+          }
+        },
+        {
+          "round": 1,
+          "log": "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=2,kv-swap-mib=4096,prefix-cache-tier=off-r1.log",
+          "vram_peak": 18167418880,
+          "host_memory": {
+            "VmHWM": "15477384 kB",
+            "VmRSS": "74476 kB"
+          }
+        },
+        {
+          "round": 2,
+          "log": "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=2,kv-swap-mib=4096,prefix-cache-tier=off-r2.log",
+          "vram_peak": 18156392448,
+          "host_memory": {
+            "VmHWM": "15477968 kB",
+            "VmRSS": "81852 kB"
+          }
+        }
+      ],
+      "generated_tokens": [
+        594,
+        594,
+        594
+      ]
+    },
+    "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host": {
+      "wall_s": {
+        "n": 3,
+        "mean": 47.965337839001826,
+        "stdev": 0.47528770801194925,
+        "minimum": 47.61749198799953,
+        "maximum": 48.506889454001794
+      },
+      "aggregate_tok_s": {
+        "n": 3,
+        "mean": 12.38474941613112,
+        "stdev": 0.1221047895442667,
+        "minimum": 12.24568317379492,
+        "maximum": 12.474407517088443
+      },
+      "ttft_p50_ms": {
+        "n": 3,
+        "mean": 10908.043313000235,
+        "stdev": 550.4057612005472,
+        "minimum": 10444.690721997176,
+        "maximum": 11516.448668000521
+      },
+      "ttft_p95_ms": {
+        "n": 3,
+        "mean": 33488.701667335896,
+        "stdev": 124.55481537304064,
+        "minimum": 33385.32414099609,
+        "maximum": 33626.98556500254
+      },
+      "gap_p99_ms": {
+        "n": 3,
+        "mean": 145.1272346700231,
+        "stdev": 0.6233558241476332,
+        "minimum": 144.4144090055488,
+        "maximum": 145.57014699676074
+      },
+      "turn_0_ttft_p50_ms": {
+        "n": 3,
+        "mean": 24845.37548966182,
+        "stdev": 678.5987867581755,
+        "minimum": 24062.425269992673,
+        "maximum": 25264.01728000201
+      },
+      "turn_1_ttft_p50_ms": {
+        "n": 3,
+        "mean": 4567.973348331482,
+        "stdev": 2489.410491752638,
+        "minimum": 2849.008937992039,
+        "maximum": 7422.708824000438
+      },
+      "resources": [
+        {
+          "round": 0,
+          "log": "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host-r0.log",
+          "vram_peak": 18250563584,
+          "host_memory": {
+            "VmHWM": "15471904 kB",
+            "VmRSS": "70500 kB"
+          }
+        },
+        {
+          "round": 1,
+          "log": "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host-r1.log",
+          "vram_peak": 18301853696,
+          "host_memory": {
+            "VmHWM": "15474360 kB",
+            "VmRSS": "68924 kB"
+          }
+        },
+        {
+          "round": 2,
+          "log": "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host-r2.log",
+          "vram_peak": 18172375040,
+          "host_memory": {
+            "VmHWM": "15473376 kB",
+            "VmRSS": "77164 kB"
+          }
+        }
+      ],
+      "generated_tokens": [
+        594,
+        594,
+        594
+      ]
+    },
+    "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=2,kv-swap-mib=4096,prefix-cache-tier=off,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096": {
+      "wall_s": {
+        "n": 3,
+        "mean": 65.10809806333661,
+        "stdev": 4.0772708777251525,
+        "minimum": 62.1636840459978,
+        "maximum": 69.76180745000602
+      },
+      "aggregate_tok_s": {
+        "n": 3,
+        "mean": 9.146455996779444,
+        "stdev": 0.5549882548330971,
+        "minimum": 8.51468764518011,
+        "maximum": 9.555418233585895
+      },
+      "ttft_p50_ms": {
+        "n": 3,
+        "mean": 20518.04998299728,
+        "stdev": 3547.375063186606,
+        "minimum": 18116.702878993237,
+        "maximum": 24592.57441900263
+      },
+      "ttft_p95_ms": {
+        "n": 3,
+        "mean": 33621.150134999574,
+        "stdev": 287.503247759864,
+        "minimum": 33368.99569899833,
+        "maximum": 33934.2346330086
+      },
+      "gap_p99_ms": {
+        "n": 3,
+        "mean": 145.5313093320001,
+        "stdev": 0.45133909428994545,
+        "minimum": 145.10189200518653,
+        "maximum": 146.00176698877476
+      },
+      "turn_0_ttft_p50_ms": {
+        "n": 3,
+        "mean": 24595.659683667083,
+        "stdev": 292.4830686309877,
+        "minimum": 24304.731451993575,
+        "maximum": 24889.673180005047
+      },
+      "turn_1_ttft_p50_ms": {
+        "n": 3,
+        "mean": 20901.211846333656,
+        "stdev": 4208.077471339216,
+        "minimum": 18116.702878993237,
+        "maximum": 25742.060009011766
+      },
+      "resources": [
+        {
+          "round": 0,
+          "log": "engine-66380373eb9c73ec-r0.log",
+          "vram_peak": 18248507392,
+          "host_memory": {
+            "VmHWM": "15475936 kB",
+            "VmRSS": "83332 kB"
+          }
+        },
+        {
+          "round": 1,
+          "log": "engine-66380373eb9c73ec-r1.log",
+          "vram_peak": 18327126016,
+          "host_memory": {
+            "VmHWM": "15483712 kB",
+            "VmRSS": "78920 kB"
+          }
+        },
+        {
+          "round": 2,
+          "log": "engine-66380373eb9c73ec-r2.log",
+          "vram_peak": 18158227456,
+          "host_memory": {
+            "VmHWM": "15483560 kB",
+            "VmRSS": "89044 kB"
+          }
+        }
+      ],
+      "generated_tokens": [
+        594,
+        594,
+        594
+      ]
+    },
+    "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096": {
+      "wall_s": {
+        "n": 3,
+        "mean": 51.38287078500434,
+        "stdev": 4.020079887534828,
+        "minimum": 46.76295577500423,
+        "maximum": 54.0844036690105
+      },
+      "aggregate_tok_s": {
+        "n": 3,
+        "mean": 11.60979965997586,
+        "stdev": 0.949620803701983,
+        "minimum": 10.982833491799273,
+        "maximum": 12.702362161578874
+      },
+      "ttft_p50_ms": {
+        "n": 3,
+        "mean": 14507.17513966083,
+        "stdev": 3862.608958793113,
+        "minimum": 10049.148601989145,
+        "maximum": 16855.551344997366
+      },
+      "ttft_p95_ms": {
+        "n": 3,
+        "mean": 33806.0967506705,
+        "stdev": 341.2390267233612,
+        "minimum": 33554.50847800239,
+        "maximum": 34194.515294002485
+      },
+      "gap_p99_ms": {
+        "n": 3,
+        "mean": 144.93819433361446,
+        "stdev": 0.49287533088331387,
+        "minimum": 144.48296300543007,
+        "maximum": 145.4616130067734
+      },
+      "turn_0_ttft_p50_ms": {
+        "n": 3,
+        "mean": 25729.861427666037,
+        "stdev": 1300.0481826268972,
+        "minimum": 24234.367140001268,
+        "maximum": 26590.515186995617
+      },
+      "turn_1_ttft_p50_ms": {
+        "n": 3,
+        "mean": 6601.429449665981,
+        "stdev": 3624.0694871218075,
+        "minimum": 2418.0174409993924,
+        "maximum": 8783.565657999134
+      },
+      "resources": [
+        {
+          "round": 0,
+          "log": "engine-610a077529fd1514-r0.log",
+          "vram_peak": 18253590528,
+          "host_memory": {
+            "VmHWM": "15472928 kB",
+            "VmRSS": "83592 kB"
+          }
+        },
+        {
+          "round": 1,
+          "log": "engine-610a077529fd1514-r1.log",
+          "vram_peak": 18402226176,
+          "host_memory": {
+            "VmHWM": "15473556 kB",
+            "VmRSS": "83104 kB"
+          }
+        },
+        {
+          "round": 2,
+          "log": "engine-610a077529fd1514-r2.log",
+          "vram_peak": 18158587904,
+          "host_memory": {
+            "VmHWM": "15486872 kB",
+            "VmRSS": "81552 kB"
+          }
+        }
+      ],
+      "generated_tokens": [
+        594,
+        594,
+        594
+      ]
+    },
+    "llama-fa-kvu": {
+      "wall_s": {
+        "n": 3,
+        "mean": 52.64136093267007,
+        "stdev": 3.0892523301482298,
+        "minimum": 50.8140970000095,
+        "maximum": 56.20816267299233
+      },
+      "aggregate_tok_s": {
+        "n": 3,
+        "mean": 10.963060886682024,
+        "stdev": 0.32939164545590455,
+        "minimum": 10.71018818925489,
+        "maximum": 11.335546834598865
+      },
+      "ttft_p50_ms": {
+        "n": 3,
+        "mean": 16379.98771033017,
+        "stdev": 1308.15601751394,
+        "minimum": 14872.134792007273,
+        "maximum": 17211.73992799595
+      },
+      "ttft_p95_ms": {
+        "n": 3,
+        "mean": 41058.437812995784,
+        "stdev": 549.5253010520372,
+        "minimum": 40677.721902990015,
+        "maximum": 41688.420156991924
+      },
+      "gap_p99_ms": {
+        "n": 3,
+        "mean": 1966.6506560024573,
+        "stdev": 157.5711214085088,
+        "minimum": 1785.019403003389,
+        "maximum": 2066.7519840062596
+      },
+      "turn_0_ttft_p50_ms": {
+        "n": 3,
+        "mean": 30331.82741833055,
+        "stdev": 679.7870509463979,
+        "minimum": 29888.39670899324,
+        "maximum": 31114.46820400306
+      },
+      "turn_1_ttft_p50_ms": {
+        "n": 3,
+        "mean": 5735.303097666474,
+        "stdev": 1000.8831497255941,
+        "minimum": 4873.853747994872,
+        "maximum": 6833.2577499968465
+      },
+      "resources": [
+        {
+          "round": 0,
+          "log": "llama-fa-kvu-r0.log",
+          "vram_peak": 17819561984,
+          "host_memory": {
+            "VmHWM": "15816548 kB",
+            "VmRSS": "6348392 kB"
+          }
+        },
+        {
+          "round": 1,
+          "log": "llama-fa-kvu-r1.log",
+          "vram_peak": 17819561984,
+          "host_memory": {
+            "VmHWM": "15817392 kB",
+            "VmRSS": "6385188 kB"
+          }
+        },
+        {
+          "round": 2,
+          "log": "llama-fa-kvu-r2.log",
+          "vram_peak": 17740050432,
+          "host_memory": {
+            "VmHWM": "15817548 kB",
+            "VmRSS": "6356680 kB"
+          }
+        }
+      ],
+      "generated_tokens": [
+        551,
+        602,
+        577
+      ]
+    },
+    "llama-fa-b512": {
+      "wall_s": {
+        "n": 3,
+        "mean": 50.552213895998044,
+        "stdev": 1.0894888637460374,
+        "minimum": 49.865387921003276,
+        "maximum": 51.80841850499564
+      },
+      "aggregate_tok_s": {
+        "n": 3,
+        "mean": 11.74132535030976,
+        "stdev": 0.1638779551158909,
+        "minimum": 11.623990455014612,
+        "maximum": 11.92856330753291
+      },
+      "ttft_p50_ms": {
+        "n": 3,
+        "mean": 11923.635901000429,
+        "stdev": 42.12457243897754,
+        "minimum": 11882.021402998362,
+        "maximum": 11966.252661004546
+      },
+      "ttft_p95_ms": {
+        "n": 3,
+        "mean": 40186.03640432897,
+        "stdev": 546.8666310418349,
+        "minimum": 39608.98628299765,
+        "maximum": 40696.64924099925
+      },
+      "gap_p99_ms": {
+        "n": 3,
+        "mean": 591.6047250017679,
+        "stdev": 43.47307127864812,
+        "minimum": 560.2499439992243,
+        "maximum": 641.2315810011933
+      },
+      "turn_0_ttft_p50_ms": {
+        "n": 3,
+        "mean": 30743.95197699293,
+        "stdev": 230.29508287389996,
+        "minimum": 30514.047623990336,
+        "maximum": 30974.635810998734
+      },
+      "turn_1_ttft_p50_ms": {
+        "n": 3,
+        "mean": 4810.225442997762,
+        "stdev": 656.977440632447,
+        "minimum": 4421.42563899688,
+        "maximum": 5568.757768996875
+      },
+      "resources": [
+        {
+          "round": 0,
+          "log": "llama-fa-b512-r0.log",
+          "vram_peak": 17805930496,
+          "host_memory": {
+            "VmHWM": "15817612 kB",
+            "VmRSS": "6355952 kB"
+          }
+        },
+        {
+          "round": 1,
+          "log": "llama-fa-b512-r1.log",
+          "vram_peak": 17805946880,
+          "host_memory": {
+            "VmHWM": "15817712 kB",
+            "VmRSS": "6358444 kB"
+          }
+        },
+        {
+          "round": 2,
+          "log": "llama-fa-b512-r2.log",
+          "vram_peak": 17723600896,
+          "host_memory": {
+            "VmHWM": "15817332 kB",
+            "VmRSS": "6355188 kB"
+          }
+        }
+      ],
+      "generated_tokens": [
+        582,
+        618,
+        581
+      ]
+    }
+  },
+  "component": {
+    "long": [
+      {
+        "prefix": 80000,
+        "state_bytes": 5399773184,
+        "exact_state": true,
+        "exact_vocab_rows": 4,
+        "elapsed_ns": 162784686328,
+        "capture_ns": 4612727581,
+        "restore_ns": 6013316340,
+        "disk_write_ns": 7420557023,
+        "disk": true,
+        "independent_rows": 2,
+        "device_starts": 25744,
+        "device_pending_polls": 65912,
+        "max_poll_ns": 3725376,
+        "source": true,
+        "source_cpu_quanta": 305,
+        "source_gpu_quanta": 9995,
+        "pressure": true
+      }
+    ]
+  }
+}

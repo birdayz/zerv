@@ -45,6 +45,8 @@ const Job = struct {
 };
 const Pending = struct { ticket: storage.Ticket, slot: u32, chunk: u32 };
 pub const Progress = struct { done: bool = false, progressed: bool = false, position: u32 = 0 };
+/// Drain/acknowledge owners even when discretionary new work is forbidden.
+pub const Advance = struct { allow_start: bool = true, max_pending: u32 = storage.max_depth };
 
 pub const Archive = struct {
     allocator: std.mem.Allocator,
@@ -127,6 +129,13 @@ pub const Archive = struct {
             if (std.mem.eql(u32, self.prefix(@intCast(i)), prompt[0..e.len])) best = @intCast(i);
         }
         return best;
+    }
+    /// Exact ready backing only; reusable record indices are not persistent identities.
+    pub fn containsReady(self: *const Archive, tokens: []const u32) bool {
+        for (self.entries, 0..) |e, i| {
+            if (e.phase == .ready and e.len == tokens.len and std.mem.eql(u32, self.prefix(@intCast(i)), tokens)) return true;
+        }
+        return false;
     }
     fn freeRecord(self: *Archive, i: u32) void {
         const e = &self.entries[i];
@@ -234,6 +243,9 @@ pub const Archive = struct {
     /// At most one device poll/start, one disk completion and one acquisition per call.
     /// Never waits. An error is returned only after this job's device AND disk leases drain.
     pub fn advance(self: *Archive, dev: Device, slot: u32, cancel: bool) !Progress {
+        return self.advanceWith(dev, slot, cancel, .{});
+    }
+    pub fn advanceWith(self: *Archive, dev: Device, slot: u32, cancel: bool, options: Advance) !Progress {
         if (slot >= self.jobs.len or !self.jobs[slot].active) return error.InvalidSlot;
         const j = &self.jobs[slot];
         const e = &self.entries[j.record];
@@ -281,7 +293,7 @@ pub const Archive = struct {
             break;
         }
         if (!j.writing and j.failure != null and j.failure.? != error.Canceled) e.phase = .bad;
-        if (j.failure == null and j.next < e.chunks and (!j.writing or self.device_pending == null)) {
+        if (options.allow_start and j.pending < options.max_pending and j.failure == null and j.next < e.chunks and (!j.writing or self.device_pending == null)) {
             const ticket: ?storage.Ticket = self.store.acquire() catch |err| if (err == error.QueueFull) null else return err;
             if (ticket) |t| {
                 const held: Pending = .{ .ticket = t, .slot = slot, .chunk = j.next };

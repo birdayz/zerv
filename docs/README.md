@@ -361,3 +361,15 @@ finish independent tests and benchmark gates before advancing.
      Repeated component timings retain variance and the long-restore regression.
      Pressure admission and proactive prefetch are not integrated; no serving
      speedup claim. [C.3 specification](specs/tiering-pressure.md) precedes its code.
+111. [Pressure-driven archive admission](bench/2026-09-28-tiering-pressure.md)
+     (C.3 gates closed): checkpoint-triggered writes removed; bounded byte/slot
+     policy, background drain, read priority and hard-pressure cancellation.
+     Independent 2,048 decisions / 1,560 transitions; CPU 81/81, repeated interface
+     tests, GPU/spill 3/3, host GPU 2/2, model oracle 337/337, exact 257/80k state.
+     Three-round serving: 96 native responses/token counts exact; immediate-turn
+     disk yields no restores and source retention reaches 29 s. Explicit idle
+     host+disk gate restores 669 MB with eight exact responses. Native host+disk
+     51.383 ± 4.020 s versus tuned RDNA3/HIP 49.783 ± 1.320 s; differing reference
+     token streams, no disk speedup. RDNA3 fusion failures retained, supported
+     nofusion follow-up passes. [D audit](design/tiering-preparation-audit.md)
+     is active research, not code; the full plan/performance goal remains open.

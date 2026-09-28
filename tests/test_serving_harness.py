@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parents[1]/"bench"))
 import run_serving  # noqa: E402
@@ -139,6 +140,45 @@ class EngineSuffixTests(unittest.TestCase):
             self.assertLess(len(name.encode()), 255)
             self.assertEqual(name, run_multiturn.log_name(engine, 3))
             self.assertNotEqual(name, run_multiturn.log_name(engine, 4))
+
+    def test_rdna3_fusion_opt_out_is_inside_container(self):
+        normal = run_serving.rdna3_engine(Path("model.gguf"), 18098, 24576, ["-b", "512"])
+        tuned = run_serving.rdna3_engine(Path("model.gguf"), 18098, 24576, ["-b", "512"], disable_fusion=True)
+        cmd = tuned["cmd"]
+        i = cmd.index("GGML_CUDA_DISABLE_FUSION=1")
+        self.assertEqual(cmd[i - 1], "-e")
+        self.assertLess(i, cmd.index("--entrypoint"))
+        self.assertLess(i, cmd.index(run_serving.VLLM_IMAGE))
+        self.assertEqual(cmd[:i - 1] + cmd[i + 1:], normal["cmd"])
+        self.assertEqual(tuned["env"], {})
+        self.assertEqual(tuned["stop"], normal["stop"])
+
+    def test_container_memory_uses_server_pid_not_launcher(self):
+        import run_multiturn
+        spec = dict(cmd=["docker", "run"], container="test-server")
+        with mock.patch.object(run_multiturn.subprocess, "check_output", return_value="123\n") as inspect, mock.patch.object(Path, "read_text", autospec=True, return_value="Name:\tserver\nVmHWM:\t4096 kB\nVmRSS:\t2048 kB\n") as read:
+            got = run_multiturn.host_memory(spec, 456)
+            inspect.assert_called_once_with(["docker", "inspect", "--format", "{{.State.Pid}}", "test-server"], text=True)
+            read.assert_called_once_with(Path("/proc/123/status"))
+        self.assertEqual(got, dict(values=dict(VmHWM="4096 kB", VmRSS="2048 kB"), scope="container-init-process", pid=123))
+        with mock.patch.object(run_multiturn.subprocess, "check_output", return_value="0\n"), mock.patch.object(Path, "read_text") as read:
+            self.assertEqual(run_multiturn.host_memory(spec, 456)["scope"], "unavailable")
+            read.assert_not_called()
+        self.assertEqual(run_multiturn.host_memory(dict(cmd=["docker", "run"]), 456)["scope"], "unavailable")
+
+    def test_phase_idle_runs_once_per_barrier_not_per_client(self):
+        import io
+        import run_multiturn
+        workload = dict(conversations=[dict(turns=["one", "two"])] * 2)
+        def conversation(port, w, conv, recs, engine, level, rnd, barrier):
+            for turn in range(2):
+                if turn: barrier.wait(timeout=5)
+                recs.append(dict(turn=turn, send=1, times=[2, 3], usage=dict(prompt_tokens=1, completion_tokens=1)))
+        with mock.patch.object(run_multiturn, "conversation", conversation), mock.patch.object(run_multiturn.time, "sleep") as sleep:
+            result = run_multiturn.level_run(0, workload, 2, io.StringIO(), "fake", 0, True, 6)
+            sleep.assert_called_once_with(6)
+        self.assertEqual(result["completion_tokens"], 4)
+        self.assertEqual(result["errors"], [])
 
     def test_zerv_flags(self):
         table = {"zerv": dict(cmd=["/bin/zerv", "--model", "m"], env={}), "llama": dict(cmd=["/usr/bin/llama-server"], env={})}

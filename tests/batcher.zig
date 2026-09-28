@@ -86,6 +86,18 @@ const Fake = struct {
     in_reset: std.atomic.Value(bool) = .init(false),
     resume_reset: std.Io.Event = .unset,
 
+    maintenance_live: std.atomic.Value(bool) = .init(false),
+    maintenance_entered: std.atomic.Value(bool) = .init(false),
+    maintenance_ready: std.atomic.Value(bool) = .init(false),
+    maintenance_urgent: std.atomic.Value(bool) = .init(false),
+    maintenance_grows: std.atomic.Value(u32) = .init(0),
+    maintenance_reads: std.atomic.Value(u32) = .init(0),
+    maintenance_cancel_polls: u32 = 0,
+    maintenance_block_grow: bool = false,
+    maintenance_pause: bool = false,
+    maintenance_in_poll: std.Io.Event = .unset,
+    maintenance_resume: std.Io.Event = .unset,
+
     io_pause_poll: bool = false,
     io_in_poll: std.Io.Event = .unset,
     io_resume_poll: std.Io.Event = .unset,
@@ -98,6 +110,21 @@ const Fake = struct {
     io_cancel_polls: u32 = 0,
     io_entered: std.atomic.Value(bool) = .init(false),
     io_ready: std.atomic.Value(bool) = .init(false),
+    pub fn pollMaintenance(self: *Fake, stopping: bool, reads_pending: bool) !batcher.MaintenancePoll {
+        if (!self.maintenance_live.load(.acquire)) return .{};
+        if (self.flight != null) return error.PackStillLive;
+        self.maintenance_entered.store(true, .release);
+        if (self.maintenance_pause) {
+            self.maintenance_pause = false;
+            self.maintenance_in_poll.set(self.io);
+            self.maintenance_resume.waitUncancelable(self.io);
+        }
+        if (reads_pending) _ = self.maintenance_reads.fetchAdd(1, .monotonic);
+        if (stopping) self.maintenance_cancel_polls += 1;
+        if (self.maintenance_cancel_polls < 3 and !self.maintenance_ready.load(.acquire)) return .{ .pending = true };
+        self.maintenance_live.store(false, .release);
+        return .{ .progressed = true, .reclaimed = true };
+    }
     fn pending(self: *Fake, slot: u32, tokens: []const u32) anyerror!void {
         self.io_live = slot;
         self.io_tokens = tokens;
@@ -249,6 +276,11 @@ const Fake = struct {
         return n;
     }
     pub fn grow(self: *Fake, slot: u32) !bool {
+        if (slot == 0 and self.maintenance_block_grow and self.maintenance_live.load(.acquire)) {
+            _ = self.maintenance_grows.fetchAdd(1, .monotonic);
+            self.maintenance_urgent.store(true, .release);
+            return error.CacheReclaimPending;
+        }
         if (self.pool == 0) return true;
         if (self.swapped[slot]) return error.FakeSwapped;
         const want = (self.pos[slot] + 1 + self.page - 1) / self.page;
@@ -1183,4 +1215,96 @@ test "batcher: stop aborts a packed chunk before draining pending cache I/O" {
     try t.expectEqual(@as(u32, 0), fake.violations);
     b.leave(a);
     b.leave(other);
+}
+
+test "batcher: source-only maintenance wakes while idle and drains on stop without request slots" {
+    const io = t.io;
+    var fake: Fake = .{ .io = io, .maintenance_live = .init(true) };
+    var b = try B.init(io, &fake, .{ .slots = 2, .vocab = V });
+    var scheduler = try io.concurrent(B.run, .{&b});
+    while (!fake.maintenance_entered.load(.acquire)) try io.sleep(.fromMicroseconds(100), .awake);
+    b.stop();
+    scheduler.await(io);
+    try t.expect(!fake.maintenance_live.load(.acquire));
+    try t.expectEqual(@as(u32, 3), fake.maintenance_cancel_polls);
+    try t.expect(b.admit_epoch > 0);
+}
+
+test "batcher: reclaim-blocked decode keeps its step, waits for an epoch, and permits other rows" {
+    const io = t.io;
+    var fake: Fake = .{ .io = io, .maintenance_live = .init(true), .maintenance_block_grow = true };
+    var b = try B.init(io, &fake, .{ .slots = 2, .vocab = V });
+    const a = try b.join();
+    const other = try b.join();
+    var scheduler = try io.concurrent(B.run, .{&b});
+    defer {
+        b.stop();
+        scheduler.await(io);
+    }
+    try b.reset(a);
+    _ = try b.prefill(a, &.{7});
+    b.sampled(a);
+    var pending = try io.concurrent(B.step, .{ &b, a, 5 });
+    while (!fake.maintenance_urgent.load(.acquire)) try io.sleep(.fromMicroseconds(100), .awake);
+    try io.sleep(.fromMilliseconds(5), .awake);
+    try t.expectEqual(@as(u32, 1), fake.maintenance_grows.load(.acquire));
+    try b.reset(other);
+    _ = try b.prefill(other, &.{11});
+    b.sampled(other);
+    const row = try b.step(other, 13);
+    var want: [V]f32 = undefined;
+    logitsFor(mix(mix(7, 11), 13), &want);
+    try t.expectEqualSlices(f32, &want, row);
+    b.sampled(other);
+    fake.maintenance_ready.store(true, .release);
+    const got = try pending.await(io);
+    logitsFor(mix(mix(7, 7), 5), &want);
+    try t.expectEqualSlices(f32, &want, got);
+    b.sampled(a);
+    b.leave(a);
+    b.leave(other);
+    try t.expectEqual(@as(u32, 0), fake.violations);
+}
+
+test "batcher: leave/reuse during unlocked maintenance releases old pages before begin" {
+    const io = t.io;
+    var fake: Fake = .{ .io = io, .maintenance_live = .init(true), .maintenance_pause = true };
+    var b = try B.init(io, &fake, .{ .slots = 2, .vocab = V });
+    const old = try b.join();
+    var scheduler = try io.concurrent(B.run, .{&b});
+    fake.maintenance_in_poll.waitUncancelable(io);
+    b.leave(old);
+    const reused = try b.join();
+    var next = try io.concurrent(pendingCacheOp, .{ &b, reused, @as([]const u32, &.{ 4, 5, 6 }), false });
+    while (true) {
+        b.mutex.lockUncancelable(io);
+        const begin_queued = b.slot[reused].op == .begin;
+        b.mutex.unlock(io);
+        if (begin_queued) break;
+        try io.sleep(.fromMicroseconds(100), .awake);
+    }
+    fake.maintenance_resume.set(io);
+    _ = try next.await(io);
+    b.stop();
+    scheduler.await(io);
+    try t.expectEqual(@as(u32, 1), fake.release_calls[reused]);
+    try t.expectEqual(fake.release_calls[reused], fake.reset_release_seen[reused]);
+    try t.expectEqual(@as(u32, 3), fake.maintenance_cancel_polls);
+    b.leave(reused);
+}
+
+test "batcher: foreground I/O priority reaches maintenance, stop drains both owners" {
+    const io = t.io;
+    var fake: Fake = .{ .io = io, .io_kind = .begin, .maintenance_live = .init(true) };
+    var b = try B.init(io, &fake, .{ .slots = 2, .vocab = V });
+    const a = try b.join();
+    var scheduler = try io.concurrent(B.run, .{&b});
+    var pending = try io.concurrent(pendingCacheOp, .{ &b, a, @as([]const u32, &.{ 1, 2, 3 }), false });
+    while (fake.maintenance_reads.load(.acquire) == 0) try io.sleep(.fromMicroseconds(100), .awake);
+    b.stop();
+    scheduler.await(io);
+    try t.expectError(error.Canceled, pending.await(io));
+    try t.expect(fake.io_cancel_polls >= 3 and fake.maintenance_cancel_polls >= 3);
+    try t.expect(fake.io_live == null and !fake.maintenance_live.load(.acquire));
+    b.leave(a);
 }

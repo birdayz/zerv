@@ -13,6 +13,7 @@ const usage =
     \\            [--prefix-cache-slots 8, with --parallel N: 3N]  (recurrent-state snapshots, ~150 MiB each; 0 = no prefix cache)
     \\            [--prefix-cache-disk-dir DIR --prefix-cache-disk-mib N]  (opt-in immutable RAM-staged disk archive; shared KV, parallel > 1)
     \\            [--prefix-cache-disk-entries 64] [--prefix-cache-disk-alignment N]  (bounded metadata; optional explicit direct-I/O alignment in bytes)
+    \\            [--prefix-cache-disk-headroom-slots N] [--prefix-cache-disk-headroom-mib N]  (pressure-driven preservation; auto: 0/1 slots, up to 256 MiB host KV)
     \\            [--prefix-cache-tier host]  (radix: checkpoints evicted under memory pressure move to the host swap store and come back on a hit; off: dropped)
     \\            [--prefix-cache radix]  (--parallel > 1: the prefix-cache policy: flat = checkpoint list; radix = prefix tree with deduplication of pages on insert)
     \\            [--prefix-cache-memory device, with --parallel: host]  (device: snapshots in VRAM; host: in system RAM, no VRAM, ~10 ms TTFT per save)
@@ -69,6 +70,8 @@ pub fn main(init: std.process.Init) !void {
     var disk_mib: u64 = 0;
     var disk_entries: u32 = 64;
     var disk_alignment: u32 = 0;
+    var disk_headroom_slots: ?u32 = null;
+    var disk_headroom_mib: ?u64 = null;
     var snapshot_slots_arg: ?u32 = null;
     var snapshot_memory_arg: ?zerv.gpu.Location = null;
     var prefix_cache_kind: zerv.session.kvcache.Kind = .radix;
@@ -121,6 +124,8 @@ pub fn main(init: std.process.Init) !void {
         else if (std.mem.eql(u8, arg, "--prefix-cache-disk-mib")) disk_mib = try std.fmt.parseInt(u64, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-disk-entries")) disk_entries = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-disk-alignment")) disk_alignment = try std.fmt.parseInt(u32, value, 10) //
+        else if (std.mem.eql(u8, arg, "--prefix-cache-disk-headroom-slots")) disk_headroom_slots = try std.fmt.parseInt(u32, value, 10) //
+        else if (std.mem.eql(u8, arg, "--prefix-cache-disk-headroom-mib")) disk_headroom_mib = try std.fmt.parseInt(u64, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-slots")) snapshot_slots_arg = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-tier")) prefix_cache_tier = if (std.mem.eql(u8, value, "host")) true else if (std.mem.eql(u8, value, "off")) false else return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--prefix-cache")) prefix_cache_kind = std.meta.stringToEnum(zerv.session.kvcache.Kind, value) orelse return error.InvalidArguments //
@@ -163,12 +168,13 @@ pub fn main(init: std.process.Init) !void {
         return error.InvalidArguments;
     }
     if ((disk_dir != null) != (disk_mib != 0) or disk_mib > (1 << 20) or disk_entries == 0 or disk_entries > 4096 or
-        (disk_dir != null and (parallel < 2 or !kv_share)) or
-        (disk_dir == null and (disk_entries != 64 or disk_alignment != 0)) or
+        (disk_dir != null and (parallel < 2 or !kv_share or prefix_cache_kind != .radix)) or
+        (disk_dir == null and (disk_entries != 64 or disk_alignment != 0 or disk_headroom_slots != null or disk_headroom_mib != null)) or
         (disk_alignment != 0 and (!std.math.isPowerOfTwo(disk_alignment) or disk_alignment > (1 << 20)))) return error.InvalidArguments;
     // One sequence: 8 snapshots of its history. Several: 3 checkpoints per slot (a system
     // prompt plus recent turns per conversation; docs/specs/concurrent.md "18d.4 design").
     var snapshot_slots: u32 = snapshot_slots_arg orelse if (parallel > 1) @min(3 * parallel, zerv.session.prefix.max_slots) else 8;
+    if (disk_dir != null and (snapshot_slots == 0 or (disk_headroom_slots orelse 0) >= snapshot_slots)) return error.InvalidArguments;
     if (parallel > 1) {
         // Per-slot speculation comes with block 18d. The prefix cache becomes checkpoints of
         // the shared pool (18d.4); a static pool has none.
@@ -272,7 +278,8 @@ pub fn main(init: std.process.Init) !void {
     // --parallel N > 1: the batcher owns the model on its scheduler task.
     var model_backend: zerv.serve.ModelBackend = .{ .m = &model };
     defer model_backend.deinitDisk();
-    if (disk_dir) |directory| try model_backend.initDisk(gpa, init.io, .{ .directory = directory, .bytes = disk_mib << 20, .records = disk_entries, .alignment = if (disk_alignment == 0) null else .{ .memory = disk_alignment, .offset = disk_alignment } });
+    if (disk_dir) |directory| try model_backend.initDisk(gpa, init.io, .{ .directory = directory, .bytes = disk_mib << 20, .records = disk_entries, .alignment = if (disk_alignment == 0) null else .{ .memory = disk_alignment, .offset = disk_alignment }, .headroom_slots = disk_headroom_slots, .headroom_mib = disk_headroom_mib });
+    if (model_backend.disk_archive) |d| std.debug.print("zerv: disk pressure headroom: {d} snapshot slots, {d} host KV pages; two staging tickets reserved for reads\n", .{ d.headroom_slots, d.headroom_pages });
     var batch = try zerv.serve.Batcher.init(io, &model_backend, .{ .slots = parallel, .vocab = zerv.model.config.vocab, .stall = stall, .order = prefill_order, .swap_slice = if (model.swap_pages > 0 and kv_swap_slice_ms > 0) std.Io.Duration.fromMilliseconds(@intCast(kv_swap_slice_ms)) else null, .pack = if (model.packable()) @max(1, @min(prefill_pack, model.pack_seqs)) else 1 });
     var scheduler: ?std.Io.Future(void) = null;
     if (parallel > 1) {
@@ -295,6 +302,7 @@ pub fn main(init: std.process.Init) !void {
         if (model_backend.disk_archive) |d| {
             const ds = d.catalog.stats;
             std.debug.print("zerv: disk prefix archive: {d} writes, {d} restores, {d} bytes written, {d} read, {d} evictions, {d} skips, {d} failures, {d} cancellations\n", .{ ds.writes, ds.reads, ds.write_bytes, ds.read_bytes, ds.evictions, ds.skips, ds.failures, ds.cancellations });
+            std.debug.print("zerv: disk source retention: total {d:.3} s, maximum {d:.3} s; {d} CPU and {d} GPU quanta\n", .{ @as(f64, @floatFromInt(d.source_hold_ns)) / 1e9, @as(f64, @floatFromInt(d.source_max_hold_ns)) / 1e9, d.source_cpu_quanta, d.source_gpu_quanta });
         }
         if (model_backend_store) {
             const cs = model_backend.cache.?.stats();

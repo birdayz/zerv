@@ -11,7 +11,8 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
     if (args.len != 3 and args.len != 5 and args.len != 6) return error.Usage;
     const disk_mode = args.len >= 5;
-    const source_mode = args.len == 6 and std.mem.eql(u8, args[5], "source");
+    const pressure_mode = args.len == 6 and std.mem.eql(u8, args[5], "pressure");
+    const source_mode = pressure_mode or (args.len == 6 and std.mem.eql(u8, args[5], "source"));
     if (args.len == 6 and !source_mode) return error.Usage;
     const n = try std.fmt.parseInt(u32, args[2], 10);
     if (n == 0 or n > 80000) return error.Usage;
@@ -60,6 +61,11 @@ pub fn main(init: std.process.Init) !void {
         if (n <= 128) return error.Usage;
         _ = try m.prefill(tokens[0..128]);
         try backend.cache.?.checkpoint(backend.device(), 0, tokens[0..128]);
+        if (pressure_mode) {
+            const idle = try backend.pollMaintenance(false, false);
+            try std.testing.expect(!idle.pending and !idle.progressed);
+            try std.testing.expectEqual(@as(u64, 0), backend.disk_archive.?.catalog.stats.writes);
+        }
         _ = try m.prefill(tokens[128..]);
     } else _ = try m.prefill(tokens);
     const bytes = try m.archiveBytes(n);
@@ -107,12 +113,14 @@ pub fn main(init: std.process.Init) !void {
         try backend.reset(0);
         try std.testing.expect(cache.evict(backend.device())); // host ancestor, GPU suffix
         const write_start = std.Io.Clock.awake.now(init.io);
-        try std.testing.expect(try d.startSource(cache));
+        if (pressure_mode) {
+            try std.testing.expect((try backend.pollMaintenance(false, false)).pending);
+        } else try std.testing.expect(try d.startSource(cache));
         const view = d.source.?.view;
         try std.testing.expect(view.pages[0] & zerv.session.kvcache.Device.host_flag != 0);
         try std.testing.expect(view.pages[view.pages.len - 1] & zerv.session.kvcache.Device.host_flag == 0);
         while (d.commands.state != .pending) {
-            _ = try d.pollSource(false);
+            if (pressure_mode) _ = try backend.pollMaintenance(false, false) else _ = try d.pollSource(false);
             try std.Io.sleep(init.io, .fromMicroseconds(100), .awake);
         }
         // Reuse the originating request slot while capture retains only cache ownership.
@@ -122,14 +130,22 @@ pub fn main(init: std.process.Init) !void {
             const got = try m.step(token);
             if (!std.mem.eql(u8, std.mem.sliceAsBytes(got), std.mem.sliceAsBytes(other_logits[i * model.config.vocab ..][0..model.config.vocab]))) return error.WrongIndependentLogits;
         }
-        _ = try drainSource(d, init.io, false);
+        if (pressure_mode) {
+            while ((try backend.pollMaintenance(false, false)).pending) try std.Io.sleep(init.io, .fromMicroseconds(100), .awake);
+        } else _ = try drainSource(d, init.io, false);
         disk_write_ns = write_start.durationTo(std.Io.Clock.awake.now(init.io)).nanoseconds;
         try std.testing.expect(d.source == null and d.source_cpu_quanta > 0 and d.source_gpu_quanta > 0);
-        try std.testing.expect(!try d.startSource(cache)); // clean backing: no rewrite
+        if (pressure_mode) {
+            try std.testing.expect(d.catalog.containsReady(tokens));
+            try std.testing.expectEqual(@as(u64, 1), d.catalog.stats.writes);
+            try std.testing.expectEqual(@as(u32, 1), (try cache.sourceCapacity()).free_slots);
+        } else try std.testing.expect(!try d.startSource(cache)); // clean backing: no rewrite
         try std.testing.expect(d.source == null);
     } else if (disk_mode) {
         const write_start = std.Io.Clock.awake.now(init.io);
-        try std.testing.expectError(error.PendingIo, backend.checkpoint(0, tokens));
+        try backend.checkpoint(0, tokens);
+        // Retain the old paused-write diagnostic independently of production admission.
+        try std.testing.expect(try backend.disk_archive.?.startWrite(0, tokens));
         _ = try backend.pollCache(0, false); // submit capture, deliberately do not acknowledge
         try std.testing.expectEqual(gpu.Commands.State.pending, backend.disk_archive.?.commands.state);
         // An unrelated rejected operation must not misclassify that owned transfer as fatal.
@@ -247,7 +263,7 @@ pub fn main(init: std.process.Init) !void {
         try std.testing.expectEqual(null, d.catalog.lookup(prompt));
     }
     const stats = if (backend.disk_archive) |d| d.catalog.stats else zerv.session.archive.Stats{};
-    std.debug.print("{{\"prefix\":{d},\"state_bytes\":{d},\"exact_state\":true,\"exact_vocab_rows\":4,\"elapsed_ns\":{d},\"capture_ns\":{d},\"restore_ns\":{d},\"disk_write_ns\":{d},\"disk\":{},\"independent_rows\":{d},\"device_starts\":{d},\"device_pending_polls\":{d},\"max_poll_ns\":{d},\"source\":{},\"source_cpu_quanta\":{d},\"source_gpu_quanta\":{d}}}\n", .{ n, bytes, start.durationTo(std.Io.Clock.awake.now(init.io)).nanoseconds, capture_ns, restore_ns, disk_write_ns, disk_mode, if (disk_mode) @as(u32, 2) else 0, stats.device_starts, stats.device_pending_polls, max_poll_ns, source_mode, if (backend.disk_archive) |d| d.source_cpu_quanta else 0, if (backend.disk_archive) |d| d.source_gpu_quanta else 0 });
+    std.debug.print("{{\"prefix\":{d},\"state_bytes\":{d},\"exact_state\":true,\"exact_vocab_rows\":4,\"elapsed_ns\":{d},\"capture_ns\":{d},\"restore_ns\":{d},\"disk_write_ns\":{d},\"disk\":{},\"independent_rows\":{d},\"device_starts\":{d},\"device_pending_polls\":{d},\"max_poll_ns\":{d},\"source\":{},\"source_cpu_quanta\":{d},\"source_gpu_quanta\":{d},\"pressure\":{}}}\n", .{ n, bytes, start.durationTo(std.Io.Clock.awake.now(init.io)).nanoseconds, capture_ns, restore_ns, disk_write_ns, disk_mode, if (disk_mode) @as(u32, 2) else 0, stats.device_starts, stats.device_pending_polls, max_poll_ns, source_mode, if (backend.disk_archive) |d| d.source_cpu_quanta else 0, if (backend.disk_archive) |d| d.source_gpu_quanta else 0, pressure_mode });
 }
 
 fn drain(b: *zerv.serve.ModelBackend, io: std.Io, slot: u32, cancel: bool) !u32 {
