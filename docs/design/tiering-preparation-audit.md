@@ -312,3 +312,33 @@ the exact cache source until GPU acknowledgment and atomic cache-owned finish;
 only then may it call the pool commit and rename affected lists without yielding.
 No release-then-commit gap, no acknowledgment of a merely submitted copy, and no
 use of this prerequisite as evidence that the asynchronous serving path exists.
+
+## D.1.2 boundary review at `de1f80b` (proposal, no integration code)
+
+Re-read `Cache`/`Device` vtables, `Radix.sourceCandidate/segment/rename/take`,
+`Pool.attachPlan/commitMap`, and the `tests/kv_system.zig` actual-pool/cache adapter.
+The next joint correctness mechanism can use that CPU adapter, rather than a
+second copy of page accounting: it already checks simulated contents and solo
+logits through real pool/cache APIs. Its expected ownership must still come from
+an independent prefix/object-set fixture, not merely from the adapter itself.
+
+Proposed narrow cache boundary: a separate preparation-candidate query (including
+internal nodes and own-segment start), existing qualified `acquireSource`, and a
+cache-owned finish callback. Keep C.3's leaf-only candidate API unchanged. Finish
+validates source generation/serial and sole own-path ref, invokes the pool's
+already-drained commit on the full checkpoint map, propagates changed own-segment
+IDs and releases the source without yielding. Callback failure must mean no pool
+mutation; descendant-ref conflicts must avoid invoking it at all. The pool's
+independent pins==1 validation remains necessary for divergent roots. A callback
+must not reenter the cache or yield. Define error/lease retention explicitly before
+coding; an error must not leave the caller guessing whether the source was released.
+
+Preparation differs from archive capture on partial tails: its initial selection
+requires **zero live masks**. A subsequent partial GPU hit uses `attachPlan`'s
+private tail copy. Thus the selected original physical page is not appended to by
+that hit; full-page demotion can retain the existing host-tier byte layout without
+introducing arithmetic or a second canonical image format. Still require the
+compute/transfer ordering audit and actual partial-tail device tests—this is not a
+claim that C.2 archive tail rules can be removed or that any arbitrary leased page
+is wholly immutable. Concurrent ordinary operations on the same source remain
+forbidden by the retained cache lease.
