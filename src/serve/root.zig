@@ -7,3 +7,4 @@ pub const batcher = @import("batcher.zig");
 pub const Batcher = @import("engine.zig").Batcher;
 pub const ModelBackend = @import("engine.zig").ModelBackend;
 pub const Admission = @import("engine.zig").Admission;
+pub const disk = @import("disk.zig");

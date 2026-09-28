@@ -7,6 +7,7 @@ const bpe = @import("tokenizer").bpe;
 const model = @import("model");
 const session = @import("session");
 const batcher = @import("batcher.zig");
+const disk = @import("disk.zig");
 
 pub const eos = [_][]const u8{ "<|im_end|>", "<|endoftext|>" };
 
@@ -241,7 +242,7 @@ pub const Native = struct {
             var sr = r;
             sr.cache = null;
             sr.spec_policy = null;
-            if (self.batch_backend) |mb| if (mb.cache != null) {
+            if (self.batch_backend) |mb| if (mb.cache != null or mb.disk_archive != null) {
                 sr.checkpoints = self.boundary;
             };
             const slot = try b.join();
@@ -272,6 +273,21 @@ pub const ModelBackend = struct {
     /// Prefix cache of the shared pool (docs/specs/concurrent.md, "18d.4 design"): a policy
     /// behind `session.kvcache.Cache`; this backend is its `Device`. Scheduler thread only.
     cache: ?session.kvcache.Cache = null,
+    disk_archive: ?*disk.Disk = null,
+
+    pub fn initDisk(self: *ModelBackend, allocator: std.mem.Allocator, options: disk.Options) !void {
+        if (self.disk_archive != null) return error.InvalidOptions;
+        self.disk_archive = try disk.Disk.create(allocator, self.m, options);
+    }
+    pub fn deinitDisk(self: *ModelBackend) void {
+        if (self.disk_archive) |d| d.destroy();
+        self.disk_archive = null;
+    }
+    pub fn pollCache(self: *ModelBackend, slot: u32, cancel: bool) !batcher.CachePoll {
+        const d = self.disk_archive orelse return error.InvalidState;
+        const p = d.poll(slot, cancel) catch |e| return self.check(e);
+        return .{ .done = p.done, .progressed = p.progressed, .position = p.position };
+    }
 
     pub fn initCache(self: *ModelBackend, allocator: std.mem.Allocator, kind: session.kvcache.Kind, boundary: u32, tier: bool) !void {
         const m = self.m;
@@ -338,14 +354,25 @@ pub const ModelBackend = struct {
         m.select(slot) catch |e| return self.check(e);
         m.reset() catch |e| return self.check(e);
         if (m.options.kv_share) m.releasePages(slot) catch |e| return self.check(e);
-        const c = self.cache orelse return 0;
-        return c.restore(self.device(), slot, prompt);
+        const hot = if (self.cache) |c| try c.restore(self.device(), slot, prompt) else 0;
+        if (self.disk_archive) |d| if (d.catalog.lookup(prompt)) |record| {
+            const n = d.catalog.entries[record].len;
+            if (n > hot) {
+                try self.reset(slot);
+                if (!self.admit(slot, n)) return 0;
+                d.startRead(slot, record) catch |e| return self.check(e);
+                return error.PendingIo;
+            }
+        };
+        return hot;
     }
     /// Keep `slot`'s state after `prefix` (its current position) as a checkpoint.
     pub fn checkpoint(self: *ModelBackend, slot: u32, prefix: []const u32) !void {
-        const c = self.cache orelse return;
         if (self.m.slotPosition(slot) != prefix.len) return error.InvalidToken;
-        try c.checkpoint(self.device(), slot, prefix);
+        if (self.cache) |c| try c.checkpoint(self.device(), slot, prefix);
+        if (self.disk_archive) |d| {
+            if (d.startWrite(slot, prefix) catch |e| return self.check(e)) return error.PendingIo;
+        }
     }
     /// Memory pressure: demote or drop one cached checkpoint; when none frees a page, a
     /// swapped sequence other than `except` gives up the pool pages it still holds (a deep

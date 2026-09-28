@@ -142,6 +142,13 @@ zerv_test(
 )
 
 zerv_test(
+    name = "archive",
+    sha = True,
+    deps = ["//src/session", "//src/storage"],
+    embeds = ["fixtures/archive/oracle.json", "fixtures/storage/positional.bin", "reference/generate_archive_fixture.py"],
+)
+
+zerv_test(
     name = "residency",
     sha = True,
     deps = ["//src/session", "//src/storage"],
@@ -500,6 +507,9 @@ py_test(
     srcs = ["test_serving_harness.py"],
     data = [
         "//bench:run_serving.py",
+        "//bench:run_multiturn.py",
+        "//bench:run_concurrent.py",
+        "//tools:host_info.py",
     ],
 )
 

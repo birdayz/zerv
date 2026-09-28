@@ -32,6 +32,8 @@ pub const Unit = struct { done: bool, consumed: [max_pack]usize = @splat(0), log
 /// next prefill unit boundary; `chunk`: only between chunks, alternating with them.
 pub const Stall = union(enum) { chunk, ns: u64 };
 pub const Order = enum { shortest, fifo };
+/// Optional backend pollCache(slot, cancel): error only after all I/O is drained.
+pub const CachePoll = struct { done: bool = false, progressed: bool = false, position: u32 = 0 };
 
 pub const Stats = struct {
     batches: u64 = 0,
@@ -98,6 +100,11 @@ pub const Stats = struct {
 pub fn Batcher(comptime Backend: type) type {
     return struct {
         const Self = @This();
+        const BackendType = switch (@typeInfo(Backend)) {
+            .pointer => |p| p.child,
+            else => Backend,
+        };
+        const can_poll = @hasDecl(BackendType, "pollCache");
         pub const Options = struct {
             slots: u32,
             vocab: usize,
@@ -125,6 +132,7 @@ pub fn Batcher(comptime Backend: type) type {
             decoding: bool = false,
             op: Op = .none,
             running: bool = false,
+            io_pending: bool = false,
             /// Its waiter was canceled while the operation ran: drop it after the running unit.
             canceled: bool = false,
             order: u64 = 0,
@@ -167,6 +175,7 @@ pub fn Batcher(comptime Backend: type) type {
         wake: std.atomic.Value(u32) = .init(0),
         slot: [max_slots]Slot = @splat(.{}),
         stopping: bool = false,
+        io_cursor: u32 = 0,
         held_rows: u32 = 0,
         /// Completed prompts whose logits are not yet sampled (a new chunk would overwrite them).
         prefill_holds: u32 = 0,
@@ -351,6 +360,7 @@ pub fn Batcher(comptime Backend: type) type {
             s.reserve = 0;
             s.base = 0;
             s.failed_epoch = std.math.maxInt(u64);
+            s.io_pending = false;
             s.used = false;
             s.closing = false;
             s.decoding = false;
@@ -398,6 +408,7 @@ pub fn Batcher(comptime Backend: type) type {
         /// Called with the lock held, after the scheduler wrote the result.
         fn complete(self: *Self, s: *Slot) void {
             s.running = false;
+            s.io_pending = false;
             if (s.closing) {
                 self.release(s);
                 self.free(s);
@@ -461,6 +472,43 @@ pub fn Batcher(comptime Backend: type) type {
             }
         }
 
+        fn finishCache(self: *Self, s: *Slot, position: u32, failure: ?anyerror) void {
+            if (s.op == .begin) {
+                s.admitted = false;
+                s.base = position;
+                s.value = position;
+                self.admit_epoch += 1;
+            }
+            s.op = .none;
+            s.tokens = &.{};
+            s.err = if (s.canceled or s.closing or self.stopping) error.Canceled else failure;
+            self.complete(s);
+        }
+
+        /// Lock held on entry/exit. At most one callback quantum; never inside a pack.
+        fn pollIo(self: *Self) struct { pending: bool = false, progressed: bool = false } {
+            if (comptime !can_poll) return .{};
+            for (0..self.options.slots) |delta| {
+                const i = (self.io_cursor + @as(u32, @intCast(delta))) % self.options.slots;
+                const s = &self.slot[i];
+                if (!s.io_pending) continue;
+                if (self.pack != null) return .{ .pending = true };
+                const cancel = s.canceled or s.closing or self.stopping;
+                self.io_cursor = (i + 1) % self.options.slots;
+                self.mutex.unlock(self.io);
+                const result = self.backend.pollCache(i, cancel);
+                self.mutex.lockUncancelable(self.io);
+                if (result) |p| {
+                    if (p.done) self.finishCache(s, p.position, null);
+                    return .{ .pending = true, .progressed = p.progressed };
+                } else |e| {
+                    self.finishCache(s, 0, e);
+                    return .{ .pending = true, .progressed = true };
+                }
+            }
+            return .{};
+        }
+
         /// The scheduler task: runs operations until `stop`.
         pub fn run(self: *Self) void {
             var rows: [max_slots]Row = undefined;
@@ -477,9 +525,28 @@ pub fn Batcher(comptime Backend: type) type {
                     for (0..self.options.slots) |i| if (bits & (@as(u64, 1) << @intCast(i)) != 0) self.backend.release(@intCast(i));
                     continue;
                 }
+                if (self.stopping and self.pack != null) {
+                    const pk = self.pack.?;
+                    self.pack = null;
+                    self.mutex.unlock(self.io);
+                    self.backend.abortChunk();
+                    self.mutex.lockUncancelable(self.io);
+                    self.endPack(pk, error.Canceled);
+                    self.mutex.unlock(self.io);
+                    continue;
+                }
+                const io_progress = self.pollIo();
+                // pollIo unlocks: a client may leave and reuse a slot in that window.
+                // Drain its OLD release before a new begin can map pages in that slot.
+                if (self.to_release != 0) {
+                    self.mutex.unlock(self.io);
+                    continue;
+                }
                 if (self.stopping) {
                     self.mutex.unlock(self.io);
-                    return;
+                    if (!io_progress.pending) return;
+                    if (!io_progress.progressed) std.Io.sleep(self.io, .fromMicroseconds(100), .awake) catch {};
+                    continue;
                 }
                 if (self.swapped_slots > 0 or (self.options.swap_slice != null and self.blocked != null)) swap: {
                     // Waiters in order of how long they wait: swapped sequences (since their
@@ -621,7 +688,7 @@ pub fn Batcher(comptime Backend: type) type {
                 var n_decoding: u32 = 0;
                 for (self.slot[0..self.options.slots], 0..) |*s, i| {
                     if (!s.used or s.closing) continue;
-                    if (s.swapped) continue; // waits for `swapIn`
+                    if (s.swapped or s.io_pending) continue; // waits for swap/cache I/O
                     if (s.decoding) n_decoding += 1;
                     switch (s.op) {
                         .reset, .begin, .checkpoint, .prefill => if (!s.running and self.eligible(s) and (pre == null or self.before(s, &self.slot[pre.?]))) {
@@ -646,6 +713,10 @@ pub fn Batcher(comptime Backend: type) type {
                         wait_ns = if (wait_ns) |w| @min(w, left) else left;
                     }
                     self.slice_wait_ns = 0;
+                    if (io_progress.pending) {
+                        const delay: i96 = if (io_progress.progressed) 0 else 100_000;
+                        wait_ns = if (wait_ns) |w| @min(w, delay) else delay;
+                    }
                     self.mutex.unlock(self.io);
                     const timeout: std.Io.Timeout = if (wait_ns) |w| .{ .duration = .{ .raw = .{ .nanoseconds = w }, .clock = .awake } } else .none;
                     self.io.futexWaitTimeout(u32, &self.wake.raw, seen, timeout) catch {};
@@ -783,6 +854,13 @@ pub fn Batcher(comptime Backend: type) type {
                     const t1 = self.now();
                     self.mutex.lockUncancelable(self.io);
                     self.account(&self.stats.prefill_ns, t0, t1);
+                    if (comptime can_poll) if (out) |_| {} else |e| {
+                        if (e == error.PendingIo) {
+                            s.io_pending = true;
+                            self.mutex.unlock(self.io);
+                            continue;
+                        }
+                    };
                     s.op = .none;
                     s.tokens = &.{};
                     if (op != .checkpoint) {

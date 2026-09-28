@@ -315,7 +315,8 @@ finish independent tests and benchmark gates before advancing.
      imported host buffers are still a two-transfer path. PCIe P2P is hardware-plausible;
      native AIS/KFD could retain filesystem I/O, but this driver lacks AIS. DMA-BUF/raw
      NVMe alternatives require a kernel helper and storage ownership. No P2P transfer
-     or integrated NVMe cache demonstrated; system/boundary changes await approval.
+     demonstrated in that investigation; system/boundary changes await approval.
+     The later RAM-staged archive is integrated (entry 106); it is not P2P.
 101. [Imported host I/O buffers](bench/2026-09-28-nvme-buffers.md) (18d.6a complete):
      independent ABI/device gates and 24 exact disk/GPU trials; still RAM-staged,
      no transfer-overlap or serving claim.
@@ -323,8 +324,19 @@ finish independent tests and benchmark gates before advancing.
      independent syscall byte gates, bounded ownership and repeated component trials;
      equivalent-QD1 losses and write variance retained. Core uses generic alignment
      discovery/configuration; [filesystem preparation](deployment/nvme-scratch.md)
-     is operator-owned. Disk-backed prefix-cache/scheduler integration remains pending.
+     is operator-owned. Later production integration: entry 106.
 103. [Snapshot residency bookkeeping](bench/2026-09-28-snapshot-residency.md) (18d.6c first increment):
      independent snapshot/hot/disk identities and guarded pending transfers; 4,860 exact
      oracle transitions and 12 small disk snapshots through two resident slots. CPU
      79/79; two metadata benchmark runs. Existing serving cache is not yet switched over.
+104. [Immutable disk prefix archive](bench/2026-09-28-prefix-archive.md): independent
+     POSIX/hash fixture, bounded chunking/leases/drain, CPU 81/81, five measured
+     CPU/disk trials. [Integration contract](specs/disk-prefix-cache.md).
+105. [Model archive adapter](bench/2026-09-28-archive-model.md): poisoned/permuted
+     state and full-vocabulary exactness at 257/80k; independent FP64/libllama gate,
+     teardown fix, failed checker attempts retained.
+106. [Production RAM-staged NVMe prefix archive](bench/2026-09-28-disk-prefix-serving.md):
+     opt-in flags, bounded pending I/O and drained cancellation, 5.40 GB exact at
+     80k, late-corruption cold fallback; 72 native HTTP turns identical. Three-round
+     comparison: disk lowers reuse TTFT versus off but raises cold-write latency;
+     host caching and tuned llama-server finish faster. Not P2P or restart-persistent.

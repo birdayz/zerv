@@ -1,8 +1,9 @@
 # Preparing RAM-staged NVMe scratch storage
 
-Status: the imported-host buffer and asynchronous file transport are implemented;
-**prefix-cache/scheduler integration and server flags are not yet implemented**.
-Commands below configure component probes, not a production NVMe tier.
+Status: imported-host buffers, asynchronous file transport and opt-in production
+prefix-cache/scheduler integration are implemented. Real-model 80k state/logit and
+serving gates pass; [results and limitations](../bench/2026-09-28-disk-prefix-serving.md).
+Component commands and production flags are distinguished below.
 
 ## Engine boundary
 
@@ -23,8 +24,8 @@ alignment; the GPU capability query remains separate from filesystem policy.
 
 The benchmark exposes a common alignment for both as `--direct-alignment BYTES`.
 Zero/omitted means use filesystem-reported alignment. File budget (`--mib`) and the
-bounded RAM staging size (chunk size × queue depth) are explicit. Production policy
-will be wired separately; these options do not claim that the server uses disk yet.
+bounded RAM staging size (chunk size × queue depth) are explicit. These are component
+probe options; production server flags are listed below.
 
 O_DIRECT requests direct I/O; it cannot prove that every filesystem/device path
 avoids internal buffering. Filesystem preparation and its performance/quality
@@ -84,3 +85,39 @@ unsupported io_uring is an initialization error, not permission to change host p
 
 The unmounted WD disk is not used by these commands. Its contents remain unknown.
 The RAM-staged design requires neither exclusive storage nor a replacement GPU driver.
+
+## Prefix archive integration (opt-in)
+
+The serving flags now connect the immutable archive to checkpoint capture and
+pending scheduler I/O (not the older standalone residency table):
+
+```
+--parallel 2 --kv-pool shared --spec-draft 0 --kv-type f16 \
+--prefix-cache-disk-dir /operator/prepared/scratch \
+--prefix-cache-disk-mib 8192 --prefix-cache-disk-entries 64 \
+--prefix-cache-disk-alignment 4096
+```
+
+Alignment above is an **operator assertion**, not portable filesystem detection;
+omit it when the filesystem reports suitable DIO alignment. Directory and disk
+budget must be supplied together. No attributes/ioctls/mounts are changed. A new
+0600, exclusive scratch file is unlinked immediately and preallocated; capacity is
+bounded and returned at shutdown. The archive is not persistent across restarts.
+Eight MiB of anonymous imported staging is included in the allocation budget;
+metadata is separately bounded at 256 MiB. Record count, context and chunk-map
+capacity determine metadata use. MTP and static/single-slot models are unsupported.
+
+Cold checkpoints write full state and logical KV images, duplicating shared
+prefix bytes on disk. Hot cache hits win ties. Longer disk hits allocate private
+pages; if there is insufficient space, inference starts cold instead. Read errors
+or failed integrity checks invalidate the record and reset the partial restore.
+I/O cancellation drains before a slot or staging memory can be reused. Unknown
+GPU DMA ownership is fail-stop, never silent fallback.
+
+This is a capacity/latency tradeoff, not a claim of raw NVMe bandwidth: SHA256,
+CPU bookkeeping and bounded synchronous GPU fences are in the path. Shutdown logs
+archive writes/restores, physical bytes, evictions, skips, failures and cancellations.
+See the [integration contract](../specs/disk-prefix-cache.md) and
+[measured tradeoffs](../bench/2026-09-28-disk-prefix-serving.md): disk improves reuse
+versus a small hot cache but adds cold-write latency; host caching was faster on
+the measured workload. No asynchronous GPU copy/compute overlap or P2P claim.

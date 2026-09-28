@@ -1,0 +1,116 @@
+{
+  "native_identical": 0,
+  "serving": {
+    "vllm-apc": {
+      "wall_s": {
+        "n": 3,
+        "mean": 81.6235945533311,
+        "stdev": 3.6354017500412064,
+        "minimum": 79.0810324310005,
+        "maximum": 85.78756973499549
+      },
+      "aggregate_tok_s": {
+        "n": 3,
+        "mean": 6.376476784665909,
+        "stdev": 0.25496940873966517,
+        "minimum": 6.17805122160718,
+        "maximum": 6.664050579509267
+      },
+      "ttft_p50_ms": {
+        "n": 3,
+        "mean": 13762.120761998327,
+        "stdev": 1864.804572773135,
+        "minimum": 12439.06726899877,
+        "maximum": 15894.920149999962
+      },
+      "ttft_p95_ms": {
+        "n": 3,
+        "mean": 49074.65291800327,
+        "stdev": 3373.439933417944,
+        "minimum": 45179.91853700369,
+        "maximum": 51080.15839600557
+      },
+      "gap_p99_ms": {
+        "n": 3,
+        "mean": 1964.2514210014876,
+        "stdev": 80.18943052999441,
+        "minimum": 1897.5221670043538,
+        "maximum": 2053.2105599995703
+      },
+      "turn_0_ttft_p50_ms": {
+        "n": 3,
+        "mean": 34817.94677000047,
+        "stdev": 1449.9990385476708,
+        "minimum": 33944.033323998156,
+        "maximum": 36491.71539400413
+      },
+      "turn_1_ttft_p50_ms": {
+        "n": 3,
+        "mean": 3978.117961999184,
+        "stdev": 765.3831986521691,
+        "minimum": 3189.2815039973357,
+        "maximum": 4717.6654750001035
+      },
+      "resources": [
+        {
+          "round": 0,
+          "log": "vllm-apc-r0.log",
+          "vram_peak": 25578745856,
+          "host_memory": {
+            "VmHWM": "35176 kB",
+            "VmRSS": "35176 kB"
+          }
+        },
+        {
+          "round": 1,
+          "log": "vllm-apc-r1.log",
+          "vram_peak": 25567264768,
+          "host_memory": {
+            "VmHWM": "37144 kB",
+            "VmRSS": "37144 kB"
+          }
+        },
+        {
+          "round": 2,
+          "log": "vllm-apc-r2.log",
+          "vram_peak": 25570459648,
+          "host_memory": {
+            "VmHWM": "35592 kB",
+            "VmRSS": "35592 kB"
+          }
+        }
+      ]
+    }
+  },
+  "component": {
+    "short_after_warmup": {
+      "disk_write_ms": {
+        "n": 5,
+        "mean": 252.6329768,
+        "stdev": 12.088699295086943,
+        "minimum": 240.790564,
+        "maximum": 271.405582
+      },
+      "restore_ms": {
+        "n": 5,
+        "mean": 183.7737222,
+        "stdev": 12.62142097864791,
+        "minimum": 173.09655,
+        "maximum": 205.146887
+      }
+    },
+    "long": [
+      {
+        "prefix": 80000,
+        "state_bytes": 5399773184,
+        "exact_state": true,
+        "exact_vocab_rows": 4,
+        "elapsed_ns": 146934702350,
+        "capture_ns": 4575319976,
+        "restore_ns": 5356370312,
+        "disk_write_ns": 6941842092,
+        "disk": true
+      }
+    ]
+  }
+}

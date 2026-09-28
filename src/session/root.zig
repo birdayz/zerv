@@ -7,6 +7,7 @@ pub const tools = @import("tools.zig");
 pub const prefix = @import("prefix.zig");
 pub const checkpoint = @import("checkpoint.zig");
 pub const residency = @import("residency.zig");
+pub const archive = @import("archive.zig");
 pub const kvcache = @import("kvcache.zig");
 pub const spec = @import("spec.zig");
 pub const media = @import("media.zig");

@@ -1,0 +1,33 @@
+DEBUG: /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/external/rules_python+/python/private/py_executable.bzl:1595:14: 
+======================================================================
+WARNING: Target @@//tools:py is using implicit __init__.py creation.
+  This diabolic behavior is deprecated and will be disabled by default in a
+  future release.
+  See https://github.com/bazel-contrib/rules_python/issues/2945
+
+  Ensure all __init__.py files are explicitly created and
+  added to the srcs or deps of your targets.
+
+  Disable implicit creation for your module in MODULE.bazel:
+
+    rules_python_config = use_extension("@rules_python//python/extensions:config.bzl", "config")
+    rules_python_config.explicit_init_py(default = True)
+
+  Or for a specific target by setting:
+
+    legacy_create_init = 0
+
+  Or globally with the following Bazel flag:
+
+    --incompatible_default_to_explicit_init_py
+======================================================================
+72 native turns identical; complete runs only
+zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=2,kv-swap-mib=4096,prefix-cache-tier=off wall {'n': 3, 'mean': 64.32370909699966, 'stdev': 4.123464921681017, 'minimum': 61.92925916900276, 'maximum': 69.08504967599583} turn1 {'n': 3, 'mean': 19937.396522664738, 'stdev': 4059.579642489944, 'minimum': 16857.904657998006, 'maximum': 24537.81791399524} gap99 {'n': 3, 'mean': 145.32414200220956, 'stdev': 0.17634674755116903, 'minimum': 145.1225710043218, 'maximum': 145.44992800074397}
+zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host wall {'n': 3, 'mean': 47.12263749200065, 'stdev': 0.5378434751843864, 'minimum': 46.61504666599649, 'maximum': 47.686334935999184} turn1 {'n': 3, 'mean': 3861.5768573314804, 'stdev': 1578.6742305706596, 'minimum': 2905.7299259948195, 'maximum': 5683.739813997818} gap99 {'n': 3, 'mean': 145.2367080031157, 'stdev': 0.5470742176961222, 'minimum': 144.61993900476955, 'maximum': 145.6633600027999}
+zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=2,kv-swap-mib=4096,prefix-cache-tier=off,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096 wall {'n': 3, 'mean': 58.93932129633322, 'stdev': 1.9086396535063876, 'minimum': 56.73542020199966, 'maximum': 60.0457775879986} turn1 {'n': 3, 'mean': 9848.794810333251, 'stdev': 729.5410192629923, 'minimum': 9183.718910004245, 'maximum': 10629.088981993846} gap99 {'n': 3, 'mean': 24.422934334628128, 'stdev': 1.7377887348098398, 'minimum': 22.416444000555202, 'maximum': 25.446356004977133}
+llama-fa-kvu wall {'n': 3, 'mean': 53.403121073664806, 'stdev': 3.382384267610789, 'minimum': 50.863603042998875, 'maximum': 57.24263872799929} turn1 {'n': 3, 'mean': 6045.696682000805, 'stdev': 892.326579180325, 'minimum': 5527.29268999974, 'maximum': 7076.059945000452} gap99 {'n': 3, 'mean': 1972.0666743329882, 'stdev': 211.34176690688003, 'minimum': 1731.0471000018879, 'maximum': 2125.705241000105}
+llama-fa-b512 wall {'n': 3, 'mean': 53.79098273866597, 'stdev': 2.5167392278918803, 'minimum': 51.39487913800258, 'maximum': 56.41311037699779} turn1 {'n': 3, 'mean': 6071.995584665274, 'stdev': 215.48724241338707, 'minimum': 5833.391569001833, 'maximum': 6252.419147000182} gap99 {'n': 3, 'mean': 620.2963636703013, 'stdev': 57.008845891063295, 'minimum': 574.732238004799, 'maximum': 684.2237950040726}
+component {'short_after_warmup': {'disk_write_ms': {'n': 5, 'mean': 252.6329768, 'stdev': 12.088699295086943, 'minimum': 240.790564, 'maximum': 271.405582}, 'restore_ms': {'n': 5, 'mean': 183.7737222, 'stdev': 12.62142097864791, 'minimum': 173.09655, 'maximum': 205.146887}}, 'long': [{'prefix': 80000, 'state_bytes': 5399773184, 'exact_state': True, 'exact_vocab_rows': 4, 'elapsed_ns': 146934702350, 'capture_ns': 4575319976, 'restore_ns': 5356370312, 'disk_write_ns': 6941842092, 'disk': True}]}
+0 native turns identical; complete runs only
+vllm-apc wall {'n': 3, 'mean': 81.6235945533311, 'stdev': 3.6354017500412064, 'minimum': 79.0810324310005, 'maximum': 85.78756973499549} turn1 {'n': 3, 'mean': 3978.117961999184, 'stdev': 765.3831986521691, 'minimum': 3189.2815039973357, 'maximum': 4717.6654750001035} gap99 {'n': 3, 'mean': 1964.2514210014876, 'stdev': 80.18943052999441, 'minimum': 1897.5221670043538, 'maximum': 2053.2105599995703}
+component {'short_after_warmup': {'disk_write_ms': {'n': 5, 'mean': 252.6329768, 'stdev': 12.088699295086943, 'minimum': 240.790564, 'maximum': 271.405582}, 'restore_ms': {'n': 5, 'mean': 183.7737222, 'stdev': 12.62142097864791, 'minimum': 173.09655, 'maximum': 205.146887}}, 'long': [{'prefix': 80000, 'state_bytes': 5399773184, 'exact_state': True, 'exact_vocab_rows': 4, 'elapsed_ns': 146934702350, 'capture_ns': 4575319976, 'restore_ns': 5356370312, 'disk_write_ns': 6941842092, 'disk': True}]}

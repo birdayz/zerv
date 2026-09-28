@@ -1346,7 +1346,7 @@ pub const Model = struct {
             };
             self.live_seg = 0;
             var tails = self.live_tail;
-            outer: for (&self.seg_tail) |*plan| for (plan) |*c| {
+            outer: for (&self.seg_tail) |*plan| for (plan[0..self.pack_seqs -| 1]) |*c| {
                 if (tails == 0) break :outer;
                 c.deinit() catch @panic("prefill segment still pending");
                 tails -= 1;
@@ -1478,6 +1478,100 @@ pub const Model = struct {
     fn pageBytes(self: *const Model, g: u32) u64 {
         const S = self.state_layout;
         return @as(u64, S.layersIn(g)) * S.piece() * S.kv.bytes();
+    }
+
+    /// Logical archive size: recurrent state, then whole logical pages per KV group.
+    pub fn archiveBytes(self: *const Model, tokens: u32) Error!u64 {
+        if (self.options.mtp or !self.options.kv_share) return error.UnsupportedFeature;
+        if (tokens == 0 or tokens > self.state_layout.context) return error.InvalidToken;
+        const pages = (std.math.divCeil(u32, tokens, self.state_layout.page) catch unreachable);
+        var bytes = self.snapshotBytes();
+        for (0..self.state_layout.kv_buffers) |g| bytes += @as(u64, pages) * self.pageBytes(@intCast(g));
+        return bytes;
+    }
+
+    /// Resolve once per archive operation; caller keeps this slot paused and its pages
+    /// resident until completion/drain. Read destinations must be entirely private.
+    pub fn archiveMap(self: *const Model, slot: u32, tokens: u32, map: []u32, importing: bool) Error!void {
+        _ = try self.archiveBytes(tokens);
+        const n = (std.math.divCeil(u32, tokens, self.state_layout.page) catch unreachable);
+        if (slot >= self.state_layout.slots or map.len != n) return error.InvalidSlot;
+        if (self.pool.swapped[slot] != 0) return error.SlotSwapped;
+        if (!importing and self.slotPosition(slot) != tokens) return error.InvalidToken;
+        @memset(map, std.math.maxInt(u32));
+        for (0..self.pool.pages) |q| {
+            if (self.pool.mask[q] & (@as(u64, 1) << @intCast(slot)) == 0) continue;
+            const logical = self.pool.logical[q];
+            if (logical >= n) continue;
+            if (importing and !self.pool.exclusive(@intCast(q), slot)) return error.PageInUse;
+            if (map[logical] != std.math.maxInt(u32)) return error.InvalidState;
+            map[logical] = @intCast(q);
+        }
+        for (map) |q| if (q == std.math.maxInt(u32)) return error.PagesMissing;
+    }
+
+    /// Exact bounded stream quantum, no conversion or allocation. Imported staging is
+    /// borrowed through the fence. A timed-out command MUST NOT release/reuse its memory.
+    pub fn archiveCopy(self: *Model, c: *gpu.Commands, staging: *gpu.Buffer, staging_offset: u64, slot: u32, tokens: u32, map: []const u32, offset: u64, bytes: u64, importing: bool) Error!void {
+        const total = try self.archiveBytes(tokens);
+        if (slot >= self.state_layout.slots or self.chunk != null or self.pending_verify != 0) return error.InvalidState;
+        if (map.len != (std.math.divCeil(u32, tokens, self.state_layout.page) catch unreachable)) return error.PagesMissing;
+        if (bytes == 0 or offset > total or bytes > total - offset or (offset | bytes | staging_offset) & 3 != 0) return error.InvalidRange;
+        if (staging_offset > staging.size or bytes > staging.size - staging_offset) return error.InvalidRange;
+        for (map, 0..) |q, logical| {
+            if (q >= self.pool.pages or self.pool.logical[q] != logical or self.pool.mask[q] & (@as(u64, 1) << @intCast(slot)) == 0) return error.PagesMissing;
+            if (importing and !self.pool.exclusive(q, slot)) return error.PageInUse;
+        }
+        try c.reset();
+        try c.begin();
+        try c.barrier(if (importing) .host else .compute, .transfer);
+        var at = offset;
+        var left = bytes;
+        var host_at = staging_offset;
+        while (left > 0) {
+            var buffer = &self.state;
+            var physical: u64 = undefined;
+            var span: u64 = undefined;
+            if (at < self.snapshotBytes()) {
+                physical = @as(u64, slot) * self.state_layout.slot_words * 4 + @as(u64, self.state_layout.ssm) * 4 + at;
+                span = self.snapshotBytes() - at;
+            } else {
+                var relative = at - self.snapshotBytes();
+                var g: u32 = 0;
+                while (g < self.state_layout.kv_buffers) : (g += 1) {
+                    const page_bytes = self.pageBytes(g);
+                    const group_bytes = page_bytes * map.len;
+                    if (relative >= group_bytes) {
+                        relative -= group_bytes;
+                        continue;
+                    }
+                    const logical: usize = @intCast(relative / page_bytes);
+                    const within = relative % page_bytes;
+                    buffer = &self.kv[g];
+                    physical = @as(u64, map[logical]) * page_bytes + within;
+                    span = page_bytes - within;
+                    break;
+                }
+                if (g == self.state_layout.kv_buffers) return error.InvalidRange;
+            }
+            const n = @min(left, span);
+            if (importing) try c.copy(staging, host_at, buffer, physical, n) else try c.copy(buffer, physical, staging, host_at, n);
+            at += n;
+            host_at += n;
+            left -= n;
+        }
+        try c.barrier(.transfer, if (importing) .compute else .host);
+        try c.end();
+        try c.run(self.options.timeout_ns);
+    }
+
+    /// Commit position only after every verified chunk has arrived. On failed restore,
+    /// the adapter resets instead; partial state must never be used for inference.
+    pub fn archiveRestored(self: *Model, slot: u32, tokens: u32) Error!void {
+        _ = try self.archiveBytes(tokens);
+        try self.select(slot);
+        self.position = tokens;
+        self.needs_reset[slot] = false;
     }
 
     /// Host swap store of `bytes`: the slot state regions first, the rest in pool-shaped pages.

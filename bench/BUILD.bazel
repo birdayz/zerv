@@ -7,6 +7,12 @@ package(default_visibility = ["//tests:__pkg__"])
 # Component benchmarks and model checks. Measure with `bazel build -c opt` (ReleaseFast).
 
 zig_binary(
+    name = "zerv-archive-bench",
+    main = "archive.zig",
+    deps = ["//src/session", "//src/storage"],
+)
+
+zig_binary(
     name = "zerv-residency-bench",
     main = "residency.zig",
     deps = ["//src/session"],
@@ -61,6 +67,12 @@ zerv_vk_binary(
     name = "zerv-model-profile",
     main = "profile_model.zig",
     deps = ["//src:zerv_lib", "//tests:matvec_workload"],
+)
+
+zerv_vk_binary(
+    name = "zerv-archive-model-check",
+    main = "archive_model_check.zig",
+    deps = ["//src:zerv_lib"],
 )
 
 zerv_vk_binary(

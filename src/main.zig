@@ -11,6 +11,8 @@ const usage =
     \\            [--prefill-attention fp32]  (fp32 | wmma: WMMA prompt attention with f16 Q and P; needs --prefill-precision f16, --kv-type f16, --parallel 1)
     \\            [--gemm-code native]  (f16 mode, Q4_0 prompt projections: native = our RDNA3 machine code for gemm_f16x, same values, ~12% lower TTFT; spirv = the compiled SPIR-V; native falls back to spirv on other drivers)
     \\            [--prefix-cache-slots 8, with --parallel N: 3N]  (recurrent-state snapshots, ~150 MiB each; 0 = no prefix cache)
+    \\            [--prefix-cache-disk-dir DIR --prefix-cache-disk-mib N]  (opt-in immutable RAM-staged disk archive; shared KV, parallel > 1)
+    \\            [--prefix-cache-disk-entries 64] [--prefix-cache-disk-alignment N]  (bounded metadata; optional explicit direct-I/O alignment in bytes)
     \\            [--prefix-cache-tier host]  (radix: checkpoints evicted under memory pressure move to the host swap store and come back on a hit; off: dropped)
     \\            [--prefix-cache radix]  (--parallel > 1: the prefix-cache policy: flat = checkpoint list; radix = prefix tree with deduplication of pages on insert)
     \\            [--prefix-cache-memory device, with --parallel: host]  (device: snapshots in VRAM; host: in system RAM, no VRAM, ~10 ms TTFT per save)
@@ -63,6 +65,10 @@ pub fn main(init: std.process.Init) !void {
     var drain_s: u32 = 30;
     var precision: zerv.model.gemm.Precision = .fp32;
     var prefill_attention: zerv.model.PrefillAttention = .fp32;
+    var disk_dir: ?[]const u8 = null;
+    var disk_mib: u64 = 0;
+    var disk_entries: u32 = 64;
+    var disk_alignment: u32 = 0;
     var snapshot_slots_arg: ?u32 = null;
     var snapshot_memory_arg: ?zerv.gpu.Location = null;
     var prefix_cache_kind: zerv.session.kvcache.Kind = .radix;
@@ -111,6 +117,10 @@ pub fn main(init: std.process.Init) !void {
         else if (std.mem.eql(u8, arg, "--drain-timeout")) drain_s = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefill-attention")) prefill_attention = std.meta.stringToEnum(zerv.model.PrefillAttention, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--prefill-precision")) precision = std.meta.stringToEnum(zerv.model.gemm.Precision, value) orelse return error.InvalidArguments //
+        else if (std.mem.eql(u8, arg, "--prefix-cache-disk-dir")) disk_dir = value //
+        else if (std.mem.eql(u8, arg, "--prefix-cache-disk-mib")) disk_mib = try std.fmt.parseInt(u64, value, 10) //
+        else if (std.mem.eql(u8, arg, "--prefix-cache-disk-entries")) disk_entries = try std.fmt.parseInt(u32, value, 10) //
+        else if (std.mem.eql(u8, arg, "--prefix-cache-disk-alignment")) disk_alignment = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-slots")) snapshot_slots_arg = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-tier")) prefix_cache_tier = if (std.mem.eql(u8, value, "host")) true else if (std.mem.eql(u8, value, "off")) false else return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--prefix-cache")) prefix_cache_kind = std.meta.stringToEnum(zerv.session.kvcache.Kind, value) orelse return error.InvalidArguments //
@@ -152,6 +162,10 @@ pub fn main(init: std.process.Init) !void {
         std.debug.print("zerv: --parallel must be 1..{d} (and needs --prefill-chunk >= it)\n", .{zerv.model.layout.io.batch_max});
         return error.InvalidArguments;
     }
+    if ((disk_dir != null) != (disk_mib != 0) or disk_mib > (1 << 20) or disk_entries == 0 or disk_entries > 4096 or
+        (disk_dir != null and (parallel < 2 or !kv_share)) or
+        (disk_dir == null and (disk_entries != 64 or disk_alignment != 0)) or
+        (disk_alignment != 0 and (!std.math.isPowerOfTwo(disk_alignment) or disk_alignment > (1 << 20)))) return error.InvalidArguments;
     // One sequence: 8 snapshots of its history. Several: 3 checkpoints per slot (a system
     // prompt plus recent turns per conversation; docs/specs/concurrent.md "18d.4 design").
     var snapshot_slots: u32 = snapshot_slots_arg orelse if (parallel > 1) @min(3 * parallel, zerv.session.prefix.max_slots) else 8;
@@ -213,7 +227,7 @@ pub fn main(init: std.process.Init) !void {
         return error.InvalidArguments;
     }
     const embed_host: u64 = if (embedding_memory == .host) (container.findTensor("token_embd.weight") orelse return error.MissingTensor).data.len + 65536 else 0;
-    var device = try zerv.gpu.Device.open(.{ .max_allocated_bytes = budget_gib * 1024 * 1024 * 1024 + snapshot_host + embed_host + swap_bytes, .cooperative_matrix = zerv.model.gemm.deviceNeeds(precision).cooperative_matrix, .subgroup_size_control = zerv.model.gemm.deviceNeeds(precision).subgroup_size_control, .storage16 = kv_type == .f16, .pipeline_binaries = zerv.model.gemm.needsPipelineBinaries(precision, gemm_code) });
+    var device = try zerv.gpu.Device.open(.{ .max_allocated_bytes = budget_gib * 1024 * 1024 * 1024 + snapshot_host + embed_host + swap_bytes + @as(u64, if (disk_dir != null) zerv.serve.disk.staging_bytes else 0), .host_import = disk_dir != null, .cooperative_matrix = zerv.model.gemm.deviceNeeds(precision).cooperative_matrix, .subgroup_size_control = zerv.model.gemm.deviceNeeds(precision).subgroup_size_control, .storage16 = kv_type == .f16, .pipeline_binaries = zerv.model.gemm.needsPipelineBinaries(precision, gemm_code) });
     defer device.deinit() catch @panic("device resources still live");
     var context_text: [16]u8 = undefined;
     const context_name = if (context == zerv.model.context_max) "max" else std.fmt.bufPrint(&context_text, "{d}", .{context}) catch unreachable;
@@ -257,6 +271,8 @@ pub fn main(init: std.process.Init) !void {
     var model_backend_store = false;
     // --parallel N > 1: the batcher owns the model on its scheduler task.
     var model_backend: zerv.serve.ModelBackend = .{ .m = &model };
+    defer model_backend.deinitDisk();
+    if (disk_dir) |directory| try model_backend.initDisk(gpa, .{ .directory = directory, .bytes = disk_mib << 20, .records = disk_entries, .alignment = if (disk_alignment == 0) null else .{ .memory = disk_alignment, .offset = disk_alignment } });
     var batch = try zerv.serve.Batcher.init(io, &model_backend, .{ .slots = parallel, .vocab = zerv.model.config.vocab, .stall = stall, .order = prefill_order, .swap_slice = if (model.swap_pages > 0 and kv_swap_slice_ms > 0) std.Io.Duration.fromMilliseconds(@intCast(kv_swap_slice_ms)) else null, .pack = if (model.packable()) @max(1, @min(prefill_pack, model.pack_seqs)) else 1 });
     var scheduler: ?std.Io.Future(void) = null;
     if (parallel > 1) {
@@ -276,6 +292,10 @@ pub fn main(init: std.process.Init) !void {
         std.debug.print("zerv: batcher: {d} batches ({d} rows, {d} partial, {d} inside prefill chunks), {d} prefill chunks ({d} packed, {d} units, {d} aborted, {d} admission waits, {d} swaps out ({d} by time slice), {d} in, {d:.1} ms swapping, {d} rows failed for memory); GPU busy {d:.1}% (decode {d:.1}%, prefill {d:.1}%) over {d:.1} s; batches by rows:", .{ st.batches, st.batch_rows, st.partial_batches, st.batches_in_chunk, st.prefill_chunks, st.packed_chunks, st.prefill_units, st.aborted_chunks, st.admission_waits, st.swap_outs, st.slice_swaps, st.swap_ins, @as(f64, @floatFromInt(st.swap_ns)) / 1e6, st.swap_failures, 100 * @as(f64, @floatFromInt(st.batch_ns + st.prefill_ns)) / span, 100 * @as(f64, @floatFromInt(st.batch_ns)) / span, 100 * @as(f64, @floatFromInt(st.prefill_ns)) / span, span / 1e9 });
         for (st.sizes[1 .. parallel + 1], 1..) |n, rows| std.debug.print(" {d}:{d}", .{ rows, n });
         std.debug.print("\n", .{});
+        if (model_backend.disk_archive) |d| {
+            const ds = d.catalog.stats;
+            std.debug.print("zerv: disk prefix archive: {d} writes, {d} restores, {d} bytes written, {d} read, {d} evictions, {d} skips, {d} failures, {d} cancellations\n", .{ ds.writes, ds.reads, ds.write_bytes, ds.read_bytes, ds.evictions, ds.skips, ds.failures, ds.cancellations });
+        }
         if (model_backend_store) {
             const cs = model_backend.cache.?.stats();
             std.debug.print("zerv: prefix checkpoints: {d} taken, {d} of {d} lookups restored ({d} prompt tokens reused), {d} dropped for new ones, {d} for memory, {d} pages deduplicated, {d} demoted to host ({d} pages), {d} promoted ({d} pages), {d} dropped from the host\n", .{ cs.inserts, cs.restores, cs.lookups, cs.restored_tokens, cs.capacity_drops, cs.pressure_drops, cs.dedup_pages, cs.demotions, cs.demoted_pages, cs.promotions, cs.promoted_pages, cs.host_drops });

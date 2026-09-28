@@ -494,3 +494,36 @@ test "prefill plans and chunk policy" {
     try t.expectEqual(@as(u8, 4), model.makePlans(129, &plans));
     try t.expectEqual(@as(u32, 129), plans[3].rows);
 }
+
+test "archive layout validates private logical pages, bounds and unsupported modes" {
+    const m = try t.allocator.create(model.Model);
+    defer t.allocator.destroy(m);
+    m.options = .{ .kv_share = true };
+    m.state_layout = try layout.stateWith(512, 16 << 20, false, .f16, 128, 2, 6);
+    m.slot = 0;
+    m.position = 257;
+    m.slot_positions = @splat(0);
+    try m.pool.init(6, 2, 4);
+    const physical = [_]u32{ 5, 2, 4 };
+    try m.pool.checkMap(0, &physical);
+    m.pool.commitMap(0, &physical);
+    var map: [3]u32 = undefined;
+    try m.archiveMap(0, 257, &map, false);
+    try t.expectEqualSlices(u32, &physical, &map);
+    try m.archiveMap(0, 257, &map, true);
+    // Whole pages, including the last partial one, plus the recurrent/conv snapshot.
+    const expected = model.snapshot_bytes + @as(u64, 3 * 128 * 16 * 2 * 4 * 256 * 2);
+    try t.expectEqual(expected, try m.archiveBytes(257));
+    try t.expectError(error.InvalidToken, m.archiveBytes(0));
+    try t.expectError(error.InvalidToken, m.archiveBytes(513));
+    try t.expectError(error.InvalidToken, m.archiveMap(0, 256, map[0..2], false));
+    try t.expectError(error.PagesMissing, m.archiveMap(1, 257, &map, true));
+    m.pool.pins[2] = 1;
+    try t.expectError(error.PageInUse, m.archiveMap(0, 257, &map, true));
+    try m.archiveMap(0, 257, &map, false); // read-only capture may include pinned pages
+    m.options.mtp = true;
+    try t.expectError(error.UnsupportedFeature, m.archiveBytes(257));
+    m.options.mtp = false;
+    m.options.kv_share = false;
+    try t.expectError(error.UnsupportedFeature, m.archiveBytes(257));
+}

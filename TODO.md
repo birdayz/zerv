@@ -1,6 +1,6 @@
 # Controlled work queue
 
-Active block: **18d.6c · disk-backed checkpoint residency (`src/session`), snapshot table verified; record/transfer contract next** (below). Active goal (resumed by the user after 08c): native Qwen3.8-27B through
+Completed current block: **18d.6e · production RAM-staged disk prefix archive (`src/serve`); model, scheduler and serving gates closed** (below). No next implementation block selected; performance opportunities are recorded in the integration report. Active goal (resumed by the user after 08c): native Qwen3.8-27B through
 `POST /v1/chat/completions`, fully verified. Not achieved yet. No proxy, mock
 inference, or external engine in the production path.
 
@@ -111,18 +111,35 @@ the bounded asynchronous disk-store increment, then cache/scheduler integration.
   [Report](docs/bench/2026-09-28-nvme-store.md). User correction: no btrfs policy
   in core; generic reported/configured alignment, operator-owned filesystem prep
   in [deployment guidance](docs/deployment/nvme-scratch.md).
-- [ ] **18d.6c · disk-backed checkpoint residency (`src/session`)**:
+- [x] **18d.6c · disk-backed checkpoint residency (`src/session`)**:
   - [x] First increment: independent snapshot identity/hot-slot/disk-slot ownership
     table, leases and generation/transfer guards; spec and Python oracle before
     native code. 4,860 exact state transitions; physical 12-snapshot/two-resident-slot
     test, failures/cancellation; CPU 79/79, both modes ×20; two metadata benchmark
     runs. [Report](docs/bench/2026-09-28-snapshot-residency.md).
-  - [ ] Next: record layout/integrity and bounded chunked transfer contract, then
-    adopt the table in the checkpoint cache. Existing production cache is unchanged;
-    table capacity is not yet serving capacity. Resolve KV disk extents/ancestor
-    ownership and metadata memory scaling before exposing larger cache capacity.
-  Scheduler/model adapters and full serving gates follow as sequential increments,
-  not parallel tracks. No server flag until integration.
+  - [x] Immutable write-through archive: independent POSIX/hash fixture, bounded
+    chunk transfers, leases, corruption/cancellation/drain; CPU 81/81 and measured
+    component throughput. [Report](docs/bench/2026-09-28-prefix-archive.md).
+    [Integration spec](docs/specs/disk-prefix-cache.md) resolves independent KV images
+    rather than ancestor pins; the prior residency table is not adopted by this path.
+- [x] **18d.6d · production model archive adapter (`src/model`)**: exact poisoned/
+  permuted state and full-vocab continuation at 257/80k, independent FP64/libllama
+  oracle 337/337; cleanup-width bug fixed. [Report](docs/bench/2026-09-28-archive-model.md).
+- [x] **18d.6e · serving disk owner/scheduler (`src/serve`)**:
+  - [x] Opt-in production flags, imported staging owner, immutable full-image archive,
+    pending I/O, cancellation/leave/stop drain and cold fallback. No FS policy in core.
+  - [x] Real NVMe 80k: 5,399,773,184 bytes and full-vocab rows exact; hot eviction,
+    poisoned/reversed pages, cancel/retry and last-chunk corruption fallback.
+  - [x] Deterministic slot-release/reuse race negative control, fixed; delayed-I/O and
+    packed-stop tests pass 20 times in each mode. CPU 81/81; GPU/spill 3/3; host GPU 2/2.
+  - [x] Three-round native off/host/disk and tuned llama-server serving: all requests
+    complete, 72 native turns identical. Disk improves reuse but loses cold latency;
+    host and llama finish faster. [Report](docs/bench/2026-09-28-disk-prefix-serving.md).
+  - [x] Other-competitor follow-up and final review: vLLM compile-warm run completes
+    24 requests, but one second-turn answer is empty each round; cold startup failure
+    retained. Different W4A16/FP8 precision, larger KV pool; not a quality-equivalent
+    win. SGLang not evaluated. Broader KV stress-test timeouts remain recorded/
+    undiagnosed; retired hang goal is not resumed. Final CPU/Python/format 81/81.
 - [ ] **19 · image input: Qwen3.8-27B vision through `/v1/chat/completions`** (parked).
   - Why: bruh sends tool screenshots as `image_url` user content (PNG data URLs); zerv answers
     400 and the turn fails. llama-server serves them with `--mmproj`.

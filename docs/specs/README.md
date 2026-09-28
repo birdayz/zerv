@@ -54,3 +54,6 @@ Before a feature is ready for code, its specification must contain:
 
 A reference-validation harness is itself functionality: specify and research it
 before coding it. Do not invent untested commands in docs and label them working.
+
+- [RAM-staged disk prefix archive](disk-prefix-cache.md): immutable full checkpoint
+  images, integrity, bounded pending I/O, model/scheduler ownership and 80k gates.

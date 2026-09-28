@@ -86,7 +86,46 @@ const Fake = struct {
     in_reset: std.atomic.Value(bool) = .init(false),
     resume_reset: std.Io.Event = .unset,
 
+    io_pause_poll: bool = false,
+    io_in_poll: std.Io.Event = .unset,
+    io_resume_poll: std.Io.Event = .unset,
+    release_calls: [max_slots]u32 = @splat(0),
+    reset_release_seen: [max_slots]u32 = @splat(0),
+    io_kind: enum { off, begin, checkpoint } = .off,
+    io_live: ?u32 = null,
+    io_tokens: []const u32 = &.{},
+    io_hash: u64 = 0,
+    io_cancel_polls: u32 = 0,
+    io_entered: std.atomic.Value(bool) = .init(false),
+    io_ready: std.atomic.Value(bool) = .init(false),
+    fn pending(self: *Fake, slot: u32, tokens: []const u32) anyerror!void {
+        self.io_live = slot;
+        self.io_tokens = tokens;
+        self.io_hash = 7;
+        for (tokens) |token| self.io_hash = mix(self.io_hash, token);
+        self.io_entered.store(true, .release);
+        return error.PendingIo;
+    }
+    pub fn pollCache(self: *Fake, slot: u32, cancel: bool) !batcher.CachePoll {
+        if (self.io_pause_poll) {
+            self.io_pause_poll = false;
+            self.io_in_poll.set(self.io);
+            self.io_resume_poll.waitUncancelable(self.io);
+        }
+        if (self.flight != null or self.io_live != slot) return error.InvalidState;
+        var h: u64 = 7;
+        for (self.io_tokens) |token| h = mix(h, token);
+        if (h != self.io_hash) return error.BorrowedTokensChanged;
+        if (cancel) self.io_cancel_polls += 1;
+        if (self.io_cancel_polls < 3 and !self.io_ready.load(.acquire)) return .{};
+        self.io_live = null;
+        self.io_tokens = &.{};
+        if (cancel) return error.Canceled;
+        return .{ .done = true, .progressed = true, .position = 2 };
+    }
+
     pub fn reset(self: *Fake, slot: u32) !void {
+        self.reset_release_seen[slot] = self.release_calls[slot];
         if (self.flight != null) self.violations += 1;
         if (self.block_reset != null and self.block_reset.? == slot) {
             self.in_reset.store(true, .release);
@@ -100,6 +139,7 @@ const Fake = struct {
     }
     pub fn begin(self: *Fake, slot: u32, prompt: []const u32) !u32 {
         try self.reset(slot);
+        if (self.io_kind == .begin and slot == 0) try self.pending(slot, prompt);
         var best: ?usize = null;
         for (0..self.ck_count) |i| {
             const n = self.ck_len[i];
@@ -127,6 +167,7 @@ const Fake = struct {
         self.ck_len[self.ck_count] = prefix.len;
         self.ck_hist[self.ck_count] = h;
         self.ck_count += 1;
+        if (self.io_kind == .checkpoint and slot == 0) try self.pending(slot, prefix);
     }
     pub fn packFits(self: *Fake, remaining: []const usize) bool {
         return remaining.len <= self.pack_cap;
@@ -196,6 +237,8 @@ const Fake = struct {
         return true;
     }
     pub fn release(self: *Fake, slot: u32) void {
+        self.release_calls[slot] += 1;
+        if (self.io_live == slot) self.violations += 1;
         self.held[slot] = 0;
         self.host_held[slot] = 0;
         self.swapped[slot] = false;
@@ -1011,4 +1054,133 @@ test "batcher: every prompt segment is admitted (checkpoint points split a promp
     task.await(io);
     try r;
     try t.expectEqual(@as(u32, 0), fake.violations);
+}
+
+fn pendingCacheOp(b: *B, slot: u32, tokens: []const u32, checkpoint: bool) anyerror!u32 {
+    if (checkpoint) {
+        try b.checkpoint(slot, tokens);
+        return 0;
+    }
+    return b.begin(slot, tokens);
+}
+
+test "batcher: pending cache keeps tokens and permits decode; cancel leave stop drain" {
+    const io = t.io;
+    for ([_]bool{ false, true }) |checkpoint| for (0..4) |action| {
+        var fake: Fake = .{ .io = io, .io_kind = if (checkpoint) .checkpoint else .begin };
+        var b = try B.init(io, &fake, .{ .slots = 2, .vocab = V });
+        var task = try io.concurrent(B.run, .{&b});
+        var stopped = false;
+        defer if (!stopped) {
+            b.stop();
+            task.await(io);
+        };
+        const a = try b.join();
+        const other = try b.join();
+        var tokens = [_]u32{ 9, 4, 8 };
+        if (checkpoint) {
+            try b.reset(a);
+            _ = try b.prefill(a, &tokens);
+            b.sampled(a);
+        }
+        var pending = try io.concurrent(pendingCacheOp, .{ &b, a, @as([]const u32, &tokens), checkpoint });
+        while (!fake.io_entered.load(.acquire)) try io.sleep(.fromMicroseconds(100), .awake);
+        // No disk completion yet. Another sequence must still reach a decode result.
+        try b.reset(other);
+        _ = try b.prefill(other, &.{7});
+        b.sampled(other);
+        const row = try b.step(other, 5);
+        var want: [V]f32 = undefined;
+        logitsFor(mix(mix(7, 7), 5), &want);
+        try t.expectEqualSlices(f32, &want, row);
+        b.sampled(other);
+        switch (action) {
+            0 => {
+                fake.io_ready.store(true, .release);
+                try t.expectEqual(@as(u32, if (checkpoint) 0 else 2), try pending.await(io));
+                b.leave(a);
+            },
+            1 => {
+                try t.expectError(error.Canceled, pending.cancel(io));
+                b.leave(a);
+            },
+            2 => {
+                b.leave(a);
+                try t.expectError(error.Canceled, pending.await(io));
+            },
+            3 => {
+                b.stop();
+                task.await(io);
+                stopped = true;
+                try t.expectError(error.Canceled, pending.await(io));
+                b.leave(a);
+            },
+            else => unreachable,
+        }
+        // Native cancellation returns only when the backend has stopped borrowing this.
+        @memset(&tokens, 0xdead);
+        b.leave(other);
+        if (!stopped) {
+            b.stop();
+            task.await(io);
+            stopped = true;
+        }
+        try t.expectEqual(null, fake.io_live);
+        if (action > 0) try t.expect(fake.io_cancel_polls >= 3);
+        try t.expectEqual(@as(u32, 0), fake.violations);
+    };
+}
+
+test "batcher: leave and reuse during an I/O poll releases old pages before new begin" {
+    const io = t.io;
+    var fake: Fake = .{ .io = io, .io_kind = .begin, .io_pause_poll = true };
+    var b = try B.init(io, &fake, .{ .slots = 2, .vocab = V });
+    const a = try b.join();
+    const old = try b.join();
+    var scheduler = try io.concurrent(B.run, .{&b});
+    var pending = try io.concurrent(pendingCacheOp, .{ &b, a, @as([]const u32, &.{ 1, 2, 3 }), false });
+    fake.io_in_poll.waitUncancelable(io);
+    // The scheduler is unlocked in the callback, after its release-queue check.
+    b.leave(old);
+    const reused = try b.join();
+    var next = try io.concurrent(pendingCacheOp, .{ &b, reused, @as([]const u32, &.{ 4, 5, 6 }), false });
+    while (true) {
+        b.mutex.lockUncancelable(io);
+        const is_queued = b.slot[reused].op == .begin;
+        b.mutex.unlock(io);
+        if (is_queued) break;
+        try io.sleep(.fromMicroseconds(100), .awake);
+    }
+    fake.io_resume_poll.set(io);
+    _ = try next.await(io);
+    b.stop();
+    scheduler.await(io);
+    try t.expectError(error.Canceled, pending.await(io));
+    try t.expectEqual(@as(u32, 1), fake.release_calls[reused]);
+    try t.expectEqual(fake.release_calls[reused], fake.reset_release_seen[reused]);
+    b.leave(a);
+    b.leave(reused);
+}
+
+test "batcher: stop aborts a packed chunk before draining pending cache I/O" {
+    const io = t.io;
+    var fake: Fake = .{ .io = io, .io_kind = .begin, .segments = 4, .unit_delay_ns = 5_000_000 };
+    var b = try B.init(io, &fake, .{ .slots = 2, .vocab = V });
+    const a = try b.join();
+    const other = try b.join();
+    var scheduler = try io.concurrent(B.run, .{&b});
+    var pending = try io.concurrent(pendingCacheOp, .{ &b, a, @as([]const u32, &.{ 1, 2, 3 }), false });
+    while (!fake.io_entered.load(.acquire)) try io.sleep(.fromMicroseconds(100), .awake);
+    const tokens: [60]u32 = @splat(7);
+    var prefill = try io.concurrent(prefillOwned, .{ &b, other, @as([]const u32, &tokens) });
+    while (fake.members.load(.acquire) == 0) try io.sleep(.fromMicroseconds(100), .awake);
+    b.stop();
+    scheduler.await(io);
+    try t.expectError(error.Canceled, pending.await(io));
+    try t.expectError(error.Canceled, prefill.await(io));
+    try t.expectEqual(@as(u32, 1), fake.aborts);
+    try t.expect(fake.io_cancel_polls >= 3);
+    try t.expectEqual(@as(u32, 0), fake.violations);
+    b.leave(a);
+    b.leave(other);
 }

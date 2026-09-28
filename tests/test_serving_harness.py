@@ -33,6 +33,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if Handler.mode == "stall-body":
             time.sleep(3)
             return
+        if Handler.mode == "missing-done":
+            self.wfile.write(b'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n')
+            return
+        if Handler.mode == "stream-error":
+            self.wfile.write(b'data: {"error":{"message":"generation failed"}}\n\ndata: [DONE]\n\n')
+            return
         if Handler.mode == "timings":
             self.wfile.write(b'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"timings":{"draft_n":12,"draft_n_accepted":9}}\n\n')
             self.wfile.write(b"data: [DONE]\n\n")
@@ -90,6 +96,32 @@ class SpecCounterTests(unittest.TestCase):
         self.assertEqual(r["spec"], dict(drafted=12, verified=12, accepted=9))
         self.assertEqual(r["finish"], "stop")
 
+    def test_multiturn_rejects_in_stream_errors(self):
+        import run_multiturn
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            Handler.mode = "stream-error"
+            record = {}
+            self.assertEqual("", run_multiturn.turn(server.server_address[1], {}, record))
+            self.assertIn("generation failed", record["error"])
+            self.assertNotIn("output_sha256", record)
+        finally:
+            server.shutdown()
+
+    def test_multiturn_rejects_incomplete_stream(self):
+        import run_multiturn
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            Handler.mode = "missing-done"
+            record = {}
+            self.assertEqual("", run_multiturn.turn(server.server_address[1], {}, record))
+            self.assertIn("without [DONE]", record["error"])
+            self.assertNotIn("output_sha256", record)
+        finally:
+            server.shutdown()
+
     def test_zerv_metrics(self):
         text = "\n".join(["# TYPE zerv_spec_verifies_total counter", "zerv_spec_verifies_total 7",
                           'zerv_spec_draft_tokens_total{stage="drafted"} 21', 'zerv_spec_draft_tokens_total{stage="verified"} 20',
@@ -99,6 +131,15 @@ class SpecCounterTests(unittest.TestCase):
 
 
 class EngineSuffixTests(unittest.TestCase):
+    def test_disk_directory_log_names_are_bounded_basenames(self):
+        import run_multiturn
+        for engine in ("zerv-f16@prefix-cache-disk-dir=third_party/nvme-probe", "zerv@x=" + "a" * 300, "../escape"):
+            name = run_multiturn.log_name(engine, 3)
+            self.assertEqual(Path(name).name, name)
+            self.assertLess(len(name.encode()), 255)
+            self.assertEqual(name, run_multiturn.log_name(engine, 3))
+            self.assertNotEqual(name, run_multiturn.log_name(engine, 4))
+
     def test_zerv_flags(self):
         table = {"zerv": dict(cmd=["/bin/zerv", "--model", "m"], env={}), "llama": dict(cmd=["/usr/bin/llama-server"], env={})}
         spec = run_serving.resolve_engine(table, "zerv@embedding-memory=device,spec-draft=3", "/bin/zerv")

@@ -1,0 +1,72 @@
+INFO: Invocation ID: 03c6d3ac-aaea-41b4-8b18-7ae48edbb90b
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (0 packages loaded, 0 targets configured).
+[2 / 7] zig test //tests:batcher; 1s disk-cache, linux-sandbox ... (2 actions, 1 running)
+[3 / 8] zig test //tests:batcher; 2s disk-cache, linux-sandbox ... (2 actions running)
+FAIL: //tests:batcher (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/batcher/test.log)
+INFO: From Testing //tests:batcher:
+==================== Test output for //tests:batcher:
+1/17 batcher.test.batcher: concurrent generations get exactly their solo logits, with joins, leaves and holds...OK
+2/17 batcher.test.batcher: shortest remaining prompt goes first between chunks; fifo keeps arrival order...OK
+3/17 batcher.test.batcher: a generation canceled mid-chunk aborts its chunk; the slot is reset and reused...OK
+4/17 batcher.test.batcher: a slow client does not hold the others (gather expires)...OK
+5/17 batcher.test.batcher: a canceled waiter withdraws; a backend error fails only its batch; stop...OK
+6/17 batcher.test.batcher: a canceled generation's prompt is never read after its submit returns...OK
+7/17 batcher.test.batcher: a row that cannot run fails alone; the other rows of its batch run...OK
+8/17 batcher.test.batcher: pending prompts pack into one chunk; each gets its solo logits; a canceled member does not stop the others...OK
+9/17 batcher.test.batcher: shared memory pool: prompts wait for memory, a large prompt is not starved, memory comes back...OK
+10/17 batcher.test.batcher: prompt admission grows page by page; the youngest sequence swaps out and back, outputs unchanged...OK
+11/17 batcher.test.batcher: prompt admission without a host store: a row that finds no page fails alone...OK
+12/17 batcher.test.batcher: time slice: a swapped sequence waiting a slice swaps out the longest-running one; outputs unchanged...OK
+13/17 batcher.test.batcher: time slice: a new prompt is not starved while long sequences rotate through the pool...OK
+14/17 batcher.test.batcher: begin restores the longest checkpoint; checkpoints are taken mid-prompt; outputs unchanged...OK
+15/17 batcher.test.batcher: every prompt segment is admitted (checkpoint points split a prompt; tight pool)...OK
+16/17 batcher.test.batcher: pending cache keeps tokens and permits decode; cancel leave stop drain...OK
+17/17 batcher.test.batcher: leave and reuse during an I/O poll releases old pages before new begin...expected 1, found 0
+FAIL (TestExpectedEqual)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/5521/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:118:17: 0x1239a74 in expectEqualInner__anon_43229 (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/5521/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:83:5: 0x123a93a in expectEqual (batcher.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/5521/execroot/_main/tests/batcher.zig:1160:5: 0x123a993 in test.batcher: leave and reuse during an I/O poll releases old pages before new begin (batcher.zig)
+16 passed; 0 skipped; 1 failed.
+================================================================================
+[4 / 8] 1 / 2 tests, 1 failed; zig test //tests:batcher; 3s disk-cache, linux-sandbox
+[5 / 8] 1 / 2 tests, 1 failed; [Prepa] runfiles for //tests:batcher
+[8 / 9] 1 / 2 tests, 1 failed; Testing //tests:batcher_release_fast; 1s disk-cache, linux-sandbox
+FAIL: //tests:batcher_release_fast (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/batcher_release_fast/test.log)
+INFO: From Testing //tests:batcher_release_fast:
+==================== Test output for //tests:batcher_release_fast:
+1/17 batcher.test.batcher: concurrent generations get exactly their solo logits, with joins, leaves and holds...OK
+2/17 batcher.test.batcher: shortest remaining prompt goes first between chunks; fifo keeps arrival order...OK
+3/17 batcher.test.batcher: a generation canceled mid-chunk aborts its chunk; the slot is reset and reused...OK
+4/17 batcher.test.batcher: a slow client does not hold the others (gather expires)...OK
+5/17 batcher.test.batcher: a canceled waiter withdraws; a backend error fails only its batch; stop...OK
+6/17 batcher.test.batcher: a canceled generation's prompt is never read after its submit returns...OK
+7/17 batcher.test.batcher: a row that cannot run fails alone; the other rows of its batch run...OK
+8/17 batcher.test.batcher: pending prompts pack into one chunk; each gets its solo logits; a canceled member does not stop the others...OK
+9/17 batcher.test.batcher: shared memory pool: prompts wait for memory, a large prompt is not starved, memory comes back...OK
+10/17 batcher.test.batcher: prompt admission grows page by page; the youngest sequence swaps out and back, outputs unchanged...OK
+11/17 batcher.test.batcher: prompt admission without a host store: a row that finds no page fails alone...OK
+12/17 batcher.test.batcher: time slice: a swapped sequence waiting a slice swaps out the longest-running one; outputs unchanged...OK
+13/17 batcher.test.batcher: time slice: a new prompt is not starved while long sequences rotate through the pool...OK
+14/17 batcher.test.batcher: begin restores the longest checkpoint; checkpoints are taken mid-prompt; outputs unchanged...OK
+15/17 batcher.test.batcher: every prompt segment is admitted (checkpoint points split a prompt; tight pool)...OK
+16/17 batcher.test.batcher: pending cache keeps tokens and permits decode; cancel leave stop drain...OK
+17/17 batcher.test.batcher: leave and reuse during an I/O poll releases old pages before new begin...expected 1, found 0
+FAIL (TestExpectedEqual)
+16 passed; 0 skipped; 1 failed.
+================================================================================
+INFO: Found 2 test targets...
+INFO: Elapsed time: 10.354s, Critical Path: 9.82s
+INFO: 9 processes: 5 internal, 6 linux-sandbox.
+INFO: Build completed, 2 tests FAILED, 9 total actions
+//tests:batcher                                                          FAILED in 1.3s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/batcher/test.log
+//tests:batcher_release_fast                                             FAILED in 1.1s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/batcher_release_fast/test.log
+
+Executed 2 out of 2 tests: 2 fail locally.
