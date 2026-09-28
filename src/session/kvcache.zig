@@ -94,6 +94,14 @@ pub const Stats = struct {
     host_drops: u64 = 0,
 };
 
+/// Logical source incarnation, independent of the physical snapshot/disk namespaces.
+pub const Handle = struct { index: u32, generation: u64 };
+pub const Lease = struct { handle: Handle, serial: u64 };
+/// Borrowed metadata until releaseSource. Only valid-prefix KV bytes are immutable:
+/// unused partial-page tails require the byte adapter's canonicalization/dependencies.
+pub const Source = struct { lease: Lease, snapshot: u32, tokens: []const u32, pages: []const u32 };
+pub const SourceState = struct { generation: u64 = 0, serial: u64 = 0, active: bool = false, refs: u32 = 0 };
+
 /// A prefix-cache policy.
 pub const Cache = struct {
     ctx: *anyopaque,
@@ -109,6 +117,9 @@ pub const Cache = struct {
         evict: *const fn (ctx: *anyopaque, dev: Device) bool,
         /// Host-store pressure: drop one demoted checkpoint; false: none.
         evictHost: *const fn (ctx: *anyopaque, dev: Device) bool,
+        coldSource: ?*const fn (ctx: *anyopaque) ?Handle = null,
+        acquireSource: ?*const fn (ctx: *anyopaque, handle: Handle) anyerror!Source = null,
+        releaseSource: ?*const fn (ctx: *anyopaque, lease: Lease) anyerror!void = null,
         stats: *const fn (ctx: *anyopaque) Stats,
         deinit: *const fn (ctx: *anyopaque, allocator: std.mem.Allocator) void,
     };
@@ -123,6 +134,16 @@ pub const Cache = struct {
     }
     pub fn evictHost(c: Cache, dev: Device) bool {
         return c.vtable.evictHost(c.ctx, dev);
+    }
+    pub fn coldSource(c: Cache) ?Handle {
+        return if (c.vtable.coldSource) |f| f(c.ctx) else null;
+    }
+    pub fn acquireSource(c: Cache, handle: Handle) !Source {
+        return (c.vtable.acquireSource orelse return error.UnsupportedSource)(c.ctx, handle);
+    }
+    /// Caller must drain all references to the borrowed source before release.
+    pub fn releaseSource(c: Cache, lease: Lease) !void {
+        return (c.vtable.releaseSource orelse return error.UnsupportedSource)(c.ctx, lease);
     }
     pub fn stats(c: Cache) Stats {
         return c.vtable.stats(c.ctx);
@@ -269,6 +290,7 @@ pub const Radix = struct {
     store: checkpoint.Store,
     parent: []?u16,
     children: []u16,
+    sources: []SourceState,
     /// Segment ownership (docs/specs/concurrent.md, "18d.5 design"): node i holds a pin (or
     /// the host page) only for its pages from index `own[i]` on; the leading pages equal to
     /// its parent's are its ancestors'. Every node's list still names all its pages (for
@@ -287,7 +309,7 @@ pub const Radix = struct {
         if (snapshots > std.math.maxInt(u16)) return error.InvalidOptions;
         const self = try allocator.create(Radix);
         errdefer allocator.destroy(self);
-        self.* = .{ .store = try checkpoint.Store.init(allocator, snapshots, context, max_pages, boundary), .parent = undefined, .children = undefined, .own = undefined, .seg_buf = undefined, .ren_buf = undefined, .pin_buf = undefined };
+        self.* = .{ .store = try checkpoint.Store.init(allocator, snapshots, context, max_pages, boundary), .parent = undefined, .children = undefined, .sources = undefined, .own = undefined, .seg_buf = undefined, .ren_buf = undefined, .pin_buf = undefined };
         errdefer self.store.deinit(allocator);
         self.parent = try allocator.alloc(?u16, snapshots);
         errdefer allocator.free(self.parent);
@@ -295,6 +317,9 @@ pub const Radix = struct {
         self.children = try allocator.alloc(u16, snapshots);
         errdefer allocator.free(self.children);
         @memset(self.children, 0);
+        self.sources = try allocator.alloc(SourceState, snapshots);
+        errdefer allocator.free(self.sources);
+        @memset(self.sources, .{});
         self.own = try allocator.alloc(u32, snapshots);
         errdefer allocator.free(self.own);
         @memset(self.own, 0);
@@ -308,7 +333,47 @@ pub const Radix = struct {
     pub fn cache(self: *Radix) Cache {
         return .{ .ctx = self, .vtable = &vtable };
     }
-    const vtable: Cache.VTable = .{ .restore = restore, .checkpoint = take, .evict = evict, .evictHost = evictHost, .stats = stats, .deinit = deinit };
+    const vtable: Cache.VTable = .{ .restore = restore, .checkpoint = take, .evict = evict, .evictHost = evictHost, .stats = stats, .deinit = deinit, .coldSource = coldSource, .acquireSource = acquireSource, .releaseSource = releaseSource };
+
+    fn coldSource(ctx: *anyopaque) ?Handle {
+        const self: *Radix = @ptrCast(@alignCast(ctx));
+        const i = self.leaf(null) orelse return null;
+        return .{ .index = @intCast(i), .generation = self.sources[i].generation };
+    }
+    fn validateSource(self: *const Radix, h: Handle) !usize {
+        if (h.index >= self.sources.len or !self.live(h.index) or self.sources[h.index].generation != h.generation) return error.InvalidSource;
+        return h.index;
+    }
+    fn acquireSource(ctx: *anyopaque, h: Handle) anyerror!Source {
+        const self: *Radix = @ptrCast(@alignCast(ctx));
+        const i = try self.validateSource(h);
+        const s = &self.sources[i];
+        if (s.active) return error.Busy;
+        if (s.serial == std.math.maxInt(u64)) return error.SourceExhausted;
+        var at: ?usize = i;
+        while (at) |u| : (at = if (self.parent[u]) |p| p else null) {
+            if (self.sources[u].refs == std.math.maxInt(u32)) return error.SourceExhausted;
+        }
+        at = i;
+        while (at) |u| : (at = if (self.parent[u]) |p| p else null) self.sources[u].refs += 1;
+        s.serial += 1;
+        s.active = true;
+        return .{ .lease = .{ .handle = h, .serial = s.serial }, .snapshot = @intCast(i), .tokens = self.tokens(i), .pages = self.store.entryPages(i) };
+    }
+    fn releaseSource(ctx: *anyopaque, lease: Lease) anyerror!void {
+        const self: *Radix = @ptrCast(@alignCast(ctx));
+        const i = try self.validateSource(lease.handle);
+        const s = &self.sources[i];
+        if (!s.active or s.serial != lease.serial) return error.InvalidSource;
+        var at: ?usize = i;
+        while (at) |u| : (at = if (self.parent[u]) |p| p else null) self.sources[u].refs -= 1;
+        s.active = false;
+    }
+    fn pathHeld(self: *const Radix, i: usize) bool {
+        var at: ?usize = i;
+        while (at) |u| : (at = if (self.parent[u]) |p| p else null) if (self.sources[u].refs != 0) return true;
+        return false;
+    }
 
     fn live(self: *const Radix, i: usize) bool {
         return self.store.entries[i].len != 0;
@@ -348,7 +413,7 @@ pub const Radix = struct {
     fn leaf(self: *const Radix, keep: ?usize) ?usize {
         var best: ?usize = null;
         for (self.store.entries, 0..) |e, i| {
-            if (e.len == 0 or self.children[i] != 0 or (keep != null and i == keep.?)) continue;
+            if (e.len == 0 or self.children[i] != 0 or self.sources[i].refs != 0 or (keep != null and i == keep.?)) continue;
             if (best == null or e.used < self.store.entries[best.?].used) best = i;
         }
         return best;
@@ -356,6 +421,7 @@ pub const Radix = struct {
 
     /// Remove leaf `i`: its own segment's pins and host pages are released.
     fn remove(self: *Radix, dev: Device, i: usize) !void {
+        if (self.sources[i].refs != 0) return error.Busy;
         if (self.children[i] != 0) return error.InvalidState; // only leaves are removed
         try dev.unpin(self.segment(i));
         if (self.parent[i]) |u| self.children[u] -= 1;
@@ -404,6 +470,7 @@ pub const Radix = struct {
         // A demoted checkpoint (or an ancestor's pages it shares, which are its own list's
         // entries too) comes back first; room is made by demoting or dropping others.
         if (self.anyHost(self.store.entryPages(i))) {
+            if (self.pathHeld(i)) return 0; // promotion would rename a leased source
             const list = self.store.entryPagesMut(i);
             var promoted: u32 = 0;
             for (list) |q| promoted += @intFromBool(q & Device.host_flag != 0);
@@ -430,6 +497,10 @@ pub const Radix = struct {
 
     fn take(ctx: *anyopaque, dev: Device, slot: u32, prefix: []const u32) anyerror!void {
         const self: *Radix = @ptrCast(@alignCast(ctx));
+        // Reparenting a held node would change its release path and segment ownership.
+        for (self.store.entries, 0..) |e, j| {
+            if (self.sources[j].refs != 0 and e.len > prefix.len and std.mem.eql(u32, self.tokens(j)[0..prefix.len], prefix)) return;
+        }
         // Deduplicate first (also when `prefix` is held already: a cold duplicate): the live node sharing the most tokens with `prefix` holds pages
         // for them; the slot's full pages below that point are byte-identical copies.
         const page = dev.pageTokens();
@@ -456,13 +527,15 @@ pub const Radix = struct {
         if (self.store.has(prefix)) return;
         // A slot: a free one, else the least recently used leaf.
         var i: usize = 0;
-        while (i < self.store.entries.len and self.live(i)) i += 1;
+        while (i < self.store.entries.len and (self.live(i) or self.sources[i].generation == std.math.maxInt(u64))) i += 1;
         if (i == self.store.entries.len) {
             i = self.leaf(null) orelse return;
+            if (self.sources[i].generation == std.math.maxInt(u64)) return;
             try self.remove(dev, i);
             self.st.capacity_drops += 1;
         }
         try fillEntry(&self.store, dev, slot, i, prefix, self.pin_buf);
+        self.sources[i] = .{ .generation = self.sources[i].generation + 1 };
         // Link: parent = deepest proper prefix; nodes that extend `prefix` under that parent
         // become its children.
         const up = self.deepest(prefix, true);
@@ -516,7 +589,7 @@ pub const Radix = struct {
         while (self.tier) {
             var best: ?usize = null;
             for (self.store.entries, 0..) |e, i| {
-                if (e.len == 0 or i >= tried.len or tried[i] or !self.anyPool(self.segment(i))) continue;
+                if (e.len == 0 or i >= tried.len or tried[i] or self.sources[i].refs != 0 or !self.anyPool(self.segment(i))) continue;
                 if (best == null or e.used < self.store.entries[best.?].used) best = i;
             }
             const i = best orelse break;
@@ -536,7 +609,7 @@ pub const Radix = struct {
             if (dev.reclaimable(seg) > 0) {
                 var victim: ?usize = null;
                 for (self.store.entries, 0..) |e, j| {
-                    if (e.len == 0 or self.children[j] != 0 or j == i or (j < path.len and path[j]) or !self.anyHost(self.segment(j))) continue;
+                    if (e.len == 0 or self.children[j] != 0 or self.sources[j].refs != 0 or j == i or (j < path.len and path[j]) or !self.anyHost(self.segment(j))) continue;
                     if (victim == null or e.used < self.store.entries[victim.?].used) victim = j;
                 }
                 if (victim) |v| {
@@ -560,7 +633,7 @@ pub const Radix = struct {
         var victim: ?usize = null;
         var victim_frees = false;
         for (self.store.entries, 0..) |e, i| {
-            if (e.len == 0 or self.children[i] != 0 or (keep != null and i == keep.?)) continue;
+            if (e.len == 0 or self.children[i] != 0 or self.sources[i].refs != 0 or (keep != null and i == keep.?)) continue;
             const seg = self.segment(i);
             const frees = dev.reclaimable(seg) > 0;
             if (!frees and (self.anyPool(seg) or !self.ancestorReclaimable(dev, i, if (keep) |k| k else null))) continue;
@@ -582,7 +655,7 @@ pub const Radix = struct {
         var victim: ?usize = null;
         var victim_own = false;
         for (self.store.entries, 0..) |e, i| {
-            if (e.len == 0 or self.children[i] != 0) continue;
+            if (e.len == 0 or self.children[i] != 0 or self.sources[i].refs != 0) continue;
             const own = self.anyHost(self.segment(i));
             if (!own and !self.ancestorHost(i)) continue;
             if (victim == null or (own and !victim_own) or (own == victim_own and e.used < self.store.entries[victim.?].used)) {
@@ -639,7 +712,9 @@ pub const Radix = struct {
     }
     fn deinit(ctx: *anyopaque, allocator: std.mem.Allocator) void {
         const self: *Radix = @ptrCast(@alignCast(ctx));
+        for (self.sources) |s| if (s.active or s.refs != 0) @panic("cache source destroyed before drain");
         self.store.deinit(allocator);
+        allocator.free(self.sources);
         allocator.free(self.parent);
         allocator.free(self.children);
         allocator.free(self.own);

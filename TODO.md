@@ -1,6 +1,6 @@
 # Controlled work queue
 
-Active block: **18d.7c · immutable cache-source ownership and pressure policy (`src/session`), research/specification stage**. User requested a research-based plan and implementation; [ordered plan](docs/design/async-tiering.md). A/B gates closed: CPU 81/81, GPU/spill 3/3, host GPU 2/2, independent model oracle 337/337, 80k exact restoration and 72 identical native HTTP responses ([A](docs/bench/2026-09-28-async-ownership.md), [B](docs/bench/2026-09-28-async-archive.md)). No serving speedup; long restore regression retained. C requires partial-tail/mixed-ancestry semantics and an independent oracle before coding; C/D are not implemented. 18d.6e remains completed; the retired hang goal stays closed. Active goal (resumed by the user after 08c): native Qwen3.8-27B through
+Active block: **18d.7c · immutable cache-source ownership and pressure policy (`src/session`), source byte-adapter research/specification stage**. User requested a research-based plan and implementation; [ordered plan](docs/design/async-tiering.md). A/B gates closed: CPU 81/81, GPU/spill 3/3, host GPU 2/2, independent model oracle 337/337, 80k exact restoration and 72 identical native HTTP responses ([A](docs/bench/2026-09-28-async-ownership.md), [B](docs/bench/2026-09-28-async-archive.md)). No serving speedup; long restore regression retained. C.1 source leases implemented and verified ([report](docs/bench/2026-09-28-cache-sources.md)); C still needs canonical partial-tail/mixed-source byte capture and pressure-policy integration; D is not implemented. Active session goal: finish the full plan, with rigorous correctness gates and faster-or-on-par performance against tuned compatible competitors. No completion claim until full-serving evidence meets it. 18d.6e remains completed; the retired hang goal stays closed. Active goal (resumed by the user after 08c): native Qwen3.8-27B through
 `POST /v1/chat/completions`, fully verified. Not achieved yet. No proxy, mock
 inference, or external engine in the production path.
 
@@ -147,10 +147,14 @@ the bounded asynchronous disk-store increment, then cache/scheduler integration.
   tests, 80k exact state and continuation, independent FP64/libllama 337/337,
   component and three-round serving comparison. No speedup claim; source pause
   and eager write-through remain. [Report](docs/bench/2026-09-28-async-archive.md).
-- [ ] **18d.7c · immutable sources and pressure policy (active research)**: separate
-  checkpoint/snapshot/backing identities, lease every radix ancestor, resolve the
-  mutable partial-page tail, mixed host/GPU gather, byte/slot pressure and retained
-  disk backing. Detailed spec/oracle before code; then model and serving gates.
+- [ ] **18d.7c · immutable sources and pressure policy (active)**:
+  - [x] C.1 radix source leases: generation-qualified handles, explicit snapshot ID,
+    ancestor protection and guarded mutations. Independent oracle 2,345 transitions,
+    both modes ×20, CPU/Python/format 81/81, two component runs.
+    [Report](docs/bench/2026-09-28-cache-sources.md).
+  - [ ] C.2 canonical partial-tail/mixed-source byte capture (active research/spec),
+    then byte/slot pressure and retained disk backing. Independent byte oracle
+    before code; then exact model state/logits and repeated serving gates.
 - [ ] **18d.7d · proactive GPU→RAM preparation and demand prefetch (queued)**:
   bounded headroom, read priority; actual overlap requires separate evidence.
 - [ ] **19 · image input: Qwen3.8-27B vision through `/v1/chat/completions`** (parked).

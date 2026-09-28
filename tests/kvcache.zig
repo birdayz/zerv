@@ -372,3 +372,172 @@ test "kvcache radix tiering: an internal node's segment (a long document) demote
     try t.expectEqual(@as(u32, pool), fake.freeCount());
     for (fake.host_used) |u| try t.expect(!u);
 }
+
+const SourceRow = struct {
+    op: enum { take, evict, acquire, release },
+    tokens: []const u32 = &.{},
+    index: u32 = 0,
+    generation: u64 = 0,
+    serial: u64 = 0,
+    result: []const u8,
+    state: []const struct { tokens: []const u32, generation: u64, serial: u64, active: bool, refs: u32 },
+    candidate: ?u32,
+};
+fn sourceApply(c: kvcache.Cache, fake: *Fake, row: SourceRow) ![]const u8 {
+    const h: kvcache.Handle = .{ .index = row.index, .generation = row.generation };
+    switch (row.op) {
+        .take => {
+            fake.release(0);
+            try fake.run(0, row.tokens);
+            try c.checkpoint(fake.device(), 0, row.tokens);
+            fake.release(0);
+        },
+        .evict => return if (c.evict(fake.device())) "yes" else "no",
+        .acquire => {
+            const source = try c.acquireSource(h);
+            try t.expectEqual(h, source.lease.handle);
+            try t.expectEqual(row.index, source.snapshot);
+            try t.expectEqual(row.state[row.index].serial, source.lease.serial);
+            try t.expectEqualSlices(u32, row.state[row.index].tokens, source.tokens);
+        },
+        .release => try c.releaseSource(.{ .handle = h, .serial = row.serial }),
+    }
+    return "ok";
+}
+fn releaseAllSources(r: *kvcache.Radix) void {
+    for (r.sources, 0..) |s, i| if (s.active) {
+        r.cache().releaseSource(.{ .handle = .{ .index = @intCast(i), .generation = s.generation }, .serial = s.serial }) catch @panic("source cleanup failed");
+    };
+}
+test "cache sources: independent prefix-set ownership traces and generator provenance" {
+    const Fixture = struct { generator_sha256: []const u8, cases: []const struct { capacity: u32, steps: []const SourceRow } };
+    const parsed = try std.json.parseFromSlice(Fixture, t.allocator, @embedFile("fixtures/cache-sources.json"), .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(@embedFile("reference/generate_cache_source_fixture.py"), &digest, .{});
+    try t.expectEqualStrings(parsed.value.generator_sha256, &std.fmt.bytesToHex(digest, .lower));
+    var total: usize = 0;
+    for (parsed.value.cases, 0..) |case, ci| {
+        var fake: Fake = .{};
+        const r = try kvcache.Radix.create(t.allocator, case.capacity, ctx_max, ctx_max / P + 1, B);
+        const c = r.cache();
+        r.tier = false;
+        defer {
+            releaseAllSources(r);
+            c.deinit(t.allocator);
+        }
+        for (case.steps, 0..) |row, ri| {
+            errdefer std.debug.print("source fixture case {d} row {d} {s}\n", .{ ci, ri, @tagName(row.op) });
+            const got = sourceApply(c, &fake, row) catch |err| @errorName(err);
+            try t.expectEqualStrings(row.result, got);
+            for (row.state, 0..) |want, i| {
+                try t.expectEqualSlices(u32, want.tokens, r.store.entryTokens(i));
+                try t.expectEqualDeep(kvcache.SourceState{ .generation = want.generation, .serial = want.serial, .active = want.active, .refs = want.refs }, r.sources[i]);
+            }
+            const candidate = c.coldSource();
+            try t.expectEqual(row.candidate, if (candidate) |h| h.index else null);
+            if (candidate) |h| try t.expectEqual(r.sources[h.index].generation, h.generation);
+            try t.expect(r.checkTree());
+            try t.expectEqual(null, r.ownViolation());
+            try t.expectEqual(@as(u32, 0), fake.violations);
+            total += 1;
+        }
+        try t.expectEqual(@as(u32, pool), fake.freeCount());
+    }
+    try t.expectEqual(@as(usize, 2345), total);
+}
+
+test "cache sources: mixed ancestry survives eviction, blocked promotion, reparenting and unrelated progress" {
+    var fake: Fake = .{ .host_n = 64 };
+    const r = try kvcache.Radix.create(t.allocator, 4, ctx_max, ctx_max / P + 1, B);
+    const c = r.cache();
+    defer {
+        releaseAllSources(r);
+        c.deinit(t.allocator);
+    }
+    const tokens = [_]u32{ 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14 };
+    try fake.run(0, tokens[0..8]);
+    try c.checkpoint(fake.device(), 0, tokens[0..8]);
+    try fake.run(0, tokens[8..12]);
+    try c.checkpoint(fake.device(), 0, tokens[0..12]);
+    fake.release(0);
+    try t.expect(c.evict(fake.device())); // internal ancestor demotes first
+    const source = try c.acquireSource(c.coldSource().?);
+    try t.expect(source.pages[0] & Fake.HF != 0 and source.pages[2] & Fake.HF == 0);
+    const pages = source.pages[0..3].*;
+    const snapshot = fake.snaps[source.snapshot];
+    try t.expect(!c.evict(fake.device()));
+    try t.expect(!c.evictHost(fake.device()));
+    @memcpy(fake.hist[1][0..tokens.len], &tokens);
+    try t.expectEqual(@as(u32, 0), try c.restore(fake.device(), 1, &tokens));
+    try t.expectEqual(@as(u64, 0), c.stats().promotions);
+    // New ancestor would transfer leased segment ownership: it must not be inserted.
+    try fake.run(0, tokens[0..4]);
+    try c.checkpoint(fake.device(), 0, tokens[0..4]);
+    fake.release(0);
+    try t.expectEqual(@as(u32, 2), r.store.live());
+    // Unrelated source still inserts, demotes and drops while the path is held.
+    try fake.run(0, &.{ 21, 22, 23, 24 });
+    try c.checkpoint(fake.device(), 0, &.{ 21, 22, 23, 24 });
+    fake.release(0);
+    try t.expect(c.evict(fake.device()));
+    try t.expect(c.evictHost(fake.device()));
+    try t.expectEqualSlices(u32, &pages, source.pages);
+    try t.expectEqualSlices(u32, tokens[0..12], source.tokens);
+    try t.expectEqual(snapshot, fake.snaps[source.snapshot]);
+    try c.releaseSource(source.lease);
+    try t.expectError(error.InvalidSource, c.releaseSource(source.lease));
+    try t.expectEqual(@as(u32, 12), try c.restore(fake.device(), 1, &tokens));
+    try t.expect(fake.exact(1));
+    try t.expectEqual(@as(u32, 0), fake.violations);
+}
+
+fn sourceAllocation(a: std.mem.Allocator) !void {
+    const r = try kvcache.Radix.create(a, 2, ctx_max, ctx_max / P + 1, B);
+    const c = r.cache();
+    defer c.deinit(a);
+    var fake: Fake = .{};
+    try fake.run(0, &.{ 1, 2, 3, 4 });
+    try c.checkpoint(fake.device(), 0, &.{ 1, 2, 3, 4 });
+    const source = try c.acquireSource(c.coldSource().?);
+    try c.releaseSource(source.lease);
+}
+test "cache sources: allocation rollback, generation and serial exhaustion, unsupported flat" {
+    try t.checkAllAllocationFailures(t.allocator, sourceAllocation, .{});
+    var fa = std.testing.FailingAllocator.init(t.allocator, .{});
+    const a = fa.allocator();
+    const r = try kvcache.Radix.create(a, 1, ctx_max, ctx_max / P + 1, B);
+    const c = r.cache();
+    defer c.deinit(a);
+    fa.fail_index = fa.alloc_index; // every operation below must be allocation-free
+    fa.resize_fail_index = fa.resize_index;
+    var fake: Fake = .{};
+    try fake.run(0, &.{ 1, 2, 3, 4 });
+    try c.checkpoint(fake.device(), 0, &.{ 1, 2, 3, 4 });
+    fake.release(0);
+    const h = c.coldSource().?;
+    r.sources[0].serial = std.math.maxInt(u64);
+    try t.expectError(error.SourceExhausted, c.acquireSource(h));
+    try t.expectEqual(@as(u32, 0), r.sources[0].refs);
+    r.sources[0].serial = 0;
+    r.sources[0].refs = std.math.maxInt(u32);
+    try t.expectError(error.SourceExhausted, c.acquireSource(h));
+    try t.expectEqual(@as(u64, 0), r.sources[0].serial);
+    try t.expect(!r.sources[0].active);
+    r.sources[0].refs = 0;
+    const source = try c.acquireSource(h);
+    try t.expectError(error.Busy, c.acquireSource(h));
+    try t.expect(!c.evict(fake.device()));
+    try c.releaseSource(source.lease);
+    r.sources[0].generation = std.math.maxInt(u64);
+    try t.expect(c.evict(fake.device()));
+    try fake.run(0, &.{ 5, 6, 7, 8 });
+    try c.checkpoint(fake.device(), 0, &.{ 5, 6, 7, 8 });
+    try t.expectEqual(@as(u32, 0), r.store.live());
+    try t.expectError(error.InvalidSource, c.acquireSource(h));
+    const flat = try kvcache.create(t.allocator, .flat, 1, ctx_max, ctx_max / P + 1, B);
+    defer flat.deinit(t.allocator);
+    try t.expectEqual(null, flat.coldSource());
+    try t.expectError(error.UnsupportedSource, flat.acquireSource(h));
+    try t.expectError(error.UnsupportedSource, flat.releaseSource(source.lease));
+}

@@ -351,3 +351,7 @@ finish independent tests and benchmark gates before advancing.
      [B report](bench/2026-09-28-async-archive.md)). 80k state/logits exact, 72 HTTP
      outputs identical; no serving speedup, long restore regression retained.
      Pressure policy/proactive preparation remain pending; write-through is unchanged.
+109. [Radix cache source leases](bench/2026-09-28-cache-sources.md): 2,345 independent
+     prefix-set transitions, both modes ×20, mixed host/GPU ancestor protection;
+     24 bytes ownership metadata per hot slot. Pressure-triggered persistence and
+     faster-or-on-par full-serving goal remain open.

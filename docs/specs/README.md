@@ -62,3 +62,6 @@ before coding it. Do not invent untested commands in docs and label them working
   completion implemented; pressure policy still pending. Functional amendments in
   [GPU driver](gpu-driver.md#asynchronous-completion-ownership-18d7a) and
   [disk archive](disk-prefix-cache.md#asynchronous-device-quanta-18d7b-specified-before-implementation).
+- [Radix cache source leases](cache-source-leases.md): generation/serial-qualified
+  snapshot and ancestor ownership for background capture; byte adapter and pressure
+  policy still separate. Independent prefix-set oracle and component gates pass.

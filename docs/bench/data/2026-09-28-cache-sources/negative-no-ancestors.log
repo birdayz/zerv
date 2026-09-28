@@ -1,0 +1,65 @@
+INFO: Invocation ID: 232f88c5-d3d2-425e-9c78-03813596258b
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (0 packages loaded, 0 targets configured).
+[3 / 8] zig test //tests:kvcache; 1s disk-cache, linux-sandbox ... (2 actions running)
+FAIL: //tests:kvcache (Aborted) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kvcache/test.log)
+INFO: From Testing //tests:kvcache:
+==================== Test output for //tests:kvcache:
+1/9 kvcache.test.kvcache flat: interleaved conversations restore exactly; every page comes back...OK
+2/9 kvcache.test.kvcache radix: interleaved conversations restore exactly; every page comes back...OK
+3/9 kvcache.test.kvcache radix: prefixes prefilled cold at the same time are deduplicated on insert...OK
+4/9 kvcache.test.kvcache radix: tree invariants under random inserts, restores and evictions...OK
+5/9 kvcache.test.kvcache radix tiering: pressure demotes leaves to host; a later hit promotes them back, exact...OK
+6/9 kvcache.test.kvcache radix tiering: an internal node's segment (a long document) demotes; its child restores it...OK
+7/9 kvcache.test.cache sources: independent prefix-set ownership traces and generator provenance...expected 1, found 0
+Field refs incorrect. expected 1, found 0
+source fixture case 1 row 4 acquire
+thread 12 panic: integer overflow
+error return context:
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6534/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:776:17: 0x12a0514 in expectEqualDeepInner__anon_48519 (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6534/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:741:5: 0x129f8d6 in expectEqualDeep (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6534/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:854:21: 0x129f96b in expectEqualDeepInner__anon_45553 (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6534/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:741:5: 0x12672d8 in expectEqualDeep (kvcache.zig)
+
+stack trace:
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6534/execroot/_main/src/session/kvcache.zig:369:90: 0x125c6ad in releaseSource (root.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6534/execroot/_main/src/session/kvcache.zig:146:78: 0x123dc5a in releaseSource (root.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6534/execroot/_main/tests/kvcache.zig:409:32: 0x1252cbc in releaseAllSources (kvcache.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6534/execroot/_main/tests/kvcache.zig:426:30: 0x1267399 in test.cache sources: independent prefix-set ownership traces and generator provenance (kvcache.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6534/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/compiler/test_runner.zig:291:25: 0x11f6d56 in mainTerminal (test_runner.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6534/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/compiler/test_runner.zig:73:28: 0x11f6572 in main (test_runner.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6534/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/start.zig:699:88: 0x11f2d85 in callMain (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6534/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/start.zig:190:5: 0x11f2761 in _start (std.zig)
+================================================================================
+[4 / 8] 1 / 2 tests, 1 failed; zig test //tests:kvcache; 2s disk-cache, linux-sandbox
+[5 / 8] 1 / 2 tests, 1 failed; [Prepa] runfiles for //tests:kvcache
+FAIL: //tests:kvcache_release_fast (Aborted) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kvcache_release_fast/test.log)
+INFO: From Testing //tests:kvcache_release_fast:
+==================== Test output for //tests:kvcache_release_fast:
+1/9 kvcache.test.kvcache flat: interleaved conversations restore exactly; every page comes back...OK
+2/9 kvcache.test.kvcache radix: interleaved conversations restore exactly; every page comes back...OK
+3/9 kvcache.test.kvcache radix: prefixes prefilled cold at the same time are deduplicated on insert...OK
+4/9 kvcache.test.kvcache radix: tree invariants under random inserts, restores and evictions...OK
+5/9 kvcache.test.kvcache radix tiering: pressure demotes leaves to host; a later hit promotes them back, exact...OK
+6/9 kvcache.test.kvcache radix tiering: an internal node's segment (a long document) demotes; its child restores it...OK
+7/9 kvcache.test.cache sources: independent prefix-set ownership traces and generator provenance...expected 1, found 0
+Field refs incorrect. expected 1, found 0
+source fixture case 1 row 4 acquire
+thread 12 panic: cache source destroyed before drain
+Cannot print stack trace: stack tracing is disabled
+================================================================================
+INFO: Found 2 test targets...
+INFO: Elapsed time: 7.052s, Critical Path: 6.87s
+INFO: 9 processes: 5 internal, 6 linux-sandbox.
+INFO: Build completed, 2 tests FAILED, 9 total actions
+//tests:kvcache                                                          FAILED in 0.8s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kvcache/test.log
+//tests:kvcache_release_fast                                             FAILED in 0.3s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kvcache_release_fast/test.log
+
+Executed 2 out of 2 tests: 2 fail locally.

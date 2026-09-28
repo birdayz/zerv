@@ -115,7 +115,11 @@ The original checkpoint-triggered write-through policy is still production behav
 now with nonblocking archive GPU ownership. No serving speedup established; the 80k
 restore regression is retained. Snapshot/page transfers remain synchronous.
 
-C is the next active research/specification increment; its implementation is not
-ready until mixed ancestry, independent identities, partial-tail freezing and the
-oracle are resolved. [Partial-page finding](../research/2026-09-28-async-transfers.md#c-readiness-finding-partial-pages-are-not-immutable-full-byte-images).
+C is active. C.1 source leases are implemented with full ancestor protection and
+independent prefix-set oracle ([report](../bench/2026-09-28-cache-sources.md)).
+C.2 mixed-source byte capture still needs its canonical partial-tail fixture before
+implementation; pressure-triggered persistence is not integrated. [Partial-page finding](../research/2026-09-28-async-transfers.md#c-readiness-finding-partial-pages-are-not-immutable-full-byte-images).
 D stays queued. The overall requested pressure-driven policy is **not complete**.
+The user's active session goal also requires rigorously verified faster-or-on-par
+serving against tuned compatible competitors; A/B/C.1 component gates do not close
+that goal or erase the observed long-restore regression.

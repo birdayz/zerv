@@ -1,0 +1,34 @@
+INFO: Invocation ID: cacb9958-3b2a-41f2-9faf-db8cc24bf319
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (1 packages loaded, 0 targets configured)
+Analyzing: 2 targets (1 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (1 packages loaded, 6 targets configured).
+ERROR: /home/USER/projects/zerv/tests/BUILD.bazel:163:10: zig test //tests:kvcache failed: (Exit 1): zig failed: error executing ZigBuildTest command (from zig_test rule target //tests:kvcache) external/rules_zig++zig+zig_0.16.0_x86_64-linux/zig test --test-no-exec --zig-lib-dir external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib --cache-dir /tmp/zig-cache --global-cache-dir /tmp/zig-cache -O ... (remaining 29 arguments skipped)
+
+Use --sandbox_debug to see verbose messages from the sandbox and retain the sandbox build root for debugging
+src/session/kvcache.zig:354:43: error: expected type '?usize', found '?u16'
+        while (at) |u| : (at = self.parent[u]) {
+                               ~~~~~~~~~~~^~~
+src/session/kvcache.zig:354:43: note: optional type child 'u16' cannot cast into optional type child 'usize'
+referenced by:
+    vtable: src/session/kvcache.zig:336:178
+    cache: src/session/kvcache.zig:334:43
+    1 reference(s) hidden; use '-freference-trace=3' to see all references
+src/session/kvcache.zig:369:43: error: expected type '?usize', found '?u16'
+        while (at) |u| : (at = self.parent[u]) self.sources[u].refs -= 1;
+                               ~~~~~~~~~~~^~~
+src/session/kvcache.zig:369:43: note: optional type child 'u16' cannot cast into optional type child 'usize'
+src/session/kvcache.zig:374:43: error: expected type '?usize', found '?u16'
+        while (at) |u| : (at = self.parent[u]) if (self.sources[u].refs != 0) return true;
+                               ~~~~~~~~~~~^~~
+src/session/kvcache.zig:374:43: note: optional type child 'u16' cannot cast into optional type child 'usize'
+Use --verbose_failures to see the command lines of failed build steps.
+INFO: Elapsed time: 0.771s, Critical Path: 0.43s
+INFO: 3 processes: 11 action cache hit, 3 internal.
+ERROR: Build did NOT complete successfully
+//tests:kvcache_release_fast                                    FAILED TO BUILD
+
+Executed 0 out of 2 tests: 1 fails to build and 1 was skipped.
