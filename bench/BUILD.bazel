@@ -160,3 +160,9 @@ filegroup(
 
 # Read by //tests:test_build_lists.
 exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])
+
+zerv_vk_binary(
+    name = "zerv-attn-bench",
+    main = "attn_bench.zig",
+    deps = ["//src:zerv_lib"],
+)

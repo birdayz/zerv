@@ -1,0 +1,245 @@
+#version 450
+// WMMA prefill attention (block 16c, docs/specs/prefill.md "WMMA prefill attention"; the
+// f16 prefill mode's `--prefill-attention wmma`). f16 KV cache only.
+//   S = f16(Q) K^T (WMMA f16 x f16 -> f32, over head dims in 16-dim steps), scaled by 1/16,
+//   causal mask, online softmax in f32 per 32-key tile, P = f16(exp(s - m)),
+//   O = O * exp(m_old - m) + P V (WMMA), output O / l.
+// Workgroup: 16 query rows of HEADS query heads of one KV head (GQA: every K/V tile is
+// staged into LDS once for 16 * HEADS query rows). 2 * HEADS subgroups of exactly 32 invocations
+// (required size, full subgroups): subgroup w = head g = w / 2, head-dim half e = w % 2.
+// Each subgroup keeps f16 Q for its 16 rows x 128 dims (8 A fragments) and O for its
+// 16 rows x 128 dims (8 accumulators); the two halves' partial scores are summed in LDS
+// by half 0, which runs the softmax for its head and hands P and the rescale factors to
+// both halves.
+// Caches: K [kvh][d][ctx] and V [kvh][ctx][d] (halves), paged as flash.comp; a 32-key
+// tile is copied into LDS in the cache's own layout (the natural WMMA B operands). Host-checked: the K/V addresses of a tile
+// are multiples of 8 halves (pstride, kcache, vcache, KV_PAGE).
+// Bindings and push constants as flash.comp: 0 bank (unused), 1 act, 2 KV buffer, 3 io.
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_cooperative_matrix : require
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_shuffle : require
+// ABL (lab timing only, results wrong): 1 no global K/V loads, 2 no softmax work,
+// 3 no S WMMAs, 4 no PV WMMAs, 5 no barriers in the tile loop.
+#ifndef ABL
+#define ABL 0
+#endif
+#if ABL==5
+#define TBAR()
+#else
+#define TBAR() barrier()
+#endif
+#define R 16      // query rows per workgroup
+#ifndef HEADS
+#define HEADS 6   // query heads per workgroup (6: all of a KV head's; 3: half, 2 workgroups)
+#endif
+#define HD 256
+#define HALF 128
+#define BC 32     // keys per tile
+#define NW (2*HEADS) // subgroups
+// LDS (in uvec4 = 8 halves), transposed from the cache so each WMMA B lane reads its 16
+// k values contiguously (column-major B): Kt[key][d] (S = Q . K^T: B[k=d][n=key]) and
+// Vt[d][key] (O = P . V: B[k=key][n=d]). Staged in 8 x 8 blocks: eight 16-byte loads,
+// an in-register transpose, eight 16-byte stores.
+#define KS8 (HD/8+1)
+#define VS8 (BC/8+1)
+#define PS (BC+8) // P row stride (halves): P[head][row][key]
+#define SS (BC+4) // score row stride (floats)
+layout(local_size_x=32*NW) in;
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=1,std430) readonly buffer ActU { uint actu[]; };
+layout(set=0,binding=1,std430) readonly restrict buffer ActQ { vec4 q4[]; };
+layout(set=0,binding=2,std430) readonly buffer Kv8 { uvec4 kv8[]; };
+layout(set=0,binding=3,std430) readonly buffer Io { uint io[]; };
+layout(push_constant) uniform P { uint qr, kcache, vcache, out_, ctx; float scale; uint ptab, pstride, slots; } p;
+layout(constant_id=0) const uint KV_PAGE=128u;
+#define IO_COUNT 2
+#define IO_P0 3
+
+// Staging pool in uvec4: Q staging at the start (two passes of half the subgroups);
+// then Kl, Vl; P separately.
+#define KL 0
+#define VL (KL+BC*KS8)
+#define KVEND (VL+HD*VS8)
+#define QSTAGE (HEADS*R*HALF/8)
+#define POOL (KVEND>QSTAGE ? KVEND : QSTAGE)
+shared uvec4 pool[POOL];
+shared float16_t pl[HEADS*R*PS];
+#define SCN (HEADS*R*SS>R*HALF ? HEADS*R*SS : R*HALF)
+shared float sc[SCN]; // summed scores per head, row-major [row][key]; also the output tail
+shared float stat[HEADS*R];  // per head and row: the tile's rescale factor, finally l
+
+void main() {
+    uint t=gl_LocalInvocationID.x;
+    uint w=gl_SubgroupID, lane=gl_SubgroupInvocationID;
+    uint g=w/2u, e=w%2u;
+    uint kh=gl_WorkGroupID.y/(6u/HEADS), h=gl_WorkGroupID.y*HEADS+g;
+    uint count=io[IO_COUNT], p0=io[IO_P0];
+    uint row0=gl_WorkGroupID.x*R;
+    if (row0>=count) return; // uniform per workgroup
+    uint ptab=p.ptab+(p.slots!=0u ? io[p.slots+1u] : 0u);
+    uint kv_end=p0+min(row0+R,count);
+
+    // Q: this subgroup's 16 rows x 128 dims as f16 (rows past count repeat the last row),
+    // staged in two passes (subgroups of half 0, then half 1) through the pool.
+    coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> qa[8];
+    [[unroll]] for (uint pass=0u;pass<2u;pass++) {
+        if (e==pass) {
+            uint qs=g*R*HALF/8u;
+            [[unroll]] for (uint i=0u;i<8u;i++) {
+                uint el=lane+32u*i;       // 8-dim group within 16 rows x 16 groups
+                uint r=el/16u, c8=el%16u;
+                uint row=min(row0+r,count-1u);
+                uint qi=(p.qr+row*6144u+h*256u+e*HALF)/4u+c8*2u;
+                vec4 a=q4[qi], b=q4[qi+1u];
+                pool[qs+r*(HALF/8u)+c8]=uvec4(packFloat2x16(f16vec2(a.xy)),packFloat2x16(f16vec2(a.zw)),packFloat2x16(f16vec2(b.xy)),packFloat2x16(f16vec2(b.zw))); // RNE (packHalf2x16 may truncate)
+            }
+            subgroupMemoryBarrierShared();
+            subgroupBarrier();
+            [[unroll]] for (uint c=0u;c<8u;c++) coopMatLoad(qa[c], pool, qs+c*2u, HALF/8u, gl_CooperativeMatrixLayoutRowMajor);
+        }
+        barrier();
+    }
+    coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> o[8];
+    [[unroll]] for (uint i=0u;i<8u;i++) o[i]=coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(0.0);
+    // Softmax state (half 0 only): lanes 2r, 2r+1 hold row r.
+    float m=-uintBitsToFloat(0x7f800000u), l=0.0;
+    uint sr=lane/2u, sh=lane%2u;
+    uint qpos=p0+min(row0+sr,count-1u);
+
+    for (uint j0=0u;j0<kv_end;j0+=BC) {
+        TBAR(); // the previous tile's readers are done (and Q staging, before tile 0)
+        uint pb=actu[ptab+j0/KV_PAGE]*p.pstride;
+        uint kbase=pb+p.kcache+kh*256u*KV_PAGE+(j0%KV_PAGE); // K[d][j0 + x] at kbase + d*KV_PAGE + x
+        uint vbase=pb+p.vcache+kh*KV_PAGE*256u+(j0%KV_PAGE)*256u; // V[j0 + x][d] at vbase + x*256 + d
+        // 8 x 8 blocks: K block (8 dims x 8 keys) -> Kt rows (key, 8 dims); V block (8 keys
+        // x 8 dims) -> Vt rows (dim, 8 keys). Keys at or past the live end: V zero (P is 0
+        // there, but 0 * NaN is not); their K columns are masked to -inf before use.
+        for (uint u=t;u<2u*(HD/8u)*(BC/8u);u+=32u*NW) {
+            bool isv=u>=(HD/8u)*(BC/8u);
+            uint b=isv ? u-(HD/8u)*(BC/8u) : u;
+            uint d0=(b/(BC/8u))*8u, x0=(b%(BC/8u))*8u;
+            uvec4 m[8];
+            [[unroll]] for (uint i=0u;i<8u;i++) {
+#if ABL==1
+                m[i]=uvec4(i);
+#else
+                if (isv) m[i]=j0+x0+i<kv_end ? kv8[(vbase+(x0+i)*256u+d0)/8u] : uvec4(0u);
+                else m[i]=kv8[(kbase+(d0+i)*KV_PAGE+x0)/8u];
+#endif
+            }
+            // Transpose the 8 x 8 halves (row i = m[i]): swap 16-bit, then 32-bit, then 64-bit.
+            [[unroll]] for (uint i=0u;i<8u;i+=2u) {
+                uvec4 a=m[i], c=m[i+1u];
+                m[i]=(a&0xffffu)|(c<<16u);
+                m[i+1u]=(a>>16u)|(c&0xffff0000u);
+            }
+            [[unroll]] for (uint i=0u;i<8u;i+=4u) [[unroll]] for (uint k=0u;k<2u;k++) {
+                uvec4 a=m[i+k], c=m[i+k+2u];
+                m[i+k]=uvec4(a.x,c.x,a.z,c.z);
+                m[i+k+2u]=uvec4(a.y,c.y,a.w,c.w);
+            }
+            [[unroll]] for (uint k=0u;k<4u;k++) {
+                uvec4 a=m[k], c=m[k+4u];
+                m[k]=uvec4(a.xy,c.xy);
+                m[k+4u]=uvec4(a.zw,c.zw);
+            }
+            // m[j] now holds column j (the 8 old rows' element j, in row order).
+            [[unroll]] for (uint j=0u;j<8u;j++) {
+                if (isv) pool[VL+(d0+j)*VS8+x0/8u]=m[j];
+                else pool[KL+(x0+j)*KS8+d0/8u]=m[j];
+            }
+        }
+        TBAR();
+        // Partial scores over this subgroup's 128 dims: s[kb] = rows x keys 16 kb .. + 15.
+        coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> s[2];
+        [[unroll]] for (uint kb=0u;kb<2u;kb++) {
+            s[kb]=coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(0.0);
+            [[unroll]] for (uint c=0u;c<8u;c++) {
+                coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB> kb_;
+                coopMatLoad(kb_, pool, KL+kb*16u*KS8+(e*HALF+c*16u)/8u, KS8, gl_CooperativeMatrixLayoutColumnMajor);
+#if ABL!=3
+                s[kb]=coopMatMulAdd(qa[c], kb_, s[kb]);
+#endif
+            }
+        }
+        if (e==1u) [[unroll]] for (uint kb=0u;kb<2u;kb++) coopMatStore(s[kb], sc, g*R*SS+kb*16u, SS, gl_CooperativeMatrixLayoutRowMajor);
+        TBAR();
+        if (e==0u && ABL!=2) {
+            // Sum the halves (half 0's part + half 1's part, a fixed order), then softmax.
+            [[unroll]] for (uint kb=0u;kb<2u;kb++) {
+                coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> other;
+                coopMatLoad(other, sc, g*R*SS+kb*16u, SS, gl_CooperativeMatrixLayoutRowMajor);
+                s[kb]=s[kb]+other;
+                coopMatStore(s[kb], sc, g*R*SS+kb*16u, SS, gl_CooperativeMatrixLayoutRowMajor);
+            }
+            subgroupMemoryBarrierShared();
+            subgroupBarrier();
+            float v[16];
+            float mx=-uintBitsToFloat(0x7f800000u);
+            [[unroll]] for (uint i=0u;i<16u;i++) {
+                uint key=sh*16u+i;
+                uint j=j0+key;
+                float x=sc[g*R*SS+sr*SS+key]*p.scale;
+                v[i]=(j<=qpos) ? x : -uintBitsToFloat(0x7f800000u);
+                mx=max(mx,v[i]);
+            }
+            mx=max(mx,subgroupShuffleXor(mx,1u));
+            float mn=max(m,mx); // finite: key 0 is live for every row in tile 0
+            float alpha=exp(m-mn);
+            float sum=0.0;
+            [[unroll]] for (uint i=0u;i<16u;i++) {
+                float pe=exp(v[i]-mn);
+                sum+=pe;
+                pl[(g*R+sr)*PS+sh*16u+i]=float16_t(pe);
+            }
+            sum+=subgroupShuffleXor(sum,1u);
+            l=l*alpha+sum;
+            m=mn;
+            if (sh==0u) stat[g*R+sr]=alpha;
+        }
+        TBAR();
+        // O = O * alpha (per row) + P V over this subgroup's 128 dims.
+        coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> a;
+        coopMatLoad(a, stat, g*R, 0, gl_CooperativeMatrixLayoutColumnMajor);
+        [[unroll]] for (uint i=0u;i<8u;i++) o[i]=o[i]*a;
+        [[unroll]] for (uint kc=0u;kc<2u;kc++) {
+            coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> pa;
+            coopMatLoad(pa, pl, g*R*PS+kc*16u, PS, gl_CooperativeMatrixLayoutRowMajor);
+            [[unroll]] for (uint i=0u;i<8u;i++) {
+                coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB> vb;
+                coopMatLoad(vb, pool, VL+(e*HALF+i*16u)*VS8+kc*2u, VS8, gl_CooperativeMatrixLayoutColumnMajor);
+#if ABL!=4
+                o[i]=coopMatMulAdd(pa, vb, o[i]);
+#endif
+            }
+        }
+    }
+    // O / l.
+    barrier();
+    if (e==0u && sh==0u) stat[g*R+sr]=l;
+    barrier();
+    coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> lm;
+    coopMatLoad(lm, stat, g*R, 0, gl_CooperativeMatrixLayoutColumnMajor);
+    [[unroll]] for (uint i=0u;i<8u;i++) o[i]=o[i]/lm;
+    uint obase=p.out_+row0*6144u+h*256u+e*HALF;
+    if (row0+R<=count) {
+        [[unroll]] for (uint i=0u;i<8u;i++) coopMatStore(o[i], act, obase+i*16u, 6144u, gl_CooperativeMatrixLayoutRowMajor);
+    } else {
+        // Tail block: through LDS, one subgroup at a time, rows below count only.
+        for (uint ww=0u;ww<NW;ww++) {
+            barrier();
+            if (w==ww) {
+                [[unroll]] for (uint i=0u;i<8u;i++) coopMatStore(o[i], sc, i*16u, HALF, gl_CooperativeMatrixLayoutRowMajor);
+                subgroupMemoryBarrierShared();
+                subgroupBarrier();
+                for (uint el=lane;el<R*HALF;el+=32u) {
+                    uint r=el/HALF, d=el%HALF;
+                    if (row0+r<count) act[obase+r*6144u+d]=sc[el];
+                }
+            }
+        }
+    }
+}

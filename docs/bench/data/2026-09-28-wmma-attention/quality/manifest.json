@@ -1,0 +1,109 @@
+{
+ "started_at": "2026-09-27T23:59:36.136279+00:00",
+ "argv": [
+  "/home/USER/projects/zerv/tools/kv_quality.py",
+  "--output",
+  "docs/bench/data/2026-09-28-wmma-attention/quality",
+  "--runs",
+  "zerv-f16,zerv-f16-p16,zerv-f16-wmma,llama-f32,llama-f16"
+ ],
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "workload_sha256": "4f17dd76f4a76f68e3fc01092b06e4fa113b2ec6a77fc6fbe7f8c4153c7763b6",
+ "text_sha256": "1e8b5556956199666e241b38cfe228624296e4f4d92971bddd369ab2df671544",
+ "zerv_tool_sha256": "b4d1265dddabe259b31a2c690b06367668569b4e0ea44c55fdf2444b75c69996",
+ "llama_capture_sha256": "d52b9b4c38ca54182eb444d14dc48187c0f85f34c3bf34ccce4de2927f0cf795",
+ "llama_capture": {
+  "label": "//tests:oracle_llama_batch_capture",
+  "sha256": "d52b9b4c38ca54182eb444d14dc48187c0f85f34c3bf34ccce4de2927f0cf795",
+  "path": "bazel-out/k8-fastbuild/bin/tests/oracle_llama_batch_capture"
+ },
+ "gpu_runtime": {
+  "label": "//tests:gpu_runtime",
+  "files": {
+   "amdgpu.ids": "ffd2a8f1bfa755f4d90f537b4969fc4676f116e5af051ce2f18ef93a96d8beb6",
+   "libvulkan.so.1": "730c35a97158aa61db944956c256cbee116192708146bffeafab23763a40faec",
+   "libvulkan_radeon.so": "0623459745a34d630f1b69246b1c20648602c56b05828995773b702a82717ba8",
+   "radeon_icd.json": "d654a57cda9eb11eb323c87220dce6d6469bd2076b2ba5284b35fe8537f3c7bd"
+  }
+ },
+ "prefix": 36000,
+ "steps": 256,
+ "runs": {
+  "zerv-f16": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/zerv-kv-quality",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/text.txt",
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/zerv-f16",
+    "36000",
+    "256",
+    "f16"
+   ],
+   "stdout": "{\"kv\":\"f16\",\"prefill\":\"fp32\",\"attention\":\"fp32\",\"text_tokens\":37758,\"prefix\":36000,\"steps\":256,\"context\":36288,\"prefill_ms\":66772.086301,\"decode_ms_per_step\":23.13917374609375}",
+   "logits_sha256": "daf1d137f3cf6a4eda209556863efa2fc4772359f68f1d9a3886a0ca038bcace"
+  },
+  "zerv-f16-p16": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/zerv-kv-quality",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/text.txt",
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/zerv-f16-p16",
+    "36000",
+    "256",
+    "f16",
+    "f16"
+   ],
+   "stdout": "{\"kv\":\"f16\",\"prefill\":\"f16\",\"attention\":\"fp32\",\"text_tokens\":37758,\"prefix\":36000,\"steps\":256,\"context\":36288,\"prefill_ms\":41432.141285,\"decode_ms_per_step\":23.1208441484375}",
+   "logits_sha256": "acd643adcb8ce8ea726adf5e7b66fe9caec02199c62fd6c3a9603b6f706e05a5"
+  },
+  "zerv-f16-wmma": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/zerv-kv-quality",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/text.txt",
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/zerv-f16-wmma",
+    "36000",
+    "256",
+    "f16",
+    "f16@wmma"
+   ],
+   "stdout": "{\"kv\":\"f16\",\"prefill\":\"f16\",\"attention\":\"wmma\",\"text_tokens\":37758,\"prefix\":36000,\"steps\":256,\"context\":36288,\"prefill_ms\":34715.877198,\"decode_ms_per_step\":23.1301203671875}",
+   "logits_sha256": "04a496497ca9a2c1c5c18a469d7803d6ba6d2f85a660577d6efaae25de5b9851"
+  },
+  "llama-f32": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/llama_batch_capture",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/zerv-f16/tokens.json",
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/llama-f32/names.txt",
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/llama-f32",
+    "36352",
+    "2048",
+    "512",
+    "1",
+    "f32",
+    "36000"
+   ],
+   "stdout": "{\"tokens\":36256,\"n_vocab\":248320,\"n_batch\":2048,\"n_ubatch\":512,\"flash\":1,\"kv\":\"f32\"}",
+   "logits_sha256": "c020a83800aa5b914dee287fc048a00110f403e7f6217c579b0c3c1fd4e92cd3"
+  },
+  "llama-f16": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/llama_batch_capture",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/zerv-f16/tokens.json",
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/llama-f16/names.txt",
+    "/home/USER/projects/zerv/third_party/kv-quality/quality/llama-f16",
+    "36352",
+    "2048",
+    "512",
+    "1",
+    "f16",
+    "36000"
+   ],
+   "stdout": "{\"tokens\":36256,\"n_vocab\":248320,\"n_batch\":2048,\"n_ubatch\":512,\"flash\":1,\"kv\":\"f16\"}",
+   "logits_sha256": "00902af077c09bbb3506a587c681467776258e584c45889d5e5a4ea1bdc37941"
+  }
+ },
+ "finished_at": "2026-09-28T00:05:04.767421+00:00"
+}

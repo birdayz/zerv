@@ -34,7 +34,9 @@ class ModelArtifactsTests(unittest.TestCase):
                          {f"gemm_rows_q4_0_r{r}" for r in range(1, 9)} |  # Options.decode_precision = .split (18e part 4)
                          {"qk_p", "qk_p_kv16", "conv_p", "delta_p", "attn_flash_p", "attn_flash_p_kv16"} |  # packed prefill (18d.1)
                          {"qkprep_kv16", "qk_b_kv16", "attn_scores_kv16", "attn_pv_kv16", "attn_flash_kv16"} |
-                         {"delta_legacy", "delta_b_legacy"})  # Options.delta_state_out = false
+                         {"delta_legacy", "delta_b_legacy"} |  # Options.delta_state_out = false
+                         {"attn_flash_w6_kv16", "attn_flash_w3_kv16"})  # Options.prefill_attention = .wmma (16c)
+        self.assertEqual(manifest["flash_w_source_sha256"], sha((ROOT/"src/model/flash_w.comp").read_bytes()))
         for name, record in manifest["modules"].items():
             raw = (directory/(name+".spv")).read_bytes()
             self.assertEqual(sha(raw), record["sha256"])
@@ -58,8 +60,9 @@ class ModelArtifactsTests(unittest.TestCase):
             # needs no 16-bit capability.
             # gemm_f16n_* (block 18e, decode f16 mode) and gemm_f16m_* (block 18c.2): as gemm_f16_*.
             # gemm_f16d_* (block 18e v2): also GroupNonUniformShuffle (65), the lane-half swap.
+            # attn_flash_w*_kv16 (block 16c): the same set (shuffle for the row max/sum pair).
             # gemm_rows_* (18e part 4): GroupNonUniform (61) + Ballot (64) for subgroupBroadcastFirst.
-            expected = ([1, 61, 64] if name.startswith("gemm_rows_") else [1, 9, 61, 65, 5345, 6022] if name.startswith("gemm_f16d_") else [1, 9, 61, 5345, 6022] if name.startswith(("gemm_f16_", "gemm_f16x_", "gemm_f16n_", "gemm_f16m_")) else [1, 61, 64] if name.startswith("gemm_")
+            expected = ([1, 61, 64] if name.startswith("gemm_rows_") else [1, 9, 61, 65, 5345, 6022] if name.startswith(("gemm_f16d_", "attn_flash_w")) else [1, 9, 61, 5345, 6022] if name.startswith(("gemm_f16_", "gemm_f16x_", "gemm_f16n_", "gemm_f16m_")) else [1, 61, 64] if name.startswith("gemm_")
                         else [1, 61, 63, 64] if name in ("attn_flash", "attn_flash_kv16", "attn_flash_p", "attn_flash_p_kv16") else [1, 4433] if name.endswith(("_h", "_kv16")) else [1])
             self.assertEqual(sorted(capabilities), expected, name)
 

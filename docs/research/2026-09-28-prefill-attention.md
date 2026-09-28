@@ -53,9 +53,18 @@ Status: research and measurements. Nothing implemented yet.
 dequantization included, near published RDNA3 f16 GEMM results (91–99 TFLOP/s). The
 49–63 TFLOP/s in docs/design/speed.md predates the native kernel.
 
-**Competitors' attention** (estimates, to be measured directly):
-- **llama-server:** its short-prompt rate (983 tok/s at 4k) applied to 88k gives ~90 s
-  of non-attention work, which leaves ~60 s of attention (~25 TFLOP/s).
+**Competitors' attention:**
+- **llama-server, measured** with `GGML_VK_PERF_LOGGER=1`
+  ([logs](../bench/data/2026-09-28-llama-attention/); the logger itself slows TTFT by
+  4–7%):
+
+  | Prompt | Attention per request (`FLASH_ATTN_EXT`) | Share of llama's GPU ops |
+  | --- | --- | --- |
+  | 32k | 7.2 s (zerv 10.2 s) | 20% |
+  | 88k | 59.6 s (zerv 78.4 s) | 42% |
+
+  llama's last 88k chunk: 865 ms (zerv 905 ms), ~20 TFLOP/s. It is faster than ours
+  mainly at medium positions.
 - **vLLM (ROCm attention backend on gfx1100):** took 203–209 s for 69.6k tokens in the
   interference runs (docs/bench/2026-09-26-shared-pool.md).
 - **Nobody on this card runs prefill attention near the hardware.**

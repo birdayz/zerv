@@ -27,7 +27,11 @@ MODEL = ROOT/"models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf"
 WORKLOAD = ROOT/"bench/workloads/long-v1.json"
 VOCAB = 248320
 RUNS = ["zerv-f32", "zerv-f16", "llama-f32", "llama-f16", "llama-f16-repeat"]
-PAIRS = [("zerv-f32", "zerv-f16"), ("llama-f32", "llama-f16"), ("llama-f16", "llama-f16-repeat"), ("zerv-f32", "llama-f32"), ("zerv-f32", "llama-f16")]
+# zerv prefill-mode runs (f16 KV): zerv-f16-p16 (f16 projections, FP32 attention), zerv-f16-wmma
+# (f16 projections, WMMA prefill attention; docs/specs/prefill.md). Not in the default set.
+PREFILL = {"p16": "f16", "wmma": "f16@wmma"}
+PAIRS = [("zerv-f32", "zerv-f16"), ("llama-f32", "llama-f16"), ("llama-f16", "llama-f16-repeat"), ("zerv-f32", "llama-f32"), ("zerv-f32", "llama-f16"),
+         ("zerv-f16", "zerv-f16-p16"), ("zerv-f16-p16", "zerv-f16-wmma"), ("zerv-f16", "zerv-f16-wmma"), ("zerv-f32", "zerv-f16-wmma")]
 
 
 def sha(path):
@@ -86,6 +90,7 @@ def main():
         kv = name.split("-")[1]
         if name.startswith("zerv"):
             cmd = [str(tool), str(MODEL), str(text), str(d), str(a.prefix), str(a.steps), kv]
+            if name.count("-") == 2: cmd.append(PREFILL[name.split("-")[2]])
             env = gpu_env
         else:
             if tokens_json is None: raise SystemExit("a zerv run must come first (it writes the tokens)")

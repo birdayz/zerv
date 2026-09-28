@@ -2,7 +2,7 @@
 //! timestamps written between recorded phases (instrumented commands only; the
 //! production commands carry no timestamps). Tokens are a fixed synthetic sequence:
 //! the kernels' cost does not depend on token values.
-//! Usage: zerv-model-profile MODEL CONTEXT CHUNK PROMPT_TOKENS DECODE_STEPS [fp32|f16[@native|@spirv][@small=on|off] [f32|f16[@page=N|@page=context]]]
+//! Usage: zerv-model-profile MODEL CONTEXT CHUNK PROMPT_TOKENS DECODE_STEPS [fp32|f16[@native|@spirv][@small=on|off][@wmma] [f32|f16[@page=N|@page=context]]]
 //! (prefill precision, gemm_f16x code and `Options.f16_small_tile`, KV cache type and page tokens)
 //! Prints one JSON line per prefill chunk and one summary line for decode (median step).
 const std = @import("std");
@@ -59,6 +59,7 @@ pub fn main(init: std.process.Init) !void {
     var precision: zerv.model.gemm.Precision = .fp32;
     var gemm_code: zerv.model.gemm.Code = .spirv;
     var small_tile = true;
+    var attention: zerv.model.PrefillAttention = .fp32;
     if (args.len >= 7) {
         var pp = std.mem.splitScalar(u8, args[6], '@');
         precision = std.meta.stringToEnum(zerv.model.gemm.Precision, pp.first()) orelse return error.Usage;
@@ -67,6 +68,8 @@ pub fn main(init: std.process.Init) !void {
                 small_tile = true;
             } else if (std.mem.eql(u8, option, "small=off")) {
                 small_tile = false;
+            } else if (std.mem.eql(u8, option, "wmma")) {
+                attention = .wmma;
             } else gemm_code = std.meta.stringToEnum(zerv.model.gemm.Code, option) orelse return error.Usage;
         }
     }
@@ -94,7 +97,7 @@ pub fn main(init: std.process.Init) !void {
     var device = try zerv.gpu.Device.open(.{ .max_allocated_bytes = 23 * 1024 * 1024 * 1024, .cooperative_matrix = model.gemm.deviceNeeds(precision).cooperative_matrix, .subgroup_size_control = model.gemm.deviceNeeds(precision).subgroup_size_control, .storage16 = kv_type == .f16, .pipeline_binaries = model.gemm.needsPipelineBinaries(precision, gemm_code) });
     defer device.deinit() catch @panic("live device resources");
     var m: model.Model = undefined;
-    try m.init(&device, &container, .{ .context = context, .prefill_rows = chunk, .prefill_precision = precision, .kv_type = kv_type, .kv_page_tokens = kv_page, .gemm_code = gemm_code, .f16_small_tile = small_tile });
+    try m.init(&device, &container, .{ .context = context, .prefill_rows = chunk, .prefill_precision = precision, .kv_type = kv_type, .kv_page_tokens = kv_page, .gemm_code = gemm_code, .f16_small_tile = small_tile, .prefill_attention = attention });
     std.debug.print("gemm_f16x: {s}\n", .{m.gemmCodeStatus()});
     defer m.deinit();
 

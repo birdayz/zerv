@@ -8,6 +8,7 @@ const usage =
     \\            [--prefill-chunk 512]  (0 = token-by-token prefill)
     \\            [--drain-timeout 30]  (seconds; SIGINT/SIGTERM drain, a second one exits)
     \\            [--prefill-precision fp32]  (fp32 | f16: explicit f16 WMMA prompt projections)
+    \\            [--prefill-attention fp32]  (fp32 | wmma: WMMA prompt attention with f16 Q and P; needs --prefill-precision f16, --kv-type f16, --parallel 1)
     \\            [--gemm-code native]  (f16 mode, Q4_0 prompt projections: native = our RDNA3 machine code for gemm_f16x, same values, ~12% lower TTFT; spirv = the compiled SPIR-V; native falls back to spirv on other drivers)
     \\            [--prefix-cache-slots 8, with --parallel N: 3N]  (recurrent-state snapshots, ~150 MiB each; 0 = no prefix cache)
     \\            [--prefix-cache radix]  (--parallel > 1: the prefix-cache policy: flat = checkpoint list; radix = prefix tree with deduplication of pages on insert)
@@ -60,6 +61,7 @@ pub fn main(init: std.process.Init) !void {
     var prefill_chunk: u32 = 512;
     var drain_s: u32 = 30;
     var precision: zerv.model.gemm.Precision = .fp32;
+    var prefill_attention: zerv.model.PrefillAttention = .fp32;
     var snapshot_slots_arg: ?u32 = null;
     var snapshot_memory_arg: ?zerv.gpu.Location = null;
     var prefix_cache_kind: zerv.session.kvcache.Kind = .radix;
@@ -105,6 +107,7 @@ pub fn main(init: std.process.Init) !void {
         else if (std.mem.eql(u8, arg, "--vram-budget-gib")) budget_gib = try std.fmt.parseInt(u64, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefill-chunk")) prefill_chunk = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--drain-timeout")) drain_s = try std.fmt.parseInt(u32, value, 10) //
+        else if (std.mem.eql(u8, arg, "--prefill-attention")) prefill_attention = std.meta.stringToEnum(zerv.model.PrefillAttention, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--prefill-precision")) precision = std.meta.stringToEnum(zerv.model.gemm.Precision, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--prefix-cache-slots")) snapshot_slots_arg = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache")) prefix_cache_kind = std.meta.stringToEnum(zerv.session.kvcache.Kind, value) orelse return error.InvalidArguments //
@@ -193,6 +196,10 @@ pub fn main(init: std.process.Init) !void {
     const snapshot_host: u64 = if (snapshot_memory == .host) @as(u64, snapshot_slots) * (zerv.model.snapshot_bytes + @as(u64, if (spec_draft > 0) zerv.model.config.hidden * 4 else 0)) else 0;
     // Prompt admission (the default) needs the shared pool; a static pool reserves anyway.
     const kv_admission: zerv.serve.Admission = kv_admit_arg orelse if (kv_share and parallel > 1) .prompt else .reserve;
+    if (prefill_attention == .wmma and (precision != .f16 or kv_type != .f16 or parallel > 1)) {
+        std.debug.print("zerv: --prefill-attention wmma needs --prefill-precision f16, --kv-type f16 and --parallel 1\n", .{});
+        return error.InvalidArguments;
+    }
     if (kv_admission == .prompt and !(kv_share and parallel > 1)) {
         std.debug.print("zerv: --kv-admit prompt needs --kv-pool shared and --parallel > 1\n", .{});
         return error.InvalidArguments;
@@ -209,7 +216,7 @@ pub fn main(init: std.process.Init) !void {
     const context_name = if (context == zerv.model.context_max) "max" else std.fmt.bufPrint(&context_text, "{d}", .{context}) catch unreachable;
     std.debug.print("zerv: loading {s} on {s} (context {s}, prefill chunk {d}, prefill precision {s}, KV {s}, prefix cache slots {d} = {d} MiB of {s} memory, speculative drafts {d}, {s})\n", .{ path, device.name(), context_name, prefill_chunk, @tagName(precision), @tagName(kv_type), snapshot_slots, snapshot_slots * zerv.model.snapshot_bytes / (1024 * 1024), @tagName(snapshot_memory), spec_draft, if (spec_adaptive) "adaptive" else "fixed" });
     var model: zerv.model.Model = undefined;
-    model.init(&device, &container, .{ .context = context, .prefill_rows = prefill_chunk, .prefill_precision = precision, .snapshots = snapshot_slots, .snapshot_memory = snapshot_memory, .embedding_memory = embedding_memory, .context_reserve = reserve_mib * 1024 * 1024, .kv_type = kv_type, .kv_page_tokens = kv_page, .decode_fusion = decode_fusion, .verify_fusion = verify_fusion, .delta_state_out = delta_state_out, .gemm_code = gemm_code, .matvec_accumulation = accumulation, .verify_rows = if (spec_draft > 0) spec_draft + 1 else 0, .mtp = spec_draft > 0, .draft_vocab = draft_vocab, .slots = parallel, .batch_rows = if (parallel > 1) parallel else 0, .f16_small_tile = f16_small_tile, .f16_split = f16_split, .kv_share = kv_share and parallel > 1, .kv_pages = kv_pool_pages, .swap_bytes = swap_bytes }) catch |e| {
+    model.init(&device, &container, .{ .context = context, .prefill_rows = prefill_chunk, .prefill_precision = precision, .prefill_attention = prefill_attention, .snapshots = snapshot_slots, .snapshot_memory = snapshot_memory, .embedding_memory = embedding_memory, .context_reserve = reserve_mib * 1024 * 1024, .kv_type = kv_type, .kv_page_tokens = kv_page, .decode_fusion = decode_fusion, .verify_fusion = verify_fusion, .delta_state_out = delta_state_out, .gemm_code = gemm_code, .matvec_accumulation = accumulation, .verify_rows = if (spec_draft > 0) spec_draft + 1 else 0, .mtp = spec_draft > 0, .draft_vocab = draft_vocab, .slots = parallel, .batch_rows = if (parallel > 1) parallel else 0, .f16_small_tile = f16_small_tile, .f16_split = f16_split, .kv_share = kv_share and parallel > 1, .kv_pages = kv_pool_pages, .swap_bytes = swap_bytes }) catch |e| {
         if (e == error.InvalidKvPage) std.debug.print("zerv: --kv-page-tokens must be context or a positive multiple of {d} up to {d}\n", .{ zerv.model.layout.kv_page_quantum, zerv.model.layout.max_kv_page });
         if (e == error.InvalidDraftVocab) std.debug.print("zerv: --spec-draft-vocab must be full or 1..{d}\n", .{zerv.model.config.vocab});
         if (e == error.InvalidContext) std.debug.print("zerv: --context must be positive and even (the attention kernels read key pairs), and with --prefill-chunk > 0 a multiple of 32 (e.g. {d})\n", .{if (prefill_chunk > 0) context / 32 * 32 else context / 2 * 2});

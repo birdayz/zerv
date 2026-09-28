@@ -599,3 +599,44 @@ prefill precisions; the f16 mode changes only projections.
   2. Model: `tools/verify_model.py` FP64 gates, default oracles modes 1/13/512/512:17,
      long oracle modes 13/128/512/512:300.
   3. Long-prompt serving with the answer checked (`bench/workloads/long-v1.json`).
+
+## WMMA prefill attention — block 16c (2026-09-28; implemented, gates passed — [evidence](../bench/2026-09-28-wmma-attention.md))
+
+**Why.** At 88k tokens attention is 56% of prefill, and the FP32 fused kernel runs at 20
+TFLOP/s: 31% of the FP32 vector peak, 15% of WMMA's
+([research](../research/2026-09-28-prefill-attention.md)).
+
+**Arithmetic** (`--prefill-attention wmma`, the f16 prefill mode's class; llama.cpp's
+coopmat1 flash attention is the same class):
+- S = f16(Q)·Kᵀ over the f16 cache with WMMA f16×f16→f32 accumulation in 16-dim steps
+  (two partial sums over dims 0–127 and 128–255, added in a fixed order);
+- scale 1/16, causal mask, online softmax in f32 per 32-key tile;
+- P = f16(exp(s − m)) with round-to-nearest-even (not `packHalf2x16`, which truncates on
+  this driver);
+- O = O·exp(m_old − m) + P·V (WMMA), output O / l.
+
+**Kernel** `flash_w.comp`:
+- Workgroup = 16 query rows × HEADS query heads of one KV head (HEADS = 6: every K/V tile
+  is staged once for 96 rows), 2·HEADS wave32 subgroups (required size, full subgroups).
+  Subgroup = (head, half of the head dimension): f16 Q fragments (8) and O accumulators
+  (8) in registers.
+- Per 32-key tile, K and V are staged into LDS in 8×8 half blocks: eight 16-byte loads,
+  an in-register transpose, eight 16-byte stores. K goes key-major and V dim-major, so
+  every WMMA B operand is column-major (each lane reads 16 consecutive k).
+- The two halves' partial scores are summed in LDS; half 0 runs the softmax (row pairs of
+  lanes, one shuffle), writes P (f16) and the rescale factors.
+- Keys at or past the live end: V rows zero, K masked.
+
+**Scope.** `--prefill-precision f16`, `--kv-type f16`, `--parallel 1` (the packed variant
+is not written); otherwise `InvalidArguments` / `UnsupportedDevice`. Default `fp32`.
+
+**Gates.**
+1. **Component** (`tests/model_gpu.zig`): FP64 over f16(Q) and the f16 cache, with a
+   bound for f16 P and WMMA accumulation (2⁻¹⁰ relative on the absolute sums).
+   - Covered: row blocks, 32-key tiles, 128/256/context pages, causal edge, NaN past the
+     live keys, rows past count untouched; HEADS 6 and 3.
+   - Worst error 1.5% (test runtime) and 2.2% (host driver) of the bound.
+2. **Model quality** (`tools/kv_quality.py`, 36k prefix, 256 teacher-forced steps): KL(f16
+   prefill ‖ + WMMA attention) must be at most llama's own f32→f16 KL, with top-1
+   agreement 100%.
+3. **Serving:** prefill sweep 1k–88k against llama-server.

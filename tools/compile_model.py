@@ -57,12 +57,16 @@ def main():
     gemm_f16d = ROOT/"src/model/gemm_f16d.comp"
     gemm_rows = ROOT/"src/model/gemm_rows.comp"
     flash = ROOT/"src/model/flash.comp"
+    flash_w = ROOT/"src/model/flash_w.comp"
     manifest = dict(source_sha256=sha(source), gemm_source_sha256=sha(gemm), gemm_f16_source_sha256=sha(gemm_f16),
-                    gemm_f16x_source_sha256=sha(gemm_f16x), gemm_f16d_source_sha256=sha(gemm_f16d), gemm_rows_source_sha256=sha(gemm_rows), flash_source_sha256=sha(flash), tools=batch.identity(), modules={})
+                    gemm_f16x_source_sha256=sha(gemm_f16x), gemm_f16d_source_sha256=sha(gemm_f16d), gemm_rows_source_sha256=sha(gemm_rows), flash_source_sha256=sha(flash), flash_w_source_sha256=sha(flash_w), tools=batch.identity(), modules={})
     # Fused causal prefill attention (block 16a).
     for name, kv16 in (("attn_flash", []), ("attn_flash_kv16", ["-DKV16"])):
         output = a.output_dir/(name+".spv")
         batch.add(name, output, ["--target-env=vulkan1.1", "-O", "-fshader-stage=compute"] + FLASH_DEFINES + kv16 + [str(flash)], dict())
+    # WMMA prefill attention (block 16c): f16 KV only.
+    for heads in (6, 3):
+        batch.add(f"attn_flash_w{heads}_kv16", a.output_dir/f"attn_flash_w{heads}_kv16.spv", ["--target-env=vulkan1.1", "-O", "-fshader-stage=compute", f"-DHEADS={heads}", str(flash_w)], dict())
     for name, (fmt, width, payload, mcontig) in list(GEMM.items()) + list(GEMM_WIDE.items()):
         output = a.output_dir/(name+".spv")
         wide = ["-DXW=16"] if name in GEMM_WIDE else []

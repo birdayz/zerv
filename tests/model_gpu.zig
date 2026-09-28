@@ -557,9 +557,23 @@ test "fused prefill attention with an f16 KV cache against FP64 over the f16 val
     try fusedAttention(.f16, 256);
 }
 
+// Block 16c: WMMA prefill attention (flash_w.comp) against FP64 over f16(Q) and the f16
+// cache, with a bound for its f16 P and WMMA accumulation (docs/specs/prefill.md).
+test "WMMA prefill attention against FP64 (row blocks, 32-key tiles, causal mask, GQA, pages)" {
+    try fusedAttentionWith(.f16, 256, 6);
+    try fusedAttentionWith(.f16, 128, 6);
+    try fusedAttentionWith(.f16, 4064, 6);
+    try fusedAttentionWith(.f16, 128, 3);
+}
+
 fn fusedAttention(kv_type: zerv.model.KvType, comptime page: u32) !void {
+    return fusedAttentionWith(kv_type, page, 0);
+}
+
+fn fusedAttentionWith(kv_type: zerv.model.KvType, comptime page: u32, wmma_heads: u32) !void {
     const builtin = @import("builtin");
-    var device = try gpu.Device.open(.{ .max_allocated_bytes = 512 * 1024 * 1024, .storage16 = kv_type == .f16 });
+    const wmma = wmma_heads != 0;
+    var device = try gpu.Device.open(.{ .max_allocated_bytes = 512 * 1024 * 1024, .storage16 = kv_type == .f16, .cooperative_matrix = wmma, .subgroup_size_control = wmma });
     defer device.deinit() catch @panic("live flash resources");
     const ctx: u32 = 4064;
     const H = 24;
@@ -583,7 +597,7 @@ fn fusedAttention(kv_type: zerv.model.KvType, comptime page: u32) !void {
     var io = try gpu.Buffer.init(&device, 1024, .host);
     defer io.deinit() catch @panic("io");
     const FlashPush = extern struct { qr: u32, kcache: u32, vcache: u32, out: u32, ctx: u32, scale: f32, ptab: u32, pstride: u32 };
-    var kernel = try gpu.Kernel.initWith(&device, zerv.model.flashModule(kv_type), &.{ &params, &act, &kv, &io }, @sizeOf(FlashPush), pg.options());
+    var kernel = if (wmma) try gpu.Kernel.initWith(&device, zerv.model.flashWModuleFor(wmma_heads), &.{ &params, &act, &kv, &io }, @sizeOf(FlashPush), .{ .constants = pg.options().constants, .subgroup_size = zerv.model.flash_w_subgroup, .full_subgroups = true }) else try gpu.Kernel.initWith(&device, zerv.model.flashModule(kv_type), &.{ &params, &act, &kv, &io }, @sizeOf(FlashPush), pg.options());
     defer kernel.deinit() catch @panic("kernel");
     var cmd = try gpu.Commands.init(&device);
     defer cmd.deinit() catch @panic("cmd");
@@ -615,7 +629,8 @@ fn fusedAttention(kv_type: zerv.model.KvType, comptime page: u32) !void {
         try cmd.reset();
         try cmd.begin();
         try cmd.barrier(.host, .compute);
-        try cmd.dispatch(&kernel, std.mem.asBytes(&FlashPush{ .qr = qr, .kcache = pg.kcache, .vcache = pg.vcache, .out = out, .ctx = ctx, .scale = 1.0 / 16.0, .ptab = ptab, .pstride = pg.pstride }), .{ (c.count + zerv.model.flash_rows - 1) / zerv.model.flash_rows, H / zerv.model.flash_groups, 1 });
+        const groups: [3]u32 = if (wmma) .{ (c.count + zerv.model.flash_w_rows - 1) / zerv.model.flash_w_rows, H / wmma_heads, 1 } else .{ (c.count + zerv.model.flash_rows - 1) / zerv.model.flash_rows, H / zerv.model.flash_groups, 1 };
+        try cmd.dispatch(&kernel, std.mem.asBytes(&FlashPush{ .qr = qr, .kcache = pg.kcache, .vcache = pg.vcache, .out = out, .ctx = ctx, .scale = 1.0 / 16.0, .ptab = ptab, .pstride = pg.pstride }), groups);
         try cmd.barrier(.compute, .host);
         try cmd.end();
         try cmd.run(w.timeout_ns);
@@ -626,7 +641,7 @@ fn fusedAttention(kv_type: zerv.model.KvType, comptime page: u32) !void {
         var n_rows: usize = 0;
         for (0..c.count) |row| {
             const edge = row < 2 or row + 2 >= c.count or row % 8 == 7 or row % 64 == 0 or row == c.count / 2;
-            if (builtin.mode == .Debug and !edge) continue;
+            if ((builtin.mode == .Debug or wmma) and !edge) continue; // WMMA: edges in every mode (time)
             rows_buf[n_rows] = @intCast(row);
             n_rows += 1;
         }
@@ -640,7 +655,9 @@ fn fusedAttention(kv_type: zerv.model.KvType, comptime page: u32) !void {
                 var dot: f64 = 0;
                 var abs: f64 = 0;
                 for (0..D) |d| {
-                    const pr = @as(f64, a[qr + row * H * D + h * D + d]) * st.get(pg.k(g, d, j));
+                    const qv: f32 = a[qr + row * H * D + h * D + d];
+                    const qd: f64 = if (wmma) @as(f16, @floatCast(qv)) else qv;
+                    const pr = qd * st.get(pg.k(g, d, j));
                     dot += pr;
                     abs += @abs(pr);
                 }
@@ -659,6 +676,21 @@ fn fusedAttention(kv_type: zerv.model.KvType, comptime page: u32) !void {
                     const pj = @exp(s64[j] - mx) / total;
                     const x = s64[j] - mx;
                     bound += pj * (@abs(st.get(pg.v(g, d, j))) + @abs(o64)) * (2 * S + (2 * @abs(x) + @as(f64, @floatFromInt(n)) + 2 * tiles + 16) * u);
+                }
+                if (wmma) {
+                    // f16 P (relative 2^-11 per term, weighted |v|), WMMA accumulation of S
+                    // over 256 dims and of O over the keys (taken as 2^-10 relative to the
+                    // sums of absolute terms), and the rescales.
+                    var pv_abs: f64 = 0;
+                    for (0..n) |j| pv_abs += @exp(s64[j] - mx) / total * @abs(st.get(pg.v(g, d, j)));
+                    // Scores: 2^-10 of sum |q k| / 16 (u = 2^-24, so 2^-10 = 16384 u);
+                    // P: 2^-11 per term (8192 u) in the numerator, not in l; O: 2^-10.
+                    bound = 0;
+                    for (0..n) |j| {
+                        const pj = @exp(s64[j] - mx) / total;
+                        bound += pj * (@abs(st.get(pg.v(g, d, j))) + @abs(o64)) * (16384 * u * S / gamma256 + 64 * u);
+                    }
+                    bound += (8192 + 16384) * u * pv_abs + 8192 * u * @abs(o64) + 1e-6;
                 }
                 const o = o_all[out + row * H * D + h * D + d];
                 const err = @abs(@as(f64, o) - o64);

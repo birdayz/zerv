@@ -26,6 +26,10 @@ pub const Options = struct {
     /// Prefill projection arithmetic. `.f16` (explicit, lower precision; block 14) needs a
     /// device opened with cooperative matrices and subgroups of exactly 64.
     prefill_precision: gemm.Precision = .fp32,
+    /// Prefill attention arithmetic (docs/specs/prefill.md, "WMMA prefill attention"): `.fp32`
+    /// (flash.comp) or `.wmma` (flash_w.comp: f16 Q and P, WMMA accumulation; needs the f16
+    /// prefill mode, the f16 KV cache and one sequence slot).
+    prefill_attention: PrefillAttention = .fp32,
     /// Device slots holding copies of the recurrent and convolution state
     /// (`snapshot_bytes` each) for prefix caching (docs/specs/prefix-cache.md).
     snapshots: u32 = 0,
@@ -167,6 +171,20 @@ pub const PackedSegment = struct { done: bool, consumed: [layout.io.max_seqs]u32
 pub const BatchRow = struct { slot: u32, token: u32 };
 /// KV pool pages at most (the host's page-owner table).
 pub const max_pool_pages = page_pool.max_pages;
+pub const PrefillAttention = enum { fp32, wmma };
+/// WMMA prefill attention (flash_w.comp): query rows per workgroup, subgroup size.
+pub const flash_w_rows = 16;
+pub const flash_w_subgroup = 32;
+/// Query heads per WMMA-attention workgroup (6: one per KV head; 3: two per KV head).
+pub const flash_w_heads = 6;
+const flash_w6 align(4) = @embedFile("shaders/attn_flash_w6_kv16.spv").*;
+const flash_w3 align(4) = @embedFile("shaders/attn_flash_w3_kv16.spv").*;
+pub fn flashWModule() []align(4) const u8 {
+    return flashWModuleFor(flash_w_heads);
+}
+pub fn flashWModuleFor(heads: u32) []align(4) const u8 {
+    return if (heads == 3) &flash_w3 else &flash_w6;
+}
 
 /// Bytes of one recurrent-state snapshot: every DeltaNet state and convolution history.
 /// The attention KV is not copied; it stays valid in the state arena below `position`.
@@ -630,6 +648,9 @@ pub const Model = struct {
     kv_live: u8 = 0,
     kv_kernels: [layout.max_kv_buffers - 1][kv_kernel_ids.len]gpu.Kernel = undefined,
     kv_kernels_live: u8 = 0,
+    /// WMMA prefill attention, one per KV buffer (`Options.prefill_attention == .wmma`).
+    wmma_kernels: [layout.max_kv_buffers]gpu.Kernel = undefined,
+    wmma_live: u8 = 0,
     kernels: [kernel_count]gpu.Kernel = undefined,
     // Speculative verification (block 17b, docs/specs/speculative.md); all empty when
     // `options.verify_rows` is 0.
@@ -781,6 +802,9 @@ pub const Model = struct {
             // with full subgroups.
             if (options.prefill_precision == .f16 and (!device.cooperative_matrix or device.subgroup.size != 64 or !device.full_subgroups or
                 device.subgroup_sizes.min > gemm.f16x_subgroup or device.subgroup_sizes.max < gemm.f16x_subgroup)) return error.UnsupportedDevice;
+            // WMMA attention: the f16 mode's arithmetic class, f16 K/V read raw, one sequence
+            // (the packed variant is not written yet).
+            if (options.prefill_attention == .wmma and (options.prefill_precision != .f16 or options.kv_type != .f16 or options.slots > 1)) return error.UnsupportedDevice;
             self.plan_count = makePlans(self.rows, &self.plans);
             // Packed prefill (docs/specs/concurrent.md, "18d.1 design"): plans below 128 rows
             // run every projection in FP32 (the f16 kernels need whole 128-row tiles), so a
@@ -998,6 +1022,10 @@ pub const Model = struct {
             for (kv_kernel_ids, 0..) |id, j| self.kv_kernels[g - 1][j] = try gpu.Kernel.initWith(device, module(id, options.kv_type), &.{ &self.banks[0], &self.act, &self.kv[g], &self.io }, push_sizes[@intFromEnum(id)], .{ .constants = &kv_constants });
             self.kv_kernels_live += 1;
         }
+        if (options.prefill_attention == .wmma) for (0..self.state_layout.kv_buffers) |g| {
+            self.wmma_kernels[g] = try gpu.Kernel.initWith(device, flashWModule(), &.{ &self.banks[0], &self.act, &self.kv[g], &self.io }, @sizeOf(FlashPush), .{ .constants = &kv_constants, .subgroup_size = flash_w_subgroup, .full_subgroups = true });
+            self.wmma_live += 1;
+        };
         if (self.act_layout.x16 != null) for (0..h_kernel_count) |i| {
             self.h_kernels[i] = try gpu.Kernel.init(device, hModule(@enumFromInt(i)), &.{ &self.banks[0], &self.act, &self.state, &self.io }, h_push_sizes[i]);
             self.live_h_kernels += 1;
@@ -1356,6 +1384,8 @@ pub const Model = struct {
         for (self.gemm_pipes[0..self.gemm_count]) |*k| k.deinit() catch @panic("model gemm in use");
         self.gemm_count = 0;
         for (self.kv_kernels[0..self.kv_kernels_live]) |*set| for (set) |*k| k.deinit() catch @panic("model kernel in use");
+        for (self.wmma_kernels[0..self.wmma_live]) |*k| k.deinit() catch @panic("model kernel in use");
+        self.wmma_live = 0;
         self.kv_kernels_live = 0;
         for (self.kernels[0..self.live_kernels]) |*k| k.deinit() catch @panic("model kernel in use");
         self.live_kernels = 0;
@@ -2700,7 +2730,10 @@ pub const Model = struct {
                 try r.snapRows("Qcur", li, A.qr, 6144, 6144, false);
                 try r.snapRows("Kcur_roped", li, A.kr, 1024, 1024, false);
                 try r.bar();
-                try r.attn(if (packed_rows) .flash_p else .flash, ai, FlashPush{ .slots = if (packed_rows) prow else self.slot_io, .qr = A.qr, .kcache = S.kcache(ai), .vcache = S.vcache(ai), .out = A.pregate, .ctx = ctx, .scale = 1.0 / 16.0, .ptab = A.ptab, .pstride = S.pstride(ai) }, .{ std.math.divCeil(u32, B, flash_rows) catch unreachable, config.heads / flash_groups, 1 });
+                const flash_push: FlashPush = .{ .slots = if (packed_rows) prow else self.slot_io, .qr = A.qr, .kcache = S.kcache(ai), .vcache = S.vcache(ai), .out = A.pregate, .ctx = ctx, .scale = 1.0 / 16.0, .ptab = A.ptab, .pstride = S.pstride(ai) };
+                if (self.wmma_live > 0 and !packed_rows) {
+                    try r.c.dispatch(&self.wmma_kernels[S.kvBuffer(ai)], std.mem.asBytes(&flash_push), .{ std.math.divCeil(u32, B, flash_w_rows) catch unreachable, config.heads / flash_w_heads, 1 });
+                } else try r.attn(if (packed_rows) .flash_p else .flash, ai, flash_push, .{ std.math.divCeil(u32, B, flash_rows) catch unreachable, config.heads / flash_groups, 1 });
                 try r.mark(.attention, li);
                 try r.bar();
                 const gate_push: GatePush = .{ .pregate = A.pregate, .qf = A.qf, .gates = A.gates, .gated = A.gated };
