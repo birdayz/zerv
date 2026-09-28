@@ -29,6 +29,12 @@ No new GPU or I/O code, process, dependency, filesystem change or download.
 - Directed mixed-residency case: held host ancestor/GPU leaf, blocked promotion,
   blocked ancestor insertion, stable borrowed pages/tokens/snapshot, unrelated
   branch insertion/demotion/eviction, successful exact restore after release.
+  Follow-up directed test: GPU-only hit while parent/child sources are leased,
+  descendant insertion under a held parent, parent-first release with continued
+  ancestor protection. Both modes ×20 and final CPU/Python/format 81/81 pass
+  (`unit-hit-repeat.log`, `all-hit-final.log`; final full run executed four targets).
+  This test-only addition followed the two benchmark runs; their source hashes
+  correctly identify the earlier tested source revision.
 - Allocation-failure rollback, allocation-free steady operations, serial/generation/
   counter exhaustion, invalid/duplicate release and unsupported flat policy.
 - Both test modes repeated **20 times** after restoring the negative control; all

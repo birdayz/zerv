@@ -541,3 +541,36 @@ test "cache sources: allocation rollback, generation and serial exhaustion, unsu
     try t.expectError(error.UnsupportedSource, flat.acquireSource(h));
     try t.expectError(error.UnsupportedSource, flat.releaseSource(source.lease));
 }
+
+test "cache sources: GPU-only hits and new descendants retain overlapping leases" {
+    var fake: Fake = .{};
+    const r = try kvcache.Radix.create(t.allocator, 3, ctx_max, ctx_max / P + 1, B);
+    const c = r.cache();
+    defer {
+        releaseAllSources(r);
+        c.deinit(t.allocator);
+    }
+    const seq = [_]u32{ 1, 2, 3, 4, 5, 6, 7, 8, 10 };
+    try fake.run(0, seq[0..4]);
+    try c.checkpoint(fake.device(), 0, seq[0..4]);
+    const parent = try c.acquireSource(c.coldSource().?);
+    const page = parent.pages[0];
+    try fake.run(0, seq[4..8]);
+    try c.checkpoint(fake.device(), 0, seq[0..8]);
+    const child = try c.acquireSource(c.coldSource().?);
+    try t.expectEqual(@as(u32, 2), r.sources[parent.lease.handle.index].refs);
+    @memcpy(fake.hist[1][0..seq.len], &seq);
+    try t.expectEqual(@as(u32, 8), try c.restore(fake.device(), 1, &seq));
+    try t.expect(fake.exact(1));
+    try t.expectEqual(page, parent.pages[0]);
+    try t.expectEqualSlices(u32, seq[0..4], parent.tokens);
+    try c.releaseSource(parent.lease); // child must still protect the ancestor
+    try t.expectEqual(@as(u32, 1), r.sources[parent.lease.handle.index].refs);
+    try t.expectError(error.InvalidSource, c.releaseSource(parent.lease));
+    try c.releaseSource(child.lease);
+    fake.release(0);
+    fake.release(1);
+    while (c.evict(fake.device())) {}
+    try t.expectEqual(@as(u32, pool), fake.freeCount());
+    try t.expectEqual(@as(u32, 0), fake.violations);
+}

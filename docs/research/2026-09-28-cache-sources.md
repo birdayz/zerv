@@ -81,3 +81,45 @@ actual Radix fake-device operations and allocation-failure paths. Exact comparis
 no numerical tolerance. No external runtime/model dependency or GPU job needed for
 this metadata component. Measurement contract is in the preimplementation
 [specification](../specs/cache-source-leases.md).
+
+## C.2 adapter audit after c.1 gates (design only, not implemented)
+
+- `Model.archiveSubmit` exports the mutable live slot, validates sequence masks
+  and pauses it; it cannot directly accept Source.snapshot or host-tagged IDs.
+  A separate source-submit entry point should validate snapshot bounds, page count,
+  GPU pin/logical-page identity and host checkpoint ownership before recording.
+  GPU page masks need not include the originating request: the lease is the owner.
+- `Pool.host_owner` distinguishes cache (`checkpoint_owner`) from live swap slots,
+  but demoteCommit does not set `host_logical`. Do not validate checkpoint host
+  pages against that unmaintained field. Expose a checked Pool source-validation
+  operation rather than duplicate the private sentinel in the model adapter.
+- Mixed capture can CPU-copy already-host snapshot/page spans into the held staging
+  ticket and submit only GPU spans. A wholly host quantum should use start/poll
+  acknowledgment without a dummy GPU submission. Whole-buffer mapped guards are
+  conservative: map before submitting this quantum; do not bypass ownership if
+  other pending commands could still write that host allocation. D's asynchronous
+  demotion may require finer range ownership; do not assume it is already solved.
+- Canonicalization runs after device completion and before archive hashing. Track
+  the quantum's offset/span through poll. A copy-start error must leave no DMA;
+  terminal poll errors drain as in B. Existing stream size/order stays unchanged,
+  but unused partial-tail bytes become canonical zero (explicit exactness contract).
+- The disk owner needs a background job identity not tied to a live request slot.
+  Proposed one extra bounded archive job (`slots + 1`, up to 65), one held Source,
+  and explicit cache release after catalog drain. Current Archive option max is 64,
+  Disk.positions has 64 entries and maps only slots*seq_pages; all three limits must
+  change together if this design is selected. No request slot should be occupied
+  merely to preserve a cached prefix. A later scheduler hook must progress and
+  cancel/drain that job on stop independently of pending request I/O.
+- Existing model checker goldens capture arbitrary unused tail bytes. New source
+  tests must canonicalize expected goldens using the independently fixture-tested
+  byte operation, continue/reset/reuse the originating slot while holding the
+  source, demote an ancestor before acquisition to force mixed residency, then
+  restore private permuted pages and compare all valid state and vocabulary rows.
+  Existing paused-slot tests remain useful; do not silently weaken them.
+
+Next pre-code gate: coordinate-based byte oracle across f16/f32, 128/256 pages,
+odd token tails, KV group splits, aligned copy units crossing K/V/page/snapshot
+boundaries, and arbitrary bounded stream windows. Native range-clearing should
+intersect only tail pages (not scan every byte of every large record). A source
+adapter prototype is blocked until that fixture/spec exists. No C.2 code shipped
+by the c.1 change; no new performance result inferred from this audit.
