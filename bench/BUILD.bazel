@@ -6,6 +6,18 @@ package(default_visibility = ["//tests:__pkg__"])
 
 # Component benchmarks and model checks. Measure with `bazel build -c opt` (ReleaseFast).
 
+zig_binary(
+    name = "zerv-residency-bench",
+    main = "residency.zig",
+    deps = ["//src/session"],
+)
+
+zig_binary(
+    name = "zerv-storage-bench",
+    main = "storage.zig",
+    deps = ["//src/storage"],
+)
+
 # The serving competitor llama-server (Vulkan), built in the graph from the pinned llama.cpp
 # and ggml and compiled for this CPU like zerv's release build (docs/specs/hermetic-build.md,
 # phase 5; the A/B against the host package: docs/bench/2026-09-26-bazel-build.md).
@@ -164,5 +176,11 @@ exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])
 zerv_vk_binary(
     name = "zerv-attn-bench",
     main = "attn_bench.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zerv_vk_binary(
+    name = "zerv-disk-probe",
+    main = "disk_probe.zig",
     deps = ["//src:zerv_lib"],
 )

@@ -17,7 +17,8 @@ vkEnumerateDeviceExtensionProperties vkGetPhysicalDeviceFeatures2 vkGetPhysicalD
 vkGetDeviceProcAddr""".split()
 # Device-level extension commands: not exported by the loader, fetched with vkGetDeviceProcAddr
 # (the bindings declare PFN_* pointer types for them, not extern functions).
-EXTENSION_COMMANDS = "vkCreatePipelineBinariesKHR vkDestroyPipelineBinaryKHR vkGetPipelineKeyKHR".split()
+COMMANDS += ["vkGetPhysicalDeviceExternalBufferProperties"]
+EXTENSION_COMMANDS = "vkCreatePipelineBinariesKHR vkDestroyPipelineBinaryKHR vkGetPipelineKeyKHR vkGetMemoryHostPointerPropertiesEXT".split()
 CONSTANTS = """VK_SUCCESS VK_NOT_READY VK_TIMEOUT VK_INCOMPLETE VK_ERROR_OUT_OF_HOST_MEMORY
 VK_ERROR_OUT_OF_DEVICE_MEMORY VK_ERROR_DEVICE_LOST VK_API_VERSION_1_1
 VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU VK_QUEUE_COMPUTE_BIT VK_QUEUE_GRAPHICS_BIT
@@ -30,13 +31,16 @@ VK_ACCESS_TRANSFER_READ_BIT VK_ACCESS_TRANSFER_WRITE_BIT VK_ACCESS_SHADER_READ_B
 VK_ACCESS_HOST_READ_BIT VK_ACCESS_HOST_WRITE_BIT VK_QUEUE_FAMILY_IGNORED
 VK_MAX_PHYSICAL_DEVICE_NAME_SIZE VK_UUID_SIZE VK_MAX_MEMORY_TYPES VK_MAX_MEMORY_HEAPS
 VK_SUBGROUP_FEATURE_BASIC_BIT VK_SUBGROUP_FEATURE_BALLOT_BIT VK_SUBGROUP_FEATURE_ARITHMETIC_BIT VK_MAX_EXTENSION_NAME_SIZE VK_TRUE
-VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT""".split()
+VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT
+VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT""".split()
 # pNext-chained structures (not reachable from command signatures).
 CHAINED = ["VkPhysicalDeviceSubgroupProperties", "VkPhysicalDeviceCooperativeMatrixFeaturesKHR",
            "VkPhysicalDeviceShaderFloat16Int8Features", "VkPhysicalDevice16BitStorageFeatures", "VkPhysicalDeviceVulkanMemoryModelFeatures",
            "VkPhysicalDeviceMemoryBudgetPropertiesEXT", "VkPhysicalDeviceSubgroupSizeControlFeatures",
            "VkPhysicalDeviceSubgroupSizeControlProperties", "VkPipelineShaderStageRequiredSubgroupSizeCreateInfo",
-           "VkPipelineBinaryInfoKHR", "VkPhysicalDevicePipelineBinaryFeaturesKHR"]
+           "VkPipelineBinaryInfoKHR", "VkPhysicalDevicePipelineBinaryFeaturesKHR",
+           "VkExternalMemoryBufferCreateInfo", "VkImportMemoryHostPointerInfoEXT",
+           "VkPhysicalDeviceExternalMemoryHostPropertiesEXT"]
 OPAQUE = {"VkAllocationCallbacks"}
 # Function-pointer types used by the scoped commands (declared by hand in the generator).
 FUNCPOINTERS = {"PFN_vkVoidFunction"}

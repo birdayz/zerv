@@ -18,6 +18,9 @@ pub const VK_DESCRIPTOR_TYPE_STORAGE_BUFFER = 7;
 pub const VK_ERROR_DEVICE_LOST = -4;
 pub const VK_ERROR_OUT_OF_DEVICE_MEMORY = -2;
 pub const VK_ERROR_OUT_OF_HOST_MEMORY = -1;
+pub const VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT = 1;
+pub const VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT = 4;
+pub const VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT = 128;
 pub const VK_INCOMPLETE = 5;
 pub const VK_MAX_EXTENSION_NAME_SIZE = 256;
 pub const VK_MAX_MEMORY_HEAPS = 16;
@@ -54,13 +57,19 @@ pub const VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO = 34;
 pub const VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO = 32;
 pub const VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO = 3;
 pub const VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO = 2;
+pub const VK_STRUCTURE_TYPE_EXTERNAL_BUFFER_PROPERTIES = 1000071003;
+pub const VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO = 1000072000;
 pub const VK_STRUCTURE_TYPE_FENCE_CREATE_INFO = 8;
 pub const VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER = 45;
+pub const VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT = 1000178000;
 pub const VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO = 1;
 pub const VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO = 5;
 pub const VK_STRUCTURE_TYPE_MEMORY_BARRIER = 46;
+pub const VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT = 1000178001;
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES = 1000083000;
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR = 1000506000;
+pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_BUFFER_INFO = 1000071002;
+pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT = 1000178002;
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 = 1000059000;
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT = 1000237000;
 pub const VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2 = 1000059006;
@@ -271,6 +280,24 @@ pub const VkExtent3D = extern struct {
     height: u32 = std.mem.zeroes(u32),
     depth: u32 = std.mem.zeroes(u32),
 };
+pub const VkExternalBufferProperties = extern struct {
+    sType: VkStructureType = VK_STRUCTURE_TYPE_EXTERNAL_BUFFER_PROPERTIES,
+    pNext: ?*anyopaque = null,
+    externalMemoryProperties: VkExternalMemoryProperties = std.mem.zeroes(VkExternalMemoryProperties),
+};
+pub const VkExternalMemoryBufferCreateInfo = extern struct {
+    sType: VkStructureType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
+    pNext: ?*const anyopaque = null,
+    handleTypes: VkExternalMemoryHandleTypeFlags = std.mem.zeroes(VkExternalMemoryHandleTypeFlags),
+};
+pub const VkExternalMemoryFeatureFlags = VkFlags;
+pub const VkExternalMemoryHandleTypeFlagBits = i32;
+pub const VkExternalMemoryHandleTypeFlags = VkFlags;
+pub const VkExternalMemoryProperties = extern struct {
+    externalMemoryFeatures: VkExternalMemoryFeatureFlags = std.mem.zeroes(VkExternalMemoryFeatureFlags),
+    exportFromImportedHandleTypes: VkExternalMemoryHandleTypeFlags = std.mem.zeroes(VkExternalMemoryHandleTypeFlags),
+    compatibleHandleTypes: VkExternalMemoryHandleTypeFlags = std.mem.zeroes(VkExternalMemoryHandleTypeFlags),
+};
 pub const VkFence = ?*opaque {};
 pub const VkFenceCreateFlags = VkFlags;
 pub const VkFenceCreateInfo = extern struct {
@@ -303,6 +330,12 @@ pub const VkImageSubresourceRange = extern struct {
     layerCount: u32 = std.mem.zeroes(u32),
 };
 pub const VkImageView = ?*opaque {};
+pub const VkImportMemoryHostPointerInfoEXT = extern struct {
+    sType: VkStructureType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT,
+    pNext: ?*const anyopaque = null,
+    handleType: VkExternalMemoryHandleTypeFlagBits = std.mem.zeroes(VkExternalMemoryHandleTypeFlagBits),
+    pHostPointer: ?*anyopaque = null,
+};
 pub const VkInstance = ?*opaque {};
 pub const VkInstanceCreateFlags = VkFlags;
 pub const VkInstanceCreateInfo = extern struct {
@@ -332,6 +365,11 @@ pub const VkMemoryHeap = extern struct {
     flags: VkMemoryHeapFlags = std.mem.zeroes(VkMemoryHeapFlags),
 };
 pub const VkMemoryHeapFlags = VkFlags;
+pub const VkMemoryHostPointerPropertiesEXT = extern struct {
+    sType: VkStructureType = VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT,
+    pNext: ?*anyopaque = null,
+    memoryTypeBits: u32 = std.mem.zeroes(u32),
+};
 pub const VkMemoryMapFlags = VkFlags;
 pub const VkMemoryPropertyFlags = VkFlags;
 pub const VkMemoryRequirements = extern struct {
@@ -357,6 +395,18 @@ pub const VkPhysicalDeviceCooperativeMatrixFeaturesKHR = extern struct {
     pNext: ?*anyopaque = null,
     cooperativeMatrix: VkBool32 = std.mem.zeroes(VkBool32),
     cooperativeMatrixRobustBufferAccess: VkBool32 = std.mem.zeroes(VkBool32),
+};
+pub const VkPhysicalDeviceExternalBufferInfo = extern struct {
+    sType: VkStructureType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_BUFFER_INFO,
+    pNext: ?*const anyopaque = null,
+    flags: VkBufferCreateFlags = std.mem.zeroes(VkBufferCreateFlags),
+    usage: VkBufferUsageFlags = std.mem.zeroes(VkBufferUsageFlags),
+    handleType: VkExternalMemoryHandleTypeFlagBits = std.mem.zeroes(VkExternalMemoryHandleTypeFlagBits),
+};
+pub const VkPhysicalDeviceExternalMemoryHostPropertiesEXT = extern struct {
+    sType: VkStructureType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT,
+    pNext: ?*anyopaque = null,
+    minImportedHostPointerAlignment: VkDeviceSize = std.mem.zeroes(VkDeviceSize),
 };
 pub const VkPhysicalDeviceFeatures = extern struct {
     robustBufferAccess: VkBool32 = std.mem.zeroes(VkBool32),
@@ -799,6 +849,8 @@ pub extern fn vkEnumerateDeviceExtensionProperties(physicalDevice: VkPhysicalDev
 pub extern fn vkGetPhysicalDeviceFeatures2(physicalDevice: VkPhysicalDevice, pFeatures: [*c]VkPhysicalDeviceFeatures2) callconv(.c) void;
 pub extern fn vkGetPhysicalDeviceMemoryProperties2(physicalDevice: VkPhysicalDevice, pMemoryProperties: [*c]VkPhysicalDeviceMemoryProperties2) callconv(.c) void;
 pub extern fn vkGetDeviceProcAddr(device: VkDevice, pName: [*c]const u8) callconv(.c) PFN_vkVoidFunction;
+pub extern fn vkGetPhysicalDeviceExternalBufferProperties(physicalDevice: VkPhysicalDevice, pExternalBufferInfo: [*c]const VkPhysicalDeviceExternalBufferInfo, pExternalBufferProperties: [*c]VkExternalBufferProperties) callconv(.c) void;
 pub const PFN_vkCreatePipelineBinariesKHR = *const fn (device: VkDevice, pCreateInfo: [*c]const VkPipelineBinaryCreateInfoKHR, pAllocator: ?*const VkAllocationCallbacks, pBinaries: [*c]VkPipelineBinaryHandlesInfoKHR) callconv(.c) VkResult;
 pub const PFN_vkDestroyPipelineBinaryKHR = *const fn (device: VkDevice, pipelineBinary: VkPipelineBinaryKHR, pAllocator: ?*const VkAllocationCallbacks) callconv(.c) void;
 pub const PFN_vkGetPipelineKeyKHR = *const fn (device: VkDevice, pPipelineCreateInfo: [*c]const VkPipelineCreateInfoKHR, pPipelineKey: [*c]VkPipelineBinaryKeyKHR) callconv(.c) VkResult;
+pub const PFN_vkGetMemoryHostPointerPropertiesEXT = *const fn (device: VkDevice, handleType: VkExternalMemoryHandleTypeFlagBits, pHostPointer: ?*const anyopaque, pMemoryHostPointerProperties: [*c]VkMemoryHostPointerPropertiesEXT) callconv(.c) VkResult;

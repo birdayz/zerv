@@ -262,6 +262,36 @@
       }
     },
     {
+      "name": "VkExternalBufferProperties",
+      "size": 32,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "externalMemoryProperties": 16
+      }
+    },
+    {
+      "name": "VkExternalMemoryBufferCreateInfo",
+      "size": 24,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "handleTypes": 16
+      }
+    },
+    {
+      "name": "VkExternalMemoryProperties",
+      "size": 12,
+      "alignment": 4,
+      "fields": {
+        "externalMemoryFeatures": 0,
+        "exportFromImportedHandleTypes": 4,
+        "compatibleHandleTypes": 8
+      }
+    },
+    {
       "name": "VkFenceCreateInfo",
       "size": 24,
       "alignment": 8,
@@ -298,6 +328,17 @@
         "levelCount": 8,
         "baseArrayLayer": 12,
         "layerCount": 16
+      }
+    },
+    {
+      "name": "VkImportMemoryHostPointerInfoEXT",
+      "size": 32,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "handleType": 16,
+        "pHostPointer": 24
       }
     },
     {
@@ -347,6 +388,16 @@
       }
     },
     {
+      "name": "VkMemoryHostPointerPropertiesEXT",
+      "size": 24,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "memoryTypeBits": 16
+      }
+    },
+    {
       "name": "VkMemoryRequirements",
       "size": 24,
       "alignment": 8,
@@ -387,6 +438,28 @@
         "pNext": 8,
         "cooperativeMatrix": 16,
         "cooperativeMatrixRobustBufferAccess": 20
+      }
+    },
+    {
+      "name": "VkPhysicalDeviceExternalBufferInfo",
+      "size": 32,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "flags": 16,
+        "usage": 20,
+        "handleType": 24
+      }
+    },
+    {
+      "name": "VkPhysicalDeviceExternalMemoryHostPropertiesEXT",
+      "size": 24,
+      "alignment": 8,
+      "fields": {
+        "sType": 0,
+        "pNext": 8,
+        "minImportedHostPointerAlignment": 16
       }
     },
     {
@@ -929,6 +1002,9 @@
     "VK_ERROR_DEVICE_LOST": -4,
     "VK_ERROR_OUT_OF_DEVICE_MEMORY": -2,
     "VK_ERROR_OUT_OF_HOST_MEMORY": -1,
+    "VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT": 1,
+    "VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT": 4,
+    "VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT": 128,
     "VK_INCOMPLETE": 5,
     "VK_MAX_EXTENSION_NAME_SIZE": 256,
     "VK_MAX_MEMORY_HEAPS": 16,
@@ -965,13 +1041,19 @@
     "VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO": 32,
     "VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO": 3,
     "VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO": 2,
+    "VK_STRUCTURE_TYPE_EXTERNAL_BUFFER_PROPERTIES": 1000071003,
+    "VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO": 1000072000,
     "VK_STRUCTURE_TYPE_FENCE_CREATE_INFO": 8,
     "VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER": 45,
+    "VK_STRUCTURE_TYPE_IMPORT_MEMORY_HOST_POINTER_INFO_EXT": 1000178000,
     "VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO": 1,
     "VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO": 5,
     "VK_STRUCTURE_TYPE_MEMORY_BARRIER": 46,
+    "VK_STRUCTURE_TYPE_MEMORY_HOST_POINTER_PROPERTIES_EXT": 1000178001,
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES": 1000083000,
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR": 1000506000,
+    "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_BUFFER_INFO": 1000071002,
+    "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT": 1000178002,
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2": 1000059000,
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT": 1000237000,
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2": 1000059006,
@@ -1003,9 +1085,9 @@
   },
   "schema_version": 1,
   "generator_sha256": "959f4e3f3cdad36bbe86979b3e693a98d11205bb69ef4d1fae80038ceaa4ed88",
-  "helper_sha256": "59e49478a73c3c1decb927da015e10002947b75253adf952ce581291ef0a091f",
+  "helper_sha256": "c33705a61ed794442e5108bc27ca7c6992a3bacd11c6f295f59f4a5d5e687e48",
   "header_sha256": "a7ac0d7e35e77f642c175af5d36729cfdae2d626d2aaa9145c030a42bd44edc6",
   "xml_sha256": "264d0d7350e37d70c82407fb430d085040fc01a9a961d43dec8c2d6ed1dfd183",
-  "c_source_sha256": "05a52b6cb3d789d1e16d668a0d48a36fe93d56323cebb91968c499052a9420e2",
+  "c_source_sha256": "01f8dddf0726794a3edce14de75a856f45f41c3015baea39cc39438c9d03714f",
   "target": "Linux x86_64 SysV C ABI"
 }

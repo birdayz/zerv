@@ -135,6 +135,20 @@ zerv_test(
 )
 
 zerv_test(
+    name = "storage",
+    sha = True,
+    deps = ["//src/storage"],
+    embeds = ["fixtures/storage/positional.bin", "fixtures/storage/manifest.json", "reference/generate_disk_fixture.py"],
+)
+
+zerv_test(
+    name = "residency",
+    sha = True,
+    deps = ["//src/session", "//src/storage"],
+    embeds = ["fixtures/residency/traces.json", "fixtures/residency/manifest.json", "reference/generate_residency_fixture.py", "fixtures/storage/positional.bin"],
+)
+
+zerv_test(
     name = "checkpoint",
     deps = ["//src/session"],
 )
@@ -730,6 +744,8 @@ py_test(
         "//src/quant:zig_srcs",
         "//src/serve:BUILD.bazel",
         "//src/serve:zig_srcs",
+        "//src/storage:BUILD.bazel",
+        "//src/storage:zig_srcs",
         "//src/session:BUILD.bazel",
         "//src/session:zig_srcs",
         "//src/text:BUILD.bazel",

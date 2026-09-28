@@ -25,6 +25,10 @@ pub const Options = struct {
     /// (`Kernel.Options.binary`). Unsupported is not an error: `Device.pipeline_key` stays
     /// null and such kernels use their SPIR-V (docs/specs/gpu-driver.md, "Pipeline binaries").
     pipeline_binaries: bool = false,
+    /// Enable `VK_EXT_external_memory_host` so host buffers may use memory the process
+    /// allocated (`Buffer.initImported`); `open` fails with `UnsupportedFeature` if the
+    /// extension or its entry point is missing.
+    host_import: bool = false,
 };
 /// `VK_KHR_pipeline_binary` and the extensions it depends on at Vulkan 1.1
 /// (maintenance5 -> dynamic_rendering -> depth_stencil_resolve -> create_renderpass2).
@@ -77,6 +81,9 @@ pub const Device = struct {
     /// when pipeline binaries are enabled; null otherwise.
     pipeline_key: ?[32]u8 = null,
     create_pipeline_binaries: ?vk.PFN_vkCreatePipelineBinariesKHR = null,
+    /// `VK_EXT_external_memory_host` enabled (`Options.host_import`).
+    host_pointer_properties: ?vk.PFN_vkGetMemoryHostPointerPropertiesEXT = null,
+    host_import_alignment: u64 = 0,
     destroy_pipeline_binary: ?vk.PFN_vkDestroyPipelineBinaryKHR = null,
     budget: u64,
     allocated_bytes: u64 = 0,
@@ -86,6 +93,9 @@ pub const Device = struct {
     pending: u32 = 0,
     last_result: i32 = 0,
     lost: bool = false,
+
+    /// The exact usage checked for external-buffer import support.
+    pub const buffer_usage = vk.VK_BUFFER_USAGE_TRANSFER_SRC_BIT | vk.VK_BUFFER_USAGE_TRANSFER_DST_BIT | vk.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 
     pub fn open(options: Options) Error!Device {
         if (builtin.os.tag != .linux or builtin.cpu.arch != .x86_64) return error.UnsupportedTarget;
@@ -139,7 +149,7 @@ pub const Device = struct {
         var storage16: vk.VkPhysicalDevice16BitStorageFeatures = .{ .pNext = &memory_model, .storageBuffer16BitAccess = vk.VK_TRUE };
         var float16: vk.VkPhysicalDeviceShaderFloat16Int8Features = .{ .pNext = &storage16, .shaderFloat16 = vk.VK_TRUE };
         var coopmat: vk.VkPhysicalDeviceCooperativeMatrixFeaturesKHR = .{ .pNext = &float16, .cooperativeMatrix = vk.VK_TRUE };
-        var extensions: [3 + pipeline_binary_extensions.len][*c]const u8 = undefined;
+        var extensions: [4 + pipeline_binary_extensions.len][*c]const u8 = undefined;
         var extension_count: u32 = 0;
         var sizes: vk.VkPhysicalDeviceSubgroupSizeControlFeatures = .{ .subgroupSizeControl = vk.VK_TRUE };
         // 16-bit storage alone (a chain of its own; coopmat's chain includes it).
@@ -171,14 +181,35 @@ pub const Device = struct {
                 extension_count += 1;
             }
         }
+        if (options.host_import) {
+            if (!try self.hasExtension("VK_EXT_external_memory_host")) return error.UnsupportedFeature;
+            var host_props: vk.VkPhysicalDeviceExternalMemoryHostPropertiesEXT = .{};
+            var host_properties2: vk.VkPhysicalDeviceProperties2 = .{ .pNext = &host_props };
+            vk.vkGetPhysicalDeviceProperties2(self.physical, &host_properties2);
+            const alignment = host_props.minImportedHostPointerAlignment;
+            if (alignment == 0 or !std.math.isPowerOfTwo(alignment)) return error.InvalidDriverProperties;
+            self.host_import_alignment = alignment;
+            const external_info: vk.VkPhysicalDeviceExternalBufferInfo = .{ .usage = buffer_usage, .handleType = vk.VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT };
+            var external_props: vk.VkExternalBufferProperties = .{};
+            vk.vkGetPhysicalDeviceExternalBufferProperties(self.physical, &external_info, &external_props);
+            const features = external_props.externalMemoryProperties.externalMemoryFeatures;
+            if (features & vk.VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT == 0 or features & vk.VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT != 0) return error.UnsupportedFeature;
+            extensions[extension_count] = "VK_EXT_external_memory_host";
+            extension_count += 1;
+        }
         device_info.enabledExtensionCount = extension_count;
         device_info.ppEnabledExtensionNames = if (extension_count == 0) null else &extensions;
         try self.check(vk.vkCreateDevice(self.physical, &device_info, null, &self.handle));
+        errdefer vk.vkDestroyDevice(self.handle, null);
         self.cooperative_matrix = options.cooperative_matrix;
         self.storage16 = options.cooperative_matrix or options.storage16;
         self.full_subgroups = sizes.computeFullSubgroups == vk.VK_TRUE and options.subgroup_size_control;
         vk.vkGetDeviceQueue(self.handle, self.family, 0, &self.queue);
         if (use_binaries) try self.loadPipelineBinaries();
+        if (options.host_import) {
+            const f = vk.vkGetDeviceProcAddr(self.handle, "vkGetMemoryHostPointerPropertiesEXT") orelse return error.UnsupportedFeature;
+            self.host_pointer_properties = @ptrCast(f);
+        }
         return self;
     }
 

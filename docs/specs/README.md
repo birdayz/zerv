@@ -8,6 +8,8 @@ alternatives, and measurements live elsewhere under `docs/` and are linked here.
 - [Verification](verification.md): mandatory research readiness, reference fixtures,
   differential testing, and acceptance behavior.
 - [GPU driver](gpu-driver.md): verified native Vulkan allocation/transfer/dispatch, bounded ownership and repeated raw-driver comparisons.
+- [NVMe scratch transport](nvme-store.md): bounded asynchronous disk I/O through borrowed host staging; cache/scheduler integration is separate.
+- [Snapshot residency](snapshot-residency.md): independent snapshot/hot/disk identities, pending-transfer ownership and read leases; metadata component, not disk-backed serving.
 - [GPU matvec](gpu-matvec.md): verified resident packed-weight/FP32 projections, independent CPU/GPU goldens and repeated full-shape timings; losses retained.
 - [Native model forward](model.md), [generation session](session.md): verified contracts.
 - [Batched FP32 prefill](prefill.md): verified chunked prefill contract (block 13a); small-row plans (13d).

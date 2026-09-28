@@ -138,3 +138,34 @@ There is no same-operation llama-server endpoint or exposed arbitrary SPIR-V dis
 compare direct raw-driver C work and document this distinction, not a llama-server
 speedup. Next08's quantized matvec must compare equivalent reference GPU operators;
 model/HTTP milestones still require actual tuned llama-server comparisons.
+
+## Imported coherent host buffers — NVMe prerequisite (2026-09-28)
+
+Opt-in `Options.host_import` enables `VK_EXT_external_memory_host`; ordinary allocation
+and serving defaults are unchanged. The implementation queries (not assumes)
+`minImportedHostPointerAlignment` and external-buffer import support for our exact usage
+(transfer source/destination plus storage). Reject unsupported and dedicated-only imports.
+Only ordinary `HOST_ALLOCATION` payloads are supported, not foreign mapped device memory.
+
+`Buffer.initImported(device, memory)` borrows a caller-owned, stable host range. It must be
+positive and its address and length multiples of the queried alignment; its backing pages
+must remain valid, accessible and unmodified by concurrent CPU/disk operations while GPU
+commands use them. No overlapping or duplicate imports. The caller supplies adequate
+padding for buffer memory requirements. Intersect the pointer's memory-type bits with the
+buffer's bits and select a HOST_VISIBLE | HOST_COHERENT type. Validate requirements and
+aggregate device allocation budget before importing. Failure rolls back all Vulkan objects
+and leaves accounting unchanged. Success counts imported bytes towards the same budget.
+
+`mapped` borrows the original pointer, not a second mapping. GPU writes must be made visible
+to host before CPU/disk reads, and CPU/disk writes must finish before submission. The existing
+pending-command and retained-reference checks apply. `deinit` destroys buffer then Vulkan
+memory, never unmaps/frees the caller's range. The caller frees it afterwards. Independent
+ABI oracle: pinned Vulkan-Headers C probe (`vulkan_fixtures_update`), same as existing GPU
+bindings. Device correctness: distinct-byte imported-host → device → different imported-host
+round trip, invalid alignment/length, option disabled, aggregate budget exhaustion with
+unchanged accounting, destruction while retained. Run both modes and the production driver.
+
+Primary semantics: Vulkan-Docs v1.4.357, `VkImportMemoryHostPointerInfoEXT`,
+`vkGetMemoryHostPointerPropertiesEXT` (VUIDs 01747–01755), allocation-size VUID 01745,
+and extension issues 2–6. Source provenance: research/nvme note. This remains within the
+existing OS/GPU-driver boundary; no new runtime library.

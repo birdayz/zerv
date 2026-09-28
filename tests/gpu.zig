@@ -33,6 +33,59 @@ test "native Vulkan real transfers, affine dispatch, partial groups and sentinel
     try t.expectEqual(@as(u32, 0), device.pending);
 }
 
+test "imported host memory (VK_EXT_external_memory_host): device round trip, bounds, ownership" {
+    const linux = std.os.linux;
+    const size: usize = 4 << 20;
+    const rc = linux.mmap(null, 2 * size, .{ .READ = true, .WRITE = true }, .{ .TYPE = .PRIVATE, .ANONYMOUS = true }, -1, 0);
+    try t.expectEqual(linux.E.SUCCESS, linux.errno(rc));
+    const mem = @as([*]u8, @ptrFromInt(rc))[0 .. 2 * size];
+    defer _ = linux.munmap(mem.ptr, mem.len);
+    // Without the option the entry point is absent.
+    {
+        var plain = try gpu.Device.open(.{ .max_allocated_bytes = 64 << 20 });
+        defer plain.deinit() catch @panic("device still has children");
+        try t.expectError(error.UnsupportedFeature, gpu.Buffer.initImported(&plain, mem[0..size]));
+    }
+    var device = try gpu.Device.open(.{ .max_allocated_bytes = 64 << 20, .host_import = true });
+    defer device.deinit() catch @panic("device still has children");
+    try t.expect(device.host_import_alignment > 0);
+    try t.expectError(error.InvalidRange, gpu.Buffer.initImported(&device, mem[0..0]));
+    try t.expectError(error.InvalidRange, gpu.Buffer.initImported(&device, mem[1..][0..4096])); // unaligned start
+    try t.expectError(error.InvalidRange, gpu.Buffer.initImported(&device, mem[0..100])); // unaligned length
+    for (mem[0..size], 0..) |*b, i| b.* = @truncate(i *% 2654435761 >> 5);
+    var a = try gpu.Buffer.initImported(&device, mem[0..size]);
+    const budget = device.budget;
+    device.budget = size + size / 2;
+    try t.expectError(error.ResourceLimit, gpu.Buffer.initImported(&device, mem[size..][0..size]));
+    try t.expectEqual(@as(u64, size), device.allocated_bytes);
+    try t.expectEqual(@as(u32, 1), device.buffers);
+    device.budget = budget;
+    var b = try gpu.Buffer.initImported(&device, mem[size..][0..size]);
+    var d = try gpu.Buffer.init(&device, size, .device);
+    try t.expectEqual(@as(u64, 3 * size), device.allocated_bytes);
+    try t.expect((try a.mapped()).ptr == mem.ptr);
+    {
+        var c = try gpu.Commands.init(&device);
+        defer c.deinit() catch @panic("commands");
+        try c.reset();
+        try c.begin();
+        try c.copy(&a, 0, &d, 0, size);
+        try t.expectError(error.ResourceInUse, a.deinit());
+        try c.barrier(.transfer, .transfer);
+        try c.copy(&d, 0, &b, 0, size);
+        try c.barrier(.transfer, .host);
+        try c.end();
+        try c.run(5_000_000_000);
+    }
+    try t.expect(std.mem.eql(u8, mem[0..size], mem[size..][0..size]));
+    try d.deinit();
+    try b.deinit();
+    try a.deinit();
+    try t.expectEqual(@as(u64, 0), device.allocated_bytes);
+    // The memory stays the caller's: still mapped and writable after deinit.
+    mem[0] = 7;
+}
+
 test "memory budget: the device-local heap reports this process's own allocations" {
     var device = try gpu.Device.open(.{ .max_allocated_bytes = 2 * 1024 * 1024 * 1024 });
     defer device.deinit() catch @panic("device still has children");

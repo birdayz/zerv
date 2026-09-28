@@ -1,6 +1,6 @@
 # Controlled work queue
 
-Active block: **19 · image input (vision)** (below). Active goal (resumed by the user after 08c): native Qwen3.8-27B through
+Active block: **18d.6c · disk-backed checkpoint residency (`src/session`), snapshot table verified; record/transfer contract next** (below). Active goal (resumed by the user after 08c): native Qwen3.8-27B through
 `POST /v1/chat/completions`, fully verified. Not achieved yet. No proxy, mock
 inference, or external engine in the production path.
 
@@ -81,7 +81,49 @@ part 4 work (`gemm_rows.comp`, `DecodePrecision.split`, its gpu-test) was commit
 `c30c6d9` without a spec section, report or model gates. The queued "Image input" item
 becomes block 19, active.
 
-- [ ] **19 · image input: Qwen3.8-27B vision through `/v1/chat/completions`** (active).
+Queue change (2026-09-28, user: "can you add NVMe tier?", then "continue"): vision
+is parked. One active increment: 18d.6a, imported host I/O buffers (`src/gpu`), with
+independent Vulkan ABI fixtures, device tests and a bounded disk/GPU probe. NVMe cache
+integration is not implemented. Next increments, only after its gates: bounded async
+scratch-file store; radix/snapshot residency and scheduler pending I/O; exactness and
+interleaved serving comparison with disk off, host-only and tuned llama-server.
+
+Queue clarification (2026-09-28, user: “find the most straight, DMA-ish way from nvme
+to gpu vram”): pause staged-path implementation for the P2P dependency investigation
+within 18d.6a. [Findings](docs/research/2026-09-28-nvme-p2p.md): direct NVMe→VRAM is a
+plausible hardware path, but the installed driver lacks AMD AIS; native AIS/KFD or
+a custom DMA-BUF importer needs boundary/system approval. No P2P transfer executed,
+no second implementation track opened, no driver/disk changes. Host-import work and
+its outstanding measurement gate remain intact; the old hang goal stays closed.
+
+Queue resumption (2026-09-28, user approves copy-through-RAM): implement the staged
+NVMe tier with existing drivers and a normal bounded scratch file. P2P is parked;
+no exclusive device or system-driver changes. Finish 18d.6a measurement first, then
+the bounded asynchronous disk-store increment, then cache/scheduler integration.
+
+- [x] **18d.6a · imported host I/O buffers**: capability/alignment/budget validation,
+  failure-safe probe, independent ABI fixtures; CPU 75/75, GPU 3/3, host-driver 2/2;
+  24 exact disk/GPU trials. [Report](docs/bench/2026-09-28-nvme-buffers.md).
+- [x] **18d.6b · bounded asynchronous disk store (`src/storage`)**: worker-owned
+  io_uring, borrowed aligned staging, exclusive bounded scratch, lifetime guards;
+  independent syscall byte oracle, CPU 77/77, both storage modes ×20, GPU 3/3 and
+  host-driver 2/2. Two component runs retain QD1 losses and write variance.
+  [Report](docs/bench/2026-09-28-nvme-store.md). User correction: no btrfs policy
+  in core; generic reported/configured alignment, operator-owned filesystem prep
+  in [deployment guidance](docs/deployment/nvme-scratch.md).
+- [ ] **18d.6c · disk-backed checkpoint residency (`src/session`)**:
+  - [x] First increment: independent snapshot identity/hot-slot/disk-slot ownership
+    table, leases and generation/transfer guards; spec and Python oracle before
+    native code. 4,860 exact state transitions; physical 12-snapshot/two-resident-slot
+    test, failures/cancellation; CPU 79/79, both modes ×20; two metadata benchmark
+    runs. [Report](docs/bench/2026-09-28-snapshot-residency.md).
+  - [ ] Next: record layout/integrity and bounded chunked transfer contract, then
+    adopt the table in the checkpoint cache. Existing production cache is unchanged;
+    table capacity is not yet serving capacity. Resolve KV disk extents/ancestor
+    ownership and metadata memory scaling before exposing larger cache capacity.
+  Scheduler/model adapters and full serving gates follow as sequential increments,
+  not parallel tracks. No server flag until integration.
+- [ ] **19 · image input: Qwen3.8-27B vision through `/v1/chat/completions`** (parked).
   - Why: bruh sends tool screenshots as `image_url` user content (PNG data URLs); zerv answers
     400 and the turn fails. llama-server serves them with `--mmproj`.
   - Steps, one at a time, each with its gates:

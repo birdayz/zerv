@@ -310,3 +310,21 @@ finish independent tests and benchmark gates before advancing.
     against 11.5–19.9 s with the tier off or the flat policy, and 26–30% less wall time. 192/192 outputs identical;
     GPU prefix gate 462/462 bitwise. Includes the hunt for the memory-pressure hangs and a restore renaming
     corruption: deep swap-out, slice wake, prompt victims, invariant checks.
+100. [NVMe tier prerequisites](research/2026-09-28-nvme-tier.md) and
+     [direct NVMe→VRAM P2P investigation](research/2026-09-28-nvme-p2p.md) (P2P parked):
+     imported host buffers are still a two-transfer path. PCIe P2P is hardware-plausible;
+     native AIS/KFD could retain filesystem I/O, but this driver lacks AIS. DMA-BUF/raw
+     NVMe alternatives require a kernel helper and storage ownership. No P2P transfer
+     or integrated NVMe cache demonstrated; system/boundary changes await approval.
+101. [Imported host I/O buffers](bench/2026-09-28-nvme-buffers.md) (18d.6a complete):
+     independent ABI/device gates and 24 exact disk/GPU trials; still RAM-staged,
+     no transfer-overlap or serving claim.
+102. [Bounded asynchronous disk transport](bench/2026-09-28-nvme-store.md) (18d.6b complete):
+     independent syscall byte gates, bounded ownership and repeated component trials;
+     equivalent-QD1 losses and write variance retained. Core uses generic alignment
+     discovery/configuration; [filesystem preparation](deployment/nvme-scratch.md)
+     is operator-owned. Disk-backed prefix-cache/scheduler integration remains pending.
+103. [Snapshot residency bookkeeping](bench/2026-09-28-snapshot-residency.md) (18d.6c first increment):
+     independent snapshot/hot/disk identities and guarded pending transfers; 4,860 exact
+     oracle transitions and 12 small disk snapshots through two resident slots. CPU
+     79/79; two metadata benchmark runs. Existing serving cache is not yet switched over.
