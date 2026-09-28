@@ -232,6 +232,43 @@ pub const State = struct {
     pub fn kvBytes(self: State) u64 {
         return @as(u64, self.caches) * self.cacheElements() * self.kv.bytes();
     }
+    /// Canonicalize only unused last-page KV bytes in a completed archive window.
+    /// `self` comes from stateWith; no conversion of valid elements (including f16 pairs).
+    pub fn clearArchiveTail(self: State, snapshot_bytes: u64, tokens: u32, offset: u64, bytes: []u8) error{ InvalidToken, InvalidRange }!void {
+        if (tokens == 0 or tokens > self.context) return error.InvalidToken;
+        const npages = std.math.divCeil(u32, tokens, self.page) catch unreachable;
+        const piece_bytes = @as(u64, self.piece()) * self.kv.bytes();
+        const total = std.math.add(u64, snapshot_bytes, @as(u64, npages) * self.caches * piece_bytes) catch return error.InvalidRange;
+        if (offset > total or bytes.len > total - offset) return error.InvalidRange;
+        const tail = tokens % self.page;
+        if (tail == 0 or bytes.len == 0) return;
+        const element_bytes = self.kv.bytes();
+        var group_base = snapshot_bytes;
+        for (0..self.kv_buffers) |g| {
+            const layers = self.layersIn(@intCast(g));
+            const page_bytes = layers * piece_bytes;
+            const last = group_base + (npages - 1) * page_bytes;
+            group_base += npages * page_bytes;
+            if (offset + bytes.len <= last or offset >= group_base) continue;
+            for (0..layers) |layer| {
+                const base = last + layer * piece_bytes;
+                for (0..config.kv_heads * config.head_dim) |row| {
+                    const start = base + (row * self.page + tail) * element_bytes;
+                    clearIntersection(bytes, offset, start, @as(u64, self.page - tail) * element_bytes);
+                }
+                for (0..config.kv_heads) |head| {
+                    const start = base + piece_bytes / 2 + (head * self.page + tail) * config.head_dim * element_bytes;
+                    clearIntersection(bytes, offset, start, @as(u64, self.page - tail) * config.head_dim * element_bytes);
+                }
+            }
+        }
+    }
+    fn clearIntersection(bytes: []u8, offset: u64, start: u64, size: u64) void {
+        const lo = @max(offset, start);
+        const hi = @min(offset + bytes.len, start + size);
+        if (hi > lo) @memset(bytes[@intCast(lo - offset)..@intCast(hi - offset)], 0);
+    }
+
     pub fn ssmLayer(self: State, linear: u32) u32 {
         return self.ssm + linear * config.v_heads * config.linear_head * config.linear_head;
     }

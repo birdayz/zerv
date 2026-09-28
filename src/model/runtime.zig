@@ -1520,18 +1520,32 @@ pub const Model = struct {
     /// Submit only. Caller leases the slot/map/staging until c.poll acknowledges;
     /// cancellation cannot release them early. Other slots may execute on this queue.
     pub fn archiveSubmit(self: *Model, c: *gpu.Commands, staging: *gpu.Buffer, staging_offset: u64, slot: u32, tokens: u32, map: []const u32, offset: u64, bytes: u64, importing: bool) Error!void {
+        _ = try self.archiveQuantum(c, staging, staging_offset, slot, tokens, map, offset, bytes, importing, null);
+    }
+
+    /// Leased immutable snapshot + mixed host/GPU pages, never the mutable request state.
+    /// True: GPU submitted, caller polls. False: CPU-only, still acknowledge before reuse.
+    pub fn archiveSourceSubmit(self: *Model, c: *gpu.Commands, staging: *gpu.Buffer, staging_offset: u64, snapshot: u32, tokens: u32, map: []const u32, offset: u64, bytes: u64) Error!bool {
+        if (snapshot >= self.snapshot_slots) return error.InvalidSnapshot;
+        try self.pool.checkCheckpoint(map);
+        return self.archiveQuantum(c, staging, staging_offset, 0, tokens, map, offset, bytes, false, snapshot);
+    }
+
+    fn archiveQuantum(self: *Model, c: *gpu.Commands, staging: *gpu.Buffer, staging_offset: u64, slot: u32, tokens: u32, map: []const u32, offset: u64, bytes: u64, importing: bool, snapshot: ?u32) Error!bool {
         const total = try self.archiveBytes(tokens);
         if (slot >= self.state_layout.slots or self.chunk != null or self.pending_verify != 0) return error.InvalidState;
         if (map.len != (std.math.divCeil(u32, tokens, self.state_layout.page) catch unreachable)) return error.PagesMissing;
         if (bytes == 0 or offset > total or bytes > total - offset or (offset | bytes | staging_offset) & 3 != 0) return error.InvalidRange;
         if (staging_offset > staging.size or bytes > staging.size - staging_offset) return error.InvalidRange;
-        for (map, 0..) |q, logical| {
+        if (snapshot == null) for (map, 0..) |q, logical| {
             if (q >= self.pool.pages or self.pool.logical[q] != logical or self.pool.mask[q] & (@as(u64, 1) << @intCast(slot)) == 0) return error.PagesMissing;
             if (importing and !self.pool.exclusive(q, slot)) return error.PageInUse;
-        }
+        };
         try c.reset();
         try c.begin();
         try c.barrier(if (importing) .host else .compute, .transfer);
+        if (snapshot != null) try c.barrier(.transfer, .transfer);
+        var gpu_copy = false;
         var at = offset;
         var left = bytes;
         var host_at = staging_offset;
@@ -1540,7 +1554,10 @@ pub const Model = struct {
             var physical: u64 = undefined;
             var span: u64 = undefined;
             if (at < self.snapshotBytes()) {
-                physical = @as(u64, slot) * self.state_layout.slot_words * 4 + @as(u64, self.state_layout.ssm) * 4 + at;
+                if (snapshot) |s| {
+                    buffer = &self.snapshot_store;
+                    physical = @as(u64, s) * self.snapshotBytes() + at;
+                } else physical = @as(u64, slot) * self.state_layout.slot_words * 4 + @as(u64, self.state_layout.ssm) * 4 + at;
                 span = self.snapshotBytes() - at;
             } else {
                 var relative = at - self.snapshotBytes();
@@ -1554,22 +1571,32 @@ pub const Model = struct {
                     }
                     const logical: usize = @intCast(relative / page_bytes);
                     const within = relative % page_bytes;
-                    buffer = &self.kv[g];
-                    physical = @as(u64, map[logical]) * page_bytes + within;
+                    const q = map[logical];
+                    buffer = if (q & page_pool.host_flag != 0) &self.swap_kv[g] else &self.kv[g];
+                    physical = @as(u64, q & ~page_pool.host_flag) * page_bytes + within;
                     span = page_bytes - within;
                     break;
                 }
                 if (g == self.state_layout.kv_buffers) return error.InvalidRange;
             }
             const n = @min(left, span);
-            if (importing) try c.copy(staging, host_at, buffer, physical, n) else try c.copy(buffer, physical, staging, host_at, n);
+            if (snapshot != null and buffer.mapping != null) {
+                const src = try buffer.mapped();
+                const dst = try staging.mapped();
+                @memcpy(dst[@intCast(host_at)..][0..@intCast(n)], src[@intCast(physical)..][0..@intCast(n)]);
+            } else {
+                if (importing) try c.copy(staging, host_at, buffer, physical, n) else try c.copy(buffer, physical, staging, host_at, n);
+                gpu_copy = true;
+            }
             at += n;
             host_at += n;
             left -= n;
         }
         try c.barrier(.transfer, if (importing) .compute else .host);
+        if (snapshot != null) try c.barrier(.transfer, .compute);
         try c.end();
-        try c.submit();
+        if (gpu_copy) try c.submit();
+        return gpu_copy;
     }
 
     /// Commit position only after every verified chunk has arrived. On failed restore,
@@ -2423,6 +2450,7 @@ pub const Model = struct {
         try c.barrier(.compute, .transfer);
         try c.copy(source, source_offset, destination, destination_offset, self.snapshotBytes());
         try c.barrier(.transfer, .compute);
+        if (destination.mapping != null) try c.barrier(.transfer, .host);
         try c.end();
         try c.run(self.options.timeout_ns);
     }

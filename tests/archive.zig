@@ -320,3 +320,23 @@ test "async device start and completion faults drain before slot reuse" {
         }
     }
 }
+
+test "archive additional source job is independent of all 64 request identities" {
+    var tmp = t.tmpDir(.{});
+    defer tmp.cleanup();
+    const mem = try t.allocator.alignedAlloc(u8, .fromByteUnits(4096), 8192);
+    defer t.allocator.free(mem);
+    const store = try open(tmp.dir, mem);
+    defer store.destroy() catch @panic("pending disk");
+    var o = opts;
+    o.slots = 66;
+    try t.expectError(error.InvalidOptions, archive.Archive.init(t.allocator, store, o));
+    o.slots = 65;
+    var a = try archive.Archive.init(t.allocator, store, o);
+    defer a.deinit() catch @panic("pending archive");
+    var fake: Fake = .{};
+    try t.expect(try a.startWrite(64, &.{1}, 4));
+    try t.expect(a.active(64) and !a.active(0) and !a.active(63));
+    try t.expectError(error.Canceled, a.advance(fake.device(), 64, true));
+    try t.expect(!a.active(64));
+}

@@ -65,3 +65,8 @@ before coding it. Do not invent untested commands in docs and label them working
 - [Radix cache source leases](cache-source-leases.md): generation/serial-qualified
   snapshot and ancestor ownership for background capture; byte adapter and pressure
   policy still separate. Independent prefix-set oracle and component gates pass.
+- [Canonical mixed cache-source bytes](cache-source-bytes.md): immutable snapshot,
+  mixed host/GPU capture, canonical partial tails and a bounded independent source
+  job. CPU fixture/negative, device/model and component gates pass; no serving claim.
+- [Pressure-driven archive admission](tiering-pressure.md): C.3 pre-code contract;
+  independent policy oracle and integration remain pending.

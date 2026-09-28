@@ -288,3 +288,35 @@ test "pages: a deep swap-out releases the shared and pinned pages a swapped slot
     try t.expectEqual(@as(u32, N), pool.freeCount());
     try t.expectEqual(@as(u32, H), pool.hostFree());
 }
+
+test "checkpoint source maps validate mixed ancestry and preserve logical indices on suffix demotion" {
+    const pool = try t.allocator.create(pages.Pool);
+    defer t.allocator.destroy(pool);
+    try pool.init(N, S, L);
+    try pool.setHost(H);
+    var env: Env = .{ .pool = pool };
+    try env.grow(0, 4);
+    try env.checkpoint(0, 4);
+    try env.release(0);
+    const map = env.entries[0].pages[0..4];
+    try pool.checkCheckpoint(map);
+    var moves: [L]pages.Move = undefined;
+    const plan = pool.demotePlan(map[2..], &moves);
+    try t.expectEqual(@as(usize, 2), plan.len);
+    pool.demoteCommit(map[2..], plan);
+    try pool.checkCheckpoint(map);
+    try t.expectEqual(@as(u16, 2), pool.host_logical[map[2] & ~pages.host_flag]);
+    try t.expectError(error.PagesMissing, pool.checkCheckpoint(&.{ map[0], map[1], map[3], map[2] }));
+    try t.expectError(error.PagesMissing, pool.checkCheckpoint(&.{map[2]}));
+    try t.expectError(error.PagesMissing, pool.checkCheckpoint(&.{pages.host_flag | H}));
+    try t.expectError(error.PagesMissing, pool.checkCheckpoint(&.{N}));
+    try t.expectError(error.InvalidToken, pool.checkCheckpoint(&.{}));
+    try pool.releaseCheckpoint(map);
+    try t.expectError(error.PagesMissing, pool.checkCheckpoint(map));
+    try env.grow(1, 1);
+    try env.swapOut(1, false);
+    const host = for (0..H) |i| {
+        if (pool.host_owner[i] == 1) break @as(u32, @intCast(i));
+    } else return error.MissingSwap;
+    try t.expectError(error.PagesMissing, pool.checkCheckpoint(&.{host | pages.host_flag}));
+}

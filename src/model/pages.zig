@@ -354,6 +354,7 @@ pub const Pool = struct {
     /// After the copies: the pool pages are free, `list` names the host pages.
     pub fn demoteCommit(self: *Pool, list: []u32, moves: []const Move) void {
         for (moves) |m| {
+            self.host_logical[m.to] = self.logical[m.from];
             self.pins[m.from] = 0;
             list[m.index] = m.to | host_flag;
         }
@@ -401,6 +402,18 @@ pub const Pool = struct {
         }
         return n;
     }
+    /// Validate an entire leased checkpoint map, including demoted ancestor pages.
+    /// Partial segment indices are not logical indices; demoteCommit preserves the latter.
+    pub fn checkCheckpoint(self: *const Pool, list: []const u32) Error!void {
+        if (list.len == 0 or list.len > self.seq_pages) return error.InvalidToken;
+        for (list, 0..) |q, logical| {
+            if (q & host_flag != 0) {
+                const h = q & ~host_flag;
+                if (h >= self.host_pages or self.host_owner[h] != checkpoint_owner or self.host_logical[h] != logical) return error.PagesMissing;
+            } else if (q >= self.pages or self.pins[q] == 0 or self.logical[q] != logical) return error.PagesMissing;
+        }
+    }
+
     /// Release a checkpoint's page `list`: unpin its pool pages, free its host pages.
     pub fn releaseCheckpoint(self: *Pool, list: []const u32) Error!void {
         for (list) |q| {

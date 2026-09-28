@@ -117,8 +117,13 @@ restore regression is retained. Snapshot/page transfers remain synchronous.
 
 C is active. C.1 source leases are implemented with full ancestor protection and
 independent prefix-set oracle ([report](../bench/2026-09-28-cache-sources.md)).
-C.2 mixed-source byte capture still needs its canonical partial-tail fixture before
-implementation; pressure-triggered persistence is not integrated. [Partial-page finding](../research/2026-09-28-async-transfers.md#c-readiness-finding-partial-pages-are-not-immutable-full-byte-images).
+C.2's independent canonical partial-tail fixture (60 layouts, 4,804 windows) and
+mixed-source adapter pass CPU 81/81, both modes ×20, negative control, GPU/spill 3/3,
+host GPU 2/2, independent model oracle 337/337 and exact 257/80k model gates.
+Repeated component timings retain substantial variance and the historical restore
+regression; [C.2 report](../bench/2026-09-28-cache-source-bytes.md).
+C.3 is active at [specification/oracle](../specs/tiering-pressure.md):
+pressure-triggered persistence is not integrated. [Partial-page finding](../research/2026-09-28-async-transfers.md#c-readiness-finding-partial-pages-are-not-immutable-full-byte-images).
 D stays queued. The overall requested pressure-driven policy is **not complete**.
 The user's active session goal also requires rigorously verified faster-or-on-par
 serving against tuned compatible competitors; A/B/C.1 component gates do not close

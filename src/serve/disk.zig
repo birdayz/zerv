@@ -5,6 +5,7 @@ const gpu = @import("gpu");
 const model = @import("model");
 const storage = @import("storage");
 const archive = @import("session").archive;
+const kvcache = @import("session").kvcache;
 const linux = std.os.linux;
 pub const staging_bytes = 8 << 20;
 pub const Options = struct { directory: []const u8, bytes: u64, records: u32 = 64, alignment: ?storage.Alignment = null };
@@ -20,7 +21,12 @@ pub const Disk = struct {
     store: *storage.Store,
     catalog: archive.Archive,
     maps: []u32,
-    positions: [64]u32 = @splat(0),
+    positions: [65]u32 = @splat(0),
+    source: ?struct { cache: kvcache.Cache, view: kvcache.Source } = null,
+    source_span: ?struct { offset: u64, bytes: []u8 } = null,
+    cpu_copy: bool = false,
+    source_cpu_quanta: u64 = 0,
+    source_gpu_quanta: u64 = 0,
 
     pub fn create(a: std.mem.Allocator, io: std.Io, m: *model.Model, o: Options) !*Disk {
         if (m.options.mtp or !m.options.kv_share or m.state_layout.slots < 2 or o.bytes == 0 or o.bytes % (1 << 20) != 0) return error.InvalidOptions;
@@ -42,9 +48,9 @@ pub const Disk = struct {
         defer _ = linux.close(fd);
         const store = try storage.Store.create(a, .{ .dir_fd = fd, .name = "zerv-prefix-scratch", .file_bytes = o.bytes, .slot_bytes = 1 << 20, .alignment = o.alignment }, memory);
         errdefer store.destroy() catch @panic("new store busy");
-        var catalog = try archive.Archive.init(a, store, .{ .records = o.records, .context = m.state_layout.context, .slots = m.state_layout.slots, .max_bytes = max_bytes });
+        var catalog = try archive.Archive.init(a, store, .{ .records = o.records, .context = m.state_layout.context, .slots = m.state_layout.slots + 1, .max_bytes = max_bytes });
         errdefer catalog.deinit() catch @panic("new archive busy");
-        const maps = try a.alloc(u32, @as(usize, m.state_layout.slots) * m.state_layout.seq_pages);
+        const maps = try a.alloc(u32, (@as(usize, m.state_layout.slots) + 1) * m.state_layout.seq_pages);
         errdefer a.free(maps);
         self.* = .{ .allocator = a, .io = io, .m = m, .raw = raw, .memory = memory, .store = store, .catalog = catalog, .maps = maps, .imported = undefined, .commands = undefined };
         self.imported = try gpu.Buffer.initImported(m.device, memory);
@@ -53,6 +59,7 @@ pub const Disk = struct {
         return self;
     }
     pub fn destroy(self: *Disk) void {
+        if (self.source != null) @panic("cache source destroyed before drain");
         self.catalog.deinit() catch @panic("archive destroyed before drain");
         self.commands.deinit() catch @panic("archive GPU copy pending");
         self.imported.deinit() catch @panic("archive import retained");
@@ -80,9 +87,52 @@ pub const Disk = struct {
         try self.catalog.startRead(slot, record);
         self.positions[slot] = n;
     }
+    /// One optional write job independent of all request slots. No request-state pause.
+    pub fn startSource(self: *Disk, cache: kvcache.Cache) !bool {
+        if (self.source != null) return false;
+        const handle = cache.coldSource() orelse return false;
+        const view = try cache.acquireSource(handle);
+        errdefer cache.releaseSource(view.lease) catch @panic("invalid cache source lease");
+        const n: u32 = @intCast(view.tokens.len);
+        if (!try self.catalog.startWrite(self.m.state_layout.slots, view.tokens, try self.m.archiveBytes(n))) {
+            try cache.releaseSource(view.lease);
+            return false;
+        }
+        self.source = .{ .cache = cache, .view = view };
+        self.positions[self.m.state_layout.slots] = n;
+        return true;
+    }
+    fn releaseSource(self: *Disk) void {
+        const held = self.source.?;
+        held.cache.releaseSource(held.view.lease) catch @panic("invalid cache source lease");
+        self.source = null;
+    }
+    pub fn pollSource(self: *Disk, cancel: bool) !archive.Progress {
+        if (self.source == null) return .{ .done = true, .progressed = false };
+        const p = self.poll(self.m.state_layout.slots, cancel) catch |err| {
+            self.releaseSource(); // archive errors are returned only after both owners drain
+            return err;
+        };
+        if (p.done) self.releaseSource();
+        return p;
+    }
     fn startCopy(ctx: *anyopaque, slot: u32, offset: u64, bytes: []u8, importing: bool) !void {
         const self: *Disk = @ptrCast(@alignCast(ctx));
         const host_offset = @intFromPtr(bytes.ptr) - @intFromPtr(self.memory.ptr);
+        self.source_span = null;
+        self.cpu_copy = false;
+        if (slot == self.m.state_layout.slots) {
+            if (importing) return error.InvalidState;
+            const view = (self.source orelse return error.InvalidState).view;
+            self.cpu_copy = !(self.m.archiveSourceSubmit(&self.commands, &self.imported, host_offset, view.snapshot, @intCast(view.tokens.len), view.pages, offset, bytes.len) catch |e| {
+                if (self.commands.state == .pending) @panic("source GPU DMA ownership unresolved");
+                return e;
+            });
+            self.source_span = .{ .offset = offset, .bytes = bytes };
+            if (self.cpu_copy) self.source_cpu_quanta += 1 else self.source_gpu_quanta += 1;
+            self.submitted_ns = std.Io.Clock.awake.now(self.io).nanoseconds;
+            return;
+        }
         self.m.archiveSubmit(&self.commands, &self.imported, host_offset, slot, self.positions[slot], self.map(slot, self.positions[slot]), offset, bytes.len, importing) catch |e| {
             // Returning this span to the disk worker after an uncertain GPU fence would
             // allow concurrent DMA into freed/reused memory. There is no safe fallback.
@@ -93,9 +143,13 @@ pub const Disk = struct {
     }
     fn pollCopy(ctx: *anyopaque) !bool {
         const self: *Disk = @ptrCast(@alignCast(ctx));
-        const done = self.commands.poll() catch |e| {
+        const done = self.cpu_copy or (self.commands.poll() catch |e| {
             if (self.commands.state == .pending) @panic("archive GPU DMA ownership unresolved");
             return e;
+        });
+        if (done) if (self.source_span) |span| {
+            try self.m.state_layout.clearArchiveTail(self.m.snapshotBytes(), @intCast(self.source.?.view.tokens.len), span.offset, span.bytes);
+            self.source_span = null;
         };
         if (!done and std.Io.Clock.awake.now(self.io).nanoseconds - self.submitted_ns >= self.m.options.timeout_ns)
             @panic("archive GPU DMA deadline exceeded; ownership unresolved");

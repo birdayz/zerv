@@ -82,17 +82,19 @@ no numerical tolerance. No external runtime/model dependency or GPU job needed f
 this metadata component. Measurement contract is in the preimplementation
 [specification](../specs/cache-source-leases.md).
 
-## C.2 adapter audit after c.1 gates (design only, not implemented)
+## C.2 adapter audit after c.1 gates (preimplementation findings)
 
 - `Model.archiveSubmit` exports the mutable live slot, validates sequence masks
   and pauses it; it cannot directly accept Source.snapshot or host-tagged IDs.
   A separate source-submit entry point should validate snapshot bounds, page count,
   GPU pin/logical-page identity and host checkpoint ownership before recording.
   GPU page masks need not include the originating request: the lease is the owner.
-- `Pool.host_owner` distinguishes cache (`checkpoint_owner`) from live swap slots,
-  but demoteCommit does not set `host_logical`. Do not validate checkpoint host
-  pages against that unmaintained field. Expose a checked Pool source-validation
-  operation rather than duplicate the private sentinel in the model adapter.
+- `Pool.host_owner` distinguishes cache (`checkpoint_owner`) from live swap slots.
+  The audited baseline did not maintain `host_logical` on demotion. C.2's chosen
+  implementation maintains it using the original GPU logical index (not the move's
+  suffix-relative index), then validates it in the Pool's source-map operation.
+  This rejects reordered checkpoint host pages as well as live swap pages without
+  duplicating the private sentinel in the model adapter.
 - Mixed capture can CPU-copy already-host snapshot/page spans into the held staging
   ticket and submit only GPU spans. A wholly host quantum should use start/poll
   acknowledgment without a dummy GPU submission. Whole-buffer mapped guards are
@@ -117,9 +119,28 @@ this metadata component. Measurement contract is in the preimplementation
   restore private permuted pages and compare all valid state and vocabulary rows.
   Existing paused-slot tests remain useful; do not silently weaken them.
 
-Next pre-code gate: coordinate-based byte oracle across f16/f32, 128/256 pages,
+Pre-code gate (subsequently completed): coordinate-based byte oracle across f16/f32, 128/256 pages,
 odd token tails, KV group splits, aligned copy units crossing K/V/page/snapshot
 boundaries, and arbitrary bounded stream windows. Native range-clearing should
 intersect only tail pages (not scan every byte of every large record). A source
-adapter prototype is blocked until that fixture/spec exists. No C.2 code shipped
+adapter prototype was blocked until that fixture/spec existed. No C.2 code shipped
 by the c.1 change; no new performance result inferred from this audit.
+
+C.2 implementation/verification completed ([report](../bench/2026-09-28-cache-source-bytes.md)):
+`cache-source-bytes.md` specifies the
+stream and ownership contract. The independent coordinate decoder generated 60
+layouts / 4,804 byte windows before native implementation. Both native modes pass;
+a deliberate off-by-one tail mutation fails both modes. Full CPU gate passes
+81/81 after the mixed-map and 65-job limit tests. GPU/spill 3/3, host GPU 2/2,
+independent model oracle 337/337 and exact 257/80k state/logits pass. Repeated
+component measurements retain variance and the historical long-restore regression;
+no serving improvement is inferred.
+Raw logs: `docs/bench/data/2026-09-28-cache-source-bytes/`.
+
+Host visibility decision: `snapshotCopy` previously ended with transfer→compute
+only. Synchronous fence completion protects lifetime but host consumers also need
+host-read visibility. Add transfer→host when the snapshot destination is mapped,
+retaining transfer→compute for later device consumers. C.2 reads the immutable host
+snapshot via guarded `Buffer.mapped`, never the originating mutable request state.
+The extra barrier must pass device/model and performance gates; it is not assumed
+free.

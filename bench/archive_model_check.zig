@@ -9,8 +9,10 @@ var max_poll_ns: i96 = 0;
 pub fn main(init: std.process.Init) !void {
     const a = init.gpa;
     const args = try init.minimal.args.toSlice(init.arena.allocator());
-    if (args.len != 3 and args.len != 5) return error.Usage;
-    const disk_mode = args.len == 5;
+    if (args.len != 3 and args.len != 5 and args.len != 6) return error.Usage;
+    const disk_mode = args.len >= 5;
+    const source_mode = args.len == 6 and std.mem.eql(u8, args[5], "source");
+    if (args.len == 6 and !source_mode) return error.Usage;
     const n = try std.fmt.parseInt(u32, args[2], 10);
     if (n == 0 or n > 80000) return error.Usage;
     var file = try zerv.artifact.MappedFile.open(init.io, args[1], 64 << 30);
@@ -21,13 +23,13 @@ pub fn main(init: std.process.Init) !void {
     defer device.deinit() catch @panic("live device");
     const m = try a.create(model.Model);
     defer a.destroy(m);
-    try m.init(&device, &container, .{ .context = std.mem.alignForward(u32, n + 128, 128), .prefill_rows = 512, .prefill_precision = .f16, .embedding_memory = .host, .snapshots = if (disk_mode) 2 else 0, .snapshot_memory = .host, .kv_type = .f16, .slots = 2, .batch_rows = 2, .kv_share = true, .kv_pages = (n + 255) / 128 + 1 });
+    try m.init(&device, &container, .{ .context = std.mem.alignForward(u32, n + 128, 128), .prefill_rows = 512, .prefill_precision = .f16, .embedding_memory = .host, .snapshots = if (disk_mode) 2 else 0, .snapshot_memory = .host, .kv_type = .f16, .slots = 2, .batch_rows = 2, .swap_bytes = if (source_mode) 2 << 30 else 0, .kv_share = true, .kv_pages = (n + 255) / 128 + 1 });
     defer m.deinit();
     var backend: zerv.serve.ModelBackend = .{ .m = m };
     defer backend.deinitDisk();
     defer backend.deinitCache(a);
     if (disk_mode) {
-        try backend.initCache(a, .radix, 128, false);
+        try backend.initCache(a, .radix, 128, source_mode);
         const alignment = try std.fmt.parseInt(u32, args[4], 10);
         try backend.initDisk(a, init.io, .{ .directory = args[3], .bytes = std.mem.alignForward(u64, try m.archiveBytes(n), quantum) * 2, .records = 4, .alignment = if (alignment == 0) null else .{ .memory = alignment, .offset = alignment } });
     }
@@ -54,7 +56,12 @@ pub fn main(init: std.process.Init) !void {
     }
     try m.ensurePages(0, n + 4);
     const start = std.Io.Clock.awake.now(init.io);
-    _ = try m.prefill(tokens);
+    if (source_mode) {
+        if (n <= 128) return error.Usage;
+        _ = try m.prefill(tokens[0..128]);
+        try backend.cache.?.checkpoint(backend.device(), 0, tokens[0..128]);
+        _ = try m.prefill(tokens[128..]);
+    } else _ = try m.prefill(tokens);
     const bytes = try m.archiveBytes(n);
     const gold = try a.alloc(u8, @intCast(bytes));
     defer a.free(gold);
@@ -66,12 +73,61 @@ pub fn main(init: std.process.Init) !void {
     while (at < gold.len) {
         const count = @min(quantum, gold.len - at);
         try m.archiveCopy(&c, &imported, 0, 0, n, map, at, count, false);
+        if (source_mode) try m.state_layout.clearArchiveTail(m.snapshotBytes(), n, at, mem[0..count]);
         @memcpy(gold[at..][0..count], mem[0..count]);
         at += count;
     }
     const capture_ns = capture_start.durationTo(std.Io.Clock.awake.now(init.io)).nanoseconds;
     var disk_write_ns: i96 = 0;
-    if (disk_mode) {
+    const continuation = [_]u32{ 11, 220, 42, 1000 };
+    const logits = try a.alloc(f32, continuation.len * model.config.vocab);
+    defer a.free(logits);
+    if (source_mode) {
+        const d = backend.disk_archive.?;
+        const cache = backend.cache.?;
+        try cache.checkpoint(backend.device(), 0, tokens);
+        try std.testing.expect(try d.startSource(cache));
+        // Submit the last KV quantum but don't acknowledge it. Advance the source
+        // through its partial page while the fence is still owned, then cancel.
+        while (true) {
+            _ = try d.pollSource(false);
+            if (d.catalog.device_pending) |held| {
+                if (@as(u64, held.chunk) * quantum + quantum >= bytes) break;
+            }
+            try std.Io.sleep(init.io, .fromMicroseconds(100), .awake);
+        }
+        try std.testing.expectEqual(gpu.Commands.State.pending, d.commands.state);
+        for (continuation, 0..) |t, i| {
+            try std.testing.expect(try backend.grow(0));
+            @memcpy(logits[i * model.config.vocab ..][0..model.config.vocab], try m.step(t));
+        }
+        try std.testing.expectError(error.Canceled, drainSource(d, init.io, true));
+        try std.testing.expect(d.source == null);
+        try m.releasePages(0);
+        try backend.reset(0);
+        try std.testing.expect(cache.evict(backend.device())); // host ancestor, GPU suffix
+        const write_start = std.Io.Clock.awake.now(init.io);
+        try std.testing.expect(try d.startSource(cache));
+        const view = d.source.?.view;
+        try std.testing.expect(view.pages[0] & zerv.session.kvcache.Device.host_flag != 0);
+        try std.testing.expect(view.pages[view.pages.len - 1] & zerv.session.kvcache.Device.host_flag == 0);
+        while (d.commands.state != .pending) {
+            _ = try d.pollSource(false);
+            try std.Io.sleep(init.io, .fromMicroseconds(100), .awake);
+        }
+        // Reuse the originating request slot while capture retains only cache ownership.
+        try backend.reset(0);
+        try m.ensurePages(0, other_tokens.len);
+        for (other_tokens, 0..) |token, i| {
+            const got = try m.step(token);
+            if (!std.mem.eql(u8, std.mem.sliceAsBytes(got), std.mem.sliceAsBytes(other_logits[i * model.config.vocab ..][0..model.config.vocab]))) return error.WrongIndependentLogits;
+        }
+        _ = try drainSource(d, init.io, false);
+        disk_write_ns = write_start.durationTo(std.Io.Clock.awake.now(init.io)).nanoseconds;
+        try std.testing.expect(d.source == null and d.source_cpu_quanta > 0 and d.source_gpu_quanta > 0);
+        try std.testing.expect(!try d.startSource(cache)); // clean backing: no rewrite
+        try std.testing.expect(d.source == null);
+    } else if (disk_mode) {
         const write_start = std.Io.Clock.awake.now(init.io);
         try std.testing.expectError(error.PendingIo, backend.checkpoint(0, tokens));
         _ = try backend.pollCache(0, false); // submit capture, deliberately do not acknowledge
@@ -90,16 +146,13 @@ pub fn main(init: std.process.Init) !void {
         _ = try drain(&backend, init.io, 0, false);
         disk_write_ns = write_start.durationTo(std.Io.Clock.awake.now(init.io)).nanoseconds;
     }
-    const continuation = [_]u32{ 11, 220, 42, 1000 };
-    const logits = try a.alloc(f32, continuation.len * model.config.vocab);
-    defer a.free(logits);
-    for (continuation, 0..) |t, i| {
+    if (!source_mode) for (continuation, 0..) |t, i| {
         try std.testing.expect(try backend.grow(0));
         @memcpy(logits[i * model.config.vocab ..][0..model.config.vocab], try m.step(t));
-    }
+    };
     try m.releasePages(0);
     // Eviction (not metadata destruction) releases hot pins; the archive must survive.
-    if (backend.cache) |cache| while (cache.evict(backend.device())) {};
+    if (backend.cache) |cache| while (cache.evict(backend.device()) or cache.evictHost(backend.device())) {};
     backend.deinitCache(a);
     // Reuse and poison every physical byte (including former source) before restoring.
     try c.reset();
@@ -194,7 +247,7 @@ pub fn main(init: std.process.Init) !void {
         try std.testing.expectEqual(null, d.catalog.lookup(prompt));
     }
     const stats = if (backend.disk_archive) |d| d.catalog.stats else zerv.session.archive.Stats{};
-    std.debug.print("{{\"prefix\":{d},\"state_bytes\":{d},\"exact_state\":true,\"exact_vocab_rows\":4,\"elapsed_ns\":{d},\"capture_ns\":{d},\"restore_ns\":{d},\"disk_write_ns\":{d},\"disk\":{},\"independent_rows\":{d},\"device_starts\":{d},\"device_pending_polls\":{d},\"max_poll_ns\":{d}}}\n", .{ n, bytes, start.durationTo(std.Io.Clock.awake.now(init.io)).nanoseconds, capture_ns, restore_ns, disk_write_ns, disk_mode, if (disk_mode) @as(u32, 2) else 0, stats.device_starts, stats.device_pending_polls, max_poll_ns });
+    std.debug.print("{{\"prefix\":{d},\"state_bytes\":{d},\"exact_state\":true,\"exact_vocab_rows\":4,\"elapsed_ns\":{d},\"capture_ns\":{d},\"restore_ns\":{d},\"disk_write_ns\":{d},\"disk\":{},\"independent_rows\":{d},\"device_starts\":{d},\"device_pending_polls\":{d},\"max_poll_ns\":{d},\"source\":{},\"source_cpu_quanta\":{d},\"source_gpu_quanta\":{d}}}\n", .{ n, bytes, start.durationTo(std.Io.Clock.awake.now(init.io)).nanoseconds, capture_ns, restore_ns, disk_write_ns, disk_mode, if (disk_mode) @as(u32, 2) else 0, stats.device_starts, stats.device_pending_polls, max_poll_ns, source_mode, if (backend.disk_archive) |d| d.source_cpu_quanta else 0, if (backend.disk_archive) |d| d.source_gpu_quanta else 0 });
 }
 
 fn drain(b: *zerv.serve.ModelBackend, io: std.Io, slot: u32, cancel: bool) !u32 {
@@ -203,6 +256,16 @@ fn drain(b: *zerv.serve.ModelBackend, io: std.Io, slot: u32, cancel: bool) !u32 
         const p = try b.pollCache(slot, cancel);
         max_poll_ns = @max(max_poll_ns, start.durationTo(std.Io.Clock.awake.now(io)).nanoseconds);
         if (p.done) return p.position;
+        if (!p.progressed) try std.Io.sleep(io, .fromMicroseconds(100), .awake);
+    }
+}
+
+fn drainSource(d: *zerv.serve.disk.Disk, io: std.Io, cancel: bool) !void {
+    while (true) {
+        const start = std.Io.Clock.awake.now(io);
+        const p = try d.pollSource(cancel);
+        max_poll_ns = @max(max_poll_ns, start.durationTo(std.Io.Clock.awake.now(io)).nanoseconds);
+        if (p.done) return;
         if (!p.progressed) try std.Io.sleep(io, .fromMicroseconds(100), .awake);
     }
 }

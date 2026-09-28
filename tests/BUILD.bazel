@@ -105,7 +105,9 @@ zerv_test(
 
 zerv_test(
     name = "model",
+    sha = True,
     deps = ["//src/artifact", "//src/matvec", "//src/model"],
+    embeds = ["fixtures/archive-tails.json", "reference/generate_archive_tail_fixture.py"],
     # Opened at run time as tests/fixtures/gguf/default.gguf (MappedFile).
     data = ["fixtures/gguf/default.gguf"],
 )

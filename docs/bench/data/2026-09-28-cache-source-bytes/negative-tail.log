@@ -1,0 +1,91 @@
+INFO: Invocation ID: 82c17182-8b2a-49f7-8422-405032a708b1
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 1 target configured)
+
+INFO: Analyzed 2 targets (0 packages loaded, 1672 targets configured).
+[28 / 33] zig test //tests:model; 1s disk-cache, linux-sandbox ... (2 actions, 1 running)
+FAIL: //tests:model (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/model/test.log)
+INFO: From Testing //tests:model:
+==================== Test output for //tests:model:
+1/13 model.test.qwen35 inventory is complete, unique and matches the verified artifact totals...OK
+2/13 model.test.weight banks: params first in bank 0, aligned, bounded and non-overlapping...OK
+3/13 model.test.arena layouts: context bounds and disjoint regions...OK
+4/13 model.test.slots: state arena slot strides, KV pool pages and per-slot page tables...OK
+5/13 model.test.fitContext is the largest fitting multiple of 32...OK
+6/13 model.test.qwen35 metadata gate rejects other artifacts...OK
+7/13 model.test.tensor checks reject wrong shapes, types and embedding formats...OK
+8/13 model.test.prefill GEMM geometry: split-K selection, validation and extents...OK
+9/13 model.test.split-K decode attention geometry and push layouts...OK
+10/13 model.test.prefill plans and chunk policy...OK
+11/13 model.test.archive layout validates private logical pages, bounds and unsupported modes...OK
+12/13 model.test.archive canonical tails: independent byte-coordinate oracle across layouts and windows...
+====== expected this output: =========
+3a71337d92542eb01f1a4077e0ccbbbc860d7831b26e3d3a34ab2a5e0971b2f2␃
+
+======== instead found this: =========
+8ce64a3107f3a54c7e0b58a14901752d0684be3edfc542d0ad1150394c2fd878␃
+
+======================================
+First difference occurs on line 1:
+expected:
+3a71337d92542eb01f1a4077e0ccbbbc860d7831b26e3d3a34ab2a5e0971b2f2
+^ ('\x33')
+found:
+8ce64a3107f3a54c7e0b58a14901752d0684be3edfc542d0ad1150394c2fd878
+^ ('\x38')
+archive tail fixture 0 window 0
+FAIL (TestExpectedEqual)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6853/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:682:9: 0x1261ac5 in expectEqualStrings (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6853/execroot/_main/tests/model.zig:564:13: 0x126677c in test.archive canonical tails: independent byte-coordinate oracle across layouts and windows (model.zig)
+13/13 fast_sha256.test.same digests as std...OK
+12 passed; 0 skipped; 1 failed.
+================================================================================
+[30 / 34] 1 / 2 tests, 1 failed; zig test //tests:model; 2s disk-cache, linux-sandbox
+[31 / 34] 1 / 2 tests, 1 failed; [Prepa] runfiles for //tests:model
+FAIL: //tests:model_release_fast (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/model_release_fast/test.log)
+INFO: From Testing //tests:model_release_fast:
+==================== Test output for //tests:model_release_fast:
+1/13 model.test.qwen35 inventory is complete, unique and matches the verified artifact totals...OK
+2/13 model.test.weight banks: params first in bank 0, aligned, bounded and non-overlapping...OK
+3/13 model.test.arena layouts: context bounds and disjoint regions...OK
+4/13 model.test.slots: state arena slot strides, KV pool pages and per-slot page tables...OK
+5/13 model.test.fitContext is the largest fitting multiple of 32...OK
+6/13 model.test.qwen35 metadata gate rejects other artifacts...OK
+7/13 model.test.tensor checks reject wrong shapes, types and embedding formats...OK
+8/13 model.test.prefill GEMM geometry: split-K selection, validation and extents...OK
+9/13 model.test.split-K decode attention geometry and push layouts...OK
+10/13 model.test.prefill plans and chunk policy...OK
+11/13 model.test.archive layout validates private logical pages, bounds and unsupported modes...OK
+12/13 model.test.archive canonical tails: independent byte-coordinate oracle across layouts and windows...
+====== expected this output: =========
+3a71337d92542eb01f1a4077e0ccbbbc860d7831b26e3d3a34ab2a5e0971b2f2␃
+
+======== instead found this: =========
+8ce64a3107f3a54c7e0b58a14901752d0684be3edfc542d0ad1150394c2fd878␃
+
+======================================
+First difference occurs on line 1:
+expected:
+3a71337d92542eb01f1a4077e0ccbbbc860d7831b26e3d3a34ab2a5e0971b2f2
+^ ('\x33')
+found:
+8ce64a3107f3a54c7e0b58a14901752d0684be3edfc542d0ad1150394c2fd878
+^ ('\x38')
+archive tail fixture 0 window 0
+FAIL (TestExpectedEqual)
+13/13 fast_sha256.test.same digests as std...OK
+12 passed; 0 skipped; 1 failed.
+================================================================================
+INFO: Found 2 test targets...
+INFO: Elapsed time: 8.232s, Critical Path: 7.95s
+INFO: 9 processes: 26 action cache hit, 5 internal, 6 linux-sandbox.
+INFO: Build completed, 2 tests FAILED, 9 total actions
+//tests:model                                                            FAILED in 0.2s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/model/test.log
+//tests:model_release_fast                                               FAILED in 0.0s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/model_release_fast/test.log
+
+Executed 2 out of 2 tests: 2 fail locally.

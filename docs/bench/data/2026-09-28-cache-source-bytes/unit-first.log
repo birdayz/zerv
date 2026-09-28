@@ -1,0 +1,31 @@
+INFO: Invocation ID: 78baff9e-84c2-488f-99c2-d7be8b50b455
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (1 packages loaded, 0 targets configured)
+Analyzing: 2 targets (1 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (1 packages loaded, 8 targets configured).
+ERROR: /home/USER/projects/zerv/tests/BUILD.bazel:106:10: zig test //tests:model failed: (Exit 1): zig failed: error executing ZigBuildTest command (from zig_test rule target //tests:model) external/rules_zig++zig+zig_0.16.0_x86_64-linux/zig test --test-no-exec --zig-lib-dir external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib --cache-dir /tmp/zig-cache --global-cache-dir /tmp/zig-cache -O ... (remaining 40 arguments skipped)
+
+Use --sandbox_debug to see verbose messages from the sandbox and retain the sandbox build root for debugging
+error: undefined symbol: zerv_test_sha256_new
+    note: referenced by model.o:fast_sha256.Sha256.init
+error: undefined symbol: zerv_test_sha256_update
+    note: referenced by model.o:fast_sha256.Sha256.update
+error: undefined symbol: zerv_test_sha256_final
+    note: referenced by model.o:fast_sha256.Sha256.final
+error: undefined symbol: zerv_test_sha256_new
+    note: referenced by model.o:.debug_info
+error: undefined symbol: zerv_test_sha256_final
+    note: referenced by model.o:.debug_info
+error: undefined symbol: zerv_test_sha256_update
+    note: referenced by model.o:.debug_info
+[14 / 18] 1 / 2 tests, 1 failed; checking cached actions
+Use --verbose_failures to see the command lines of failed build steps.
+INFO: Elapsed time: 1.950s, Critical Path: 1.31s
+INFO: 3 processes: 11 action cache hit, 3 internal.
+ERROR: Build did NOT complete successfully
+//tests:model                                                   FAILED TO BUILD
+
+Executed 0 out of 2 tests: 1 fails to build and 1 was skipped.

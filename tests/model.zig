@@ -527,3 +527,54 @@ test "archive layout validates private logical pages, bounds and unsupported mod
     m.options.kv_share = false;
     try t.expectError(error.UnsupportedFeature, m.archiveBytes(257));
 }
+
+test "archive canonical tails: independent byte-coordinate oracle across layouts and windows" {
+    const Hash = @import("fast_sha256.zig").Sha256;
+    const Fixture = struct {
+        generator_sha256: []const u8,
+        cases: []const struct {
+            element_bytes: u32,
+            page: u32,
+            tokens: u32,
+            per_buffer: u32,
+            snapshot_bytes: u64,
+            windows: []const struct { offset: u64, size: usize, sha256: []const u8 },
+        },
+    };
+    const fixture = try std.json.parseFromSlice(Fixture, t.allocator, @embedFile("fixtures/archive-tails.json"), .{ .ignore_unknown_fields = true });
+    defer fixture.deinit();
+    var digest: [32]u8 = undefined;
+    Hash.hash(@embedFile("reference/generate_archive_tail_fixture.py"), &digest, .{});
+    try t.expectEqualStrings(fixture.value.generator_sha256, &std.fmt.bytesToHex(digest, .lower));
+    const scratch = try t.allocator.alloc(u8, (1 << 20) + 2);
+    defer t.allocator.free(scratch);
+    var count: usize = 0;
+    for (fixture.value.cases, 0..) |case, ci| {
+        const context = std.mem.alignForward(u32, case.tokens, case.page);
+        const capacity: u64 = @as(u64, layout.kv_token_elements) * context * case.element_bytes * case.per_buffer;
+        const s = try layout.state(context, capacity, false, if (case.element_bytes == 2) .f16 else .f32, case.page);
+        try t.expectEqual(case.per_buffer, s.per_buffer);
+        for (case.windows, 0..) |w, wi| {
+            errdefer std.debug.print("archive tail fixture {d} window {d}\n", .{ ci, wi });
+            @memset(scratch, 0xa5);
+            const data = scratch[1..][0..w.size];
+            for (data, 0..) |*b, i| b.* = @intCast(((w.offset + i) * 13 + 7) % 251 + 1);
+            try s.clearArchiveTail(case.snapshot_bytes, case.tokens, w.offset, data);
+            Hash.hash(data, &digest, .{});
+            try t.expectEqualStrings(w.sha256, &std.fmt.bytesToHex(digest, .lower));
+            try t.expectEqual(@as(u8, 0xa5), scratch[0]);
+            try t.expectEqual(@as(u8, 0xa5), scratch[w.size + 1]);
+            count += 1;
+        }
+    }
+    try t.expectEqual(@as(usize, 4804), count);
+    const s = try layout.state(256, 0xffffffe0, false, .f16, 128);
+    @memset(scratch, 0xa5);
+    const data = scratch[0..4];
+    try t.expectError(error.InvalidToken, s.clearArchiveTail(36, 0, 0, data));
+    try t.expectError(error.InvalidToken, s.clearArchiveTail(36, 257, 0, data));
+    try t.expectError(error.InvalidRange, s.clearArchiveTail(std.math.maxInt(u64), 1, 0, data));
+    try t.expectError(error.InvalidRange, s.clearArchiveTail(36, 1, std.math.maxInt(u64), data));
+    try t.expectEqualSlices(u8, &.{ 0xa5, 0xa5, 0xa5, 0xa5 }, data);
+    try s.clearArchiveTail(36, 1, 0, data[0..0]);
+}

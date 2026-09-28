@@ -65,7 +65,7 @@ pub const Archive = struct {
     stats: Stats = .{},
 
     pub fn init(a: std.mem.Allocator, store: *storage.Store, o: Options) !Archive {
-        if (o.records == 0 or o.records > 4096 or o.context == 0 or o.slots == 0 or o.slots > 64 or o.max_bytes == 0 or
+        if (o.records == 0 or o.records > 4096 or o.context == 0 or o.slots == 0 or o.slots > 65 or o.max_bytes == 0 or
             store.file_bytes % store.slot_bytes != 0) return error.InvalidOptions;
         const max_chunks = std.math.divCeil(u64, o.max_bytes, store.slot_bytes) catch return error.InvalidOptions;
         const token_count = std.math.mul(usize, o.records, o.context) catch return error.InvalidOptions;

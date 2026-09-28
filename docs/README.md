@@ -355,3 +355,9 @@ finish independent tests and benchmark gates before advancing.
      prefix-set transitions, both modes ×20, mixed host/GPU ancestor protection;
      24 bytes ownership metadata per hot slot. Pressure-triggered persistence and
      faster-or-on-par full-serving goal remain open.
+110. [Canonical mixed cache-source capture](bench/2026-09-28-cache-source-bytes.md)
+     (C.2 gates closed): independent 60-layout/4,804-window byte oracle, CPU 81/81,
+     GPU/spill 3/3, host GPU 2/2, model oracle 337/337; 257/80k state/logits exact.
+     Repeated component timings retain variance and the long-restore regression.
+     Pressure admission and proactive prefetch are not integrated; no serving
+     speedup claim. [C.3 specification](specs/tiering-pressure.md) precedes its code.
