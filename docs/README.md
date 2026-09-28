@@ -340,3 +340,8 @@ finish independent tests and benchmark gates before advancing.
      80k, late-corruption cold fallback; 72 native HTTP turns identical. Three-round
      comparison: disk lowers reuse TTFT versus off but raises cold-write latency;
      host caching and tuned llama-server finish faster. Not P2P or restart-persistent.
+107. [KV tiering papers: Mooncake, Pensieve, CachedAttention, LMCache](research/2026-09-28-kv-tier-papers.md)
+     (research only): paper versus current SSD implementation, eager versus eviction-driven
+     policies, bounded proactive copying/leases and scheduler-aware prefetch. Our blocking
+     full-image NVMe write-through is a poor measured fit; eager DRAM handoff is a different
+     policy. Proposed replacement and acceptance gates, no new implementation.

@@ -172,3 +172,63 @@ Compare every zerv turn output hash across configurations; llama's arithmetic an
 cache semantics differ, so report its quality/semantic differences rather than
 requiring token identity. Other tracked competitors' hardware/quality differences
 remain as recorded in the tiered/concurrent benchmark reports.
+
+## Proposed replacement: eviction-driven spill (user discussion, not implemented)
+
+2026-09-28: user rejects write-through as the cache policy and asks when RAM/NVMe
+should be written. The implementation above remains the measured baseline, not
+the proposed final policy. No implementation block has been opened for this revision.
+[Primary-source paper/code review](../research/2026-09-28-kv-tier-papers.md) follows:
+Mooncake supports eager and eviction-driven SSD offload; Pensieve and LMCache
+motivate bounded ahead-of-time reclamation, and CachedAttention directly describes
+RAM-pressure-driven SSD eviction. Eager GPU→RAM transfer is distinct from eager
+SSD persistence; do not claim the literature rejects every write-through policy.
+
+Proposed write triggers:
+- At a reusable checkpoint boundary, preserve recurrent/conv state (currently a
+  host snapshot by default in concurrent serving) and pin/share immutable GPU KV
+  pages. This is not a full KV copy to RAM and does not write NVMe. Active decode's
+  mutable recurrent state cannot replace an immutable historical snapshot.
+- On GPU cache pressure, demote reclaimable cached KV pages into the bounded host
+  tier. Only release the GPU copy after transfer completion. Live-request swap is
+  separate, higher-priority state and must not be treated as disposable cache.
+- On host-cache high-water pressure (bytes OR snapshot-slot capacity), choose an
+  unleased cold checkpoint. If it has valid disk backing, discard its redundant
+  host residency without writing again. Otherwise, reserve disk extents and a
+  bounded spill job, lease its exact snapshot/page generation, and write it before
+  reclaiming the source. Start before the hard limit; reserve headroom for pending
+  writes in both host bytes and snapshot slots. Watermarks are policy parameters,
+  not chosen/tuned percentages yet.
+- Mixed GPU/host checkpoints must be fully accounted for: either materialize their
+  missing GPU pages into reserved host capacity or gather through bounded staging
+  while leasing every source segment. NVMe must receive the complete restorable
+  image, not just an evicted radix suffix. The choice requires measurement/spec
+  resolution before coding; pretending every candidate is already fully in RAM
+  would be incorrect.
+- A spill acknowledgement publishes the complete disk record, then permits source
+  reclamation. Failed/canceled writes drain first and never publish partial data.
+  Cache spill is best effort: a full queue/insufficient headroom may drop an
+  unleased cached checkpoint instead of making inference wait for optional disk
+  persistence. Pinned/live state is never discarded. Existing admission/swap
+  behavior still applies if active state itself exhausts capacity.
+- Hits use the fastest available complete state. NVMe restores through bounded RAM
+  staging to private GPU pages; a full additional RAM-cache copy is not mandatory.
+  Keep valid immutable disk backing after a hit. An extended prefix is a new
+  checkpoint, not an in-place mutation/rewrite of the old disk record.
+
+Required structural change: current checkpoint identity equals snapshot-slot index
+(`kvcache.createTiered`, `fillEntry`, `restoreEntry`); host drop is synchronous
+`evictHost() -> bool`. Simply moving `startWrite` into that callback is unsafe.
+Separate checkpoint identity from physical snapshot slots, use explicit pending
+spill/lease/completion ownership, and drive progress on the scheduler thread with
+only file I/O in the storage worker. The existing residency primitive is research/
+implementation material, not already integrated behavior. Recurrent snapshots may
+need spilling even when the host KV byte budget is not full.
+
+Before implementation: resolve mixed-residency source capture, radix ancestor
+leases and mutation/reuse, reserve accounting and eviction progress; extend the
+independent ownership oracle. Acceptance must include zero NVMe writes below
+pressure, GPU→RAM and RAM→disk threshold transitions, slot-pressure-only eviction,
+no rewrite of clean disk-backed entries, saturated-queue forward progress, retained
+live state, corruption/cancel/drain and exact 80k state/logits. Repeat the cold/reuse
+serving comparison; asynchronous transport alone does not establish a latency win.
