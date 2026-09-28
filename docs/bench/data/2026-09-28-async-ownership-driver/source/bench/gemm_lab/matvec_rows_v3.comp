@@ -1,0 +1,85 @@
+#version 450
+// Lab: FP32 batch-invariant multi-row decode projection (block 18e, exact-path study).
+// Arithmetic per output element (fixed per shape, independent of the row count): split
+// part z (k_chunk from the shape), within it K-lane kl (0..KL-1) accumulates Q4_0 blocks
+// kl, kl+KL, ... of the part in order with fma(w, x, acc), w = fma(d, q, -8d) (exact); the
+// KL lanes are added in fixed order ((l0+l1)+l2)+l3; parts are added by the reduce kernel.
+// Data flow: a workgroup = 64 weight rows x KL K-lanes (8 wave32s); every thread streams one
+// weight row; X is wave-uniform (scalar loads) and shared by the 32 rows of a wave.
+// Same bindings, push and grid as gemm_f16d (grid M/64 x 1 x parts), for zerv-decode-f16-bench.
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_shader_subgroup_basic : require
+#ifndef ROWS
+#define ROWS 8
+#endif
+#ifndef KL
+#define KL 4u
+#endif
+// RPT weight rows per thread (sharing each X load): 64 / (32 RPT) waves per K-lane.
+#ifndef RPT
+#define RPT 1
+#endif
+#define RH (2u/RPT)
+layout(local_size_x=32*RH*KL) in;
+layout(set=0,binding=0,std430) readonly buffer A { uint aw[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=2,std430) readonly buffer Io { uint io[]; };
+layout(set=0,binding=3,std430) readonly restrict buffer ActX { vec4 xin4[]; };
+layout(push_constant) uniform P {
+    uint a_base, a_rs, a_cs, a_bs, a_group;
+    uint x_base, x_rs, x_bs;
+    uint y_base, y_rs, y_bs;
+    uint m, k;
+    uint flags;
+    uint k_chunk;
+} p;
+shared float red[KL-1u][ROWS][64];
+
+void main() {
+    uint lane=gl_SubgroupInvocationID, wave=gl_SubgroupID;
+    uint rh=wave%RH, kl=wave/RH;
+    uint n=io[2];
+    uint kb=gl_WorkGroupID.z*p.k_chunk, ke=p.k_chunk!=0u ? min(p.k,kb+p.k_chunk) : p.k;
+    float acc[RPT][ROWS];
+    [[unroll]] for (uint t=0u;t<RPT;t++) [[unroll]] for (uint r=0u;r<ROWS;r++) acc[t][r]=0.0;
+    for (uint blk=kb/32u+kl;blk<ke/32u;blk+=KL) {
+      vec4 wl[RPT][4], wh[RPT][4];
+      [[unroll]] for (uint t=0u;t<RPT;t++) {
+        uint row=gl_WorkGroupID.x*64u+(rh*RPT+t)*32u+lane;
+        uint b=p.a_base+row*p.a_rs+blk*18u, wb=b>>2u;
+        bool o=(b&2u)!=0u;
+        uint w0=aw[wb], w1=aw[wb+1u], w2=aw[wb+2u], w3=aw[wb+3u], w4=aw[wb+4u];
+        float d=unpackHalf2x16(o ? w0>>16u : w0).x, nd=-8.0*d;
+        uint qw[4]=uint[4](o ? w1 : (w0>>16u)|(w1<<16u), o ? w2 : (w1>>16u)|(w2<<16u),
+                           o ? w3 : (w2>>16u)|(w3<<16u), o ? w4 : (w3>>16u)|(w4<<16u));
+        [[unroll]] for (uint q=0u;q<4u;q++) {
+            vec4 lo=vec4(uvec4(qw[q],qw[q]>>8u,qw[q]>>16u,qw[q]>>24u)&0xFu);
+            vec4 hi=vec4(uvec4(qw[q]>>4u,qw[q]>>12u,qw[q]>>20u,qw[q]>>28u)&0xFu);
+            precise vec4 a=fma(vec4(d),lo,vec4(nd)), z=fma(vec4(d),hi,vec4(nd));
+            wl[t][q]=a; wh[t][q]=z;
+        }
+      }
+        uint xo=(p.x_base+blk*32u)/4u;
+        // Chain order per output (any row count): q, then c, low half then high half.
+        [[unroll]] for (uint r=0u;r<ROWS;r++) {
+            uint xr=xo+r*(p.x_rs/4u);
+            [[unroll]] for (uint q=0u;q<4u;q++) {
+                vec4 xl=xin4[xr+q], xh=xin4[xr+4u+q];
+                [[unroll]] for (uint t=0u;t<RPT;t++) [[unroll]] for (uint c=0u;c<4u;c++) { acc[t][r]=fma(wl[t][q][c],xl[c],acc[t][r]); acc[t][r]=fma(wh[t][q][c],xh[c],acc[t][r]); }
+            }
+        }
+    }
+    [[unroll]] for (uint t=0u;t<RPT;t++) {
+        uint lrow=(rh*RPT+t)*32u+lane;
+        if (kl>0u) [[unroll]] for (uint r=0u;r<ROWS;r++) red[kl-1u][r][lrow]=acc[t][r];
+    }
+    barrier();
+    if (kl==0u) [[unroll]] for (uint t=0u;t<RPT;t++) {
+        uint lrow=(rh*RPT+t)*32u+lane, row=gl_WorkGroupID.x*64u+lrow;
+        [[unroll]] for (uint r=0u;r<ROWS;r++) {
+            float s=acc[t][r];
+            [[unroll]] for (uint j=0u;j<KL-1u;j++) s+=red[j][r][lrow];
+            if (r<n) act[p.y_base+gl_WorkGroupID.z*p.y_bs+r*p.y_rs+row]=s;
+        }
+    }
+}

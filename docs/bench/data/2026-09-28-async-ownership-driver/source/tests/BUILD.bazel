@@ -1,0 +1,911 @@
+load("@rules_zig//zig:defs.bzl", "zig_configure_test", "zig_library", "zig_test")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_library.bzl", "py_library")
+load("@rules_python//python:py_test.bzl", "py_test")
+load("//bazel:defs.bzl", "env_test", "zerv_test")
+
+# CPU unit tests: one per file, each with the packages it imports and the files it embeds.
+# GPU tests (gpu.zig and its imports) are separate: they need the device.
+
+zerv_test(
+    name = "quant",
+    sha = True,
+    deps = ["//src/quant"],
+    embeds = ["fixtures/quantization.json", "reference/generate_quant_goldens.py"],
+)
+
+zerv_test(
+    name = "q4_1",
+    sha = True,
+    deps = ["//src/quant"],
+    embeds = ["fixtures/q4_1.json", "reference/generate_q4_1_goldens.py"],
+)
+
+zerv_test(
+    name = "q5_k",
+    sha = True,
+    srcs = ["parallel.zig"],
+    deps = ["//src/quant"],
+    embeds = ["fixtures/q5_k.json", "reference/generate_q4_1_goldens.py", "reference/generate_q5_k_goldens.py"],
+)
+
+zerv_test(
+    name = "q6_k",
+    sha = True,
+    srcs = ["parallel.zig"],
+    deps = ["//src/quant"],
+    embeds = ["fixtures/q6_k.json", "reference/generate_q4_1_goldens.py", "reference/generate_q6_k_goldens.py"],
+)
+
+zerv_test(
+    name = "gguf",
+    sha = True,
+    deps = ["//src/artifact"],
+    # Opened at run time as tests/fixtures/gguf/default.gguf (MappedFile).
+    data = ["fixtures/gguf/default.gguf"],
+    embeds = [
+        "fixtures/gguf/aligned64.gguf",
+        "fixtures/gguf/default.gguf",
+        "fixtures/gguf/manifest.json",
+        "fixtures/gguf/metadata.gguf",
+        "reference/gguf_oracle.py",
+    ],
+)
+
+zerv_test(
+    name = "nfc",
+    sha = True,
+    srcs = ["parallel.zig"],
+    deps = ["//src/text"],
+    embeds = ["fixtures/nfc9/cases.bin", "fixtures/nfc9/manifest.json", "reference/generate_nfc.py"],
+)
+
+zerv_test(
+    name = "chat",
+    deps = ["//src/chat"],
+    embeds = ["fixtures/chat-template.json", "reference/generate_chat_goldens.py"],
+)
+
+zerv_test(
+    name = "tokenizer_split",
+    sha = True,
+    deps = ["//src/tokenizer"],
+    embeds = ["fixtures/tokenizer-split/cases.bin", "fixtures/tokenizer-split/manifest.json", "reference/generate_split_goldens.py"],
+)
+
+zerv_test(
+    name = "tokenizer",
+    sha = True,
+    srcs = ["parallel.zig"],
+    deps = ["//src/artifact", "//src/tokenizer"],
+    embeds = [
+        "fixtures/gguf/default.gguf",
+        "fixtures/tokenizer/manifest.json",
+        "fixtures/tokenizer/model.bin",
+        "fixtures/tokenizer-optimization.json",
+        "reference/generate_tokenizer_goldens.py",
+        "reference/generate_tokenizer_optimization.py",
+        "reference/tokenizer_pieces.c",
+    ],
+)
+
+zerv_test(
+    name = "gpu_abi",
+    deps = ["//src/gpu"],
+    embeds = ["fixtures/gpu/abi.json", "fixtures/gpu/affine.spv"],
+)
+
+zerv_test(
+    name = "matvec",
+    srcs = ["matvec_workload.zig", "gpu_timing.zig"],
+    deps = ["//src/gpu", "//src/matvec"],
+    embeds = ["fixtures/gpu/matvec.json", "fixtures/gpu/timing-abi.json"],
+)
+
+zerv_test(
+    name = "model",
+    deps = ["//src/artifact", "//src/matvec", "//src/model"],
+    # Opened at run time as tests/fixtures/gguf/default.gguf (MappedFile).
+    data = ["fixtures/gguf/default.gguf"],
+)
+
+zerv_test(
+    name = "session",
+    deps = ["//src/session"],
+)
+
+zerv_test(
+    name = "sampler",
+    srcs = ["parallel.zig", "sampler_cases.zig"],
+    deps = ["//src/session"],
+    embeds = ["fixtures/session/sampler-sorted.json"],
+)
+
+zerv_test(
+    name = "sampler_nucleus",
+    srcs = ["parallel.zig"],
+    deps = ["//src/session"],
+)
+
+zerv_test(
+    name = "prefix",
+    srcs = ["parallel.zig"],
+    deps = ["//src/session"],
+)
+
+zerv_test(
+    name = "storage",
+    sha = True,
+    deps = ["//src/storage"],
+    embeds = ["fixtures/storage/positional.bin", "fixtures/storage/manifest.json", "reference/generate_disk_fixture.py"],
+)
+
+zerv_test(
+    name = "archive",
+    sha = True,
+    deps = ["//src/session", "//src/storage"],
+    embeds = ["fixtures/archive/oracle.json", "fixtures/storage/positional.bin", "reference/generate_archive_fixture.py"],
+)
+
+zerv_test(
+    name = "residency",
+    sha = True,
+    deps = ["//src/session", "//src/storage"],
+    embeds = ["fixtures/residency/traces.json", "fixtures/residency/manifest.json", "reference/generate_residency_fixture.py", "fixtures/storage/positional.bin"],
+)
+
+zerv_test(
+    name = "checkpoint",
+    deps = ["//src/session"],
+)
+
+zerv_test(
+    name = "kvcache",
+    deps = ["//src/session"],
+)
+
+zerv_test(
+    name = "pages",
+    deps = ["//src/model"],
+)
+
+zerv_test(
+    name = "kv_system",
+    deps = ["//src/model", "//src/serve", "//src/session"],
+)
+
+zerv_test(
+    name = "serve",
+    deps = ["//src/chat", "//src/serve"],
+)
+
+zerv_test(
+    name = "batcher",
+    deps = ["//src/serve"],
+)
+
+zerv_test(
+    name = "tools",
+    deps = ["//src/chat", "//src/serve", "//src/session"],
+    embeds = ["fixtures/chat-tools.json", "reference/render_tools.py"],
+)
+
+# Real-device Vulkan tests: one serial binary (the device is shared), run only when asked for,
+# in both modes, and the shader spill gate (docs/bench/2026-09-24-aco-lds-spill.md) over the
+# ReleaseFast run:
+#   bazel test //tests:gpu //tests:gpu_release_fast //tests:gpu_spills
+GPU_TAGS = ["manual", "exclusive", "gpu"]
+
+# The test-only GPU runtime (docs/specs/hermetic-build.md, phase 4): the source-built Vulkan
+# loader and Mesa RADV with an ICD manifest naming the driver relative to itself. GPU_ENV
+# selects it for a test and its child processes (paths relative to the runfiles root, where
+# tests start): nothing of the host's Vulkan stack is loaded. The loader searches no host
+# directory (bazel/third_party/vulkan_loader.BUILD), layers are disabled.
+genrule(
+    name = "gpu_runtime",
+    srcs = [
+        "@libdrm//:data/amdgpu.ids",
+        "@mesa//:radv",
+        "@vulkan_loader//:libvulkan",
+    ],
+    outs = [
+        "gpu_runtime/amdgpu.ids",
+        "gpu_runtime/libvulkan.so.1",
+        "gpu_runtime/libvulkan_radeon.so",
+        "gpu_runtime/radeon_icd.json",
+    ],
+    cmd = """
+for f in $(SRCS); do
+  case $$f in
+    */libvulkan.so.1|*/libvulkan_radeon.so|*/amdgpu.ids) cp $$f $(RULEDIR)/gpu_runtime/ ;;
+  esac
+done
+printf '{"file_format_version": "1.0.1", "ICD": {"library_path": "./libvulkan_radeon.so", "api_version": "1.4.354", "library_arch": "64"}}\\n' > $(RULEDIR)/gpu_runtime/radeon_icd.json
+""",
+    tags = ["manual"],
+)
+
+GPU_RUNTIME = [":gpu_runtime"]
+
+GPU_ENV = {
+    "LD_LIBRARY_PATH": "tests/gpu_runtime",
+    "VK_DRIVER_FILES": "tests/gpu_runtime/radeon_icd.json",
+    "VK_LOADER_LAYERS_DISABLE": "~all~",
+    # libdrm's device-name table (RADV reports "AMD Radeon RX 7900 XTX" from it).
+    "AMDGPU_ASIC_ID_TABLE_PATHS": "tests/gpu_runtime",
+    # The GPU tests check that the driver loaded is this runtime's (tests/gpu_gemm_f16.zig:
+    # the device's pipeline key must be the one of src/model/native/test_radv/).
+    "ZERV_TEST_GPU_RUNTIME": "test_radv",
+}
+
+zig_test(
+    name = "gpu",
+    main = "gpu.zig",
+    srcs = [
+        "gpu_coopmat.zig",
+        "gpu_gemm_f16.zig",
+        "gpu_timing.zig",
+        "gpu_workload.zig",
+        "matvec_gpu.zig",
+        "matvec_workload.zig",
+        "model_gpu.zig",
+    ],
+    extra_srcs = [
+        "fixtures/gpu/affine.spv",
+        "fixtures/gpu/coopmat.spv",
+        "fixtures/gpu/dispatch.json",
+        "fixtures/gpu/matvec.json",
+        "fixtures/gpu/timing-abi.json",
+        "//src/gpu:vulkan",
+    ],
+    # Opened at run time by matvec_gpu.zig; the Vulkan stub is named on the link line.
+    data = [
+        "//src/matvec:shaders/f32_small.spv",
+        "//src/gpu:vulkan",
+    ] + GPU_RUNTIME,
+    env = GPU_ENV,
+    linkopts = ["$(location //src/gpu:vulkan)"],
+    zigopts = ["-lc"],
+    deps = ["//src:zerv_lib", "//src/gpu", "//src/matvec"],
+    size = "large",
+    tags = GPU_TAGS,
+)
+
+zig_configure_test(
+    name = "gpu_release_fast_exe",
+    actual = ":gpu",
+    mode = "release_fast",
+    zigopt = ["-mcpu=native", "-fstrip"],
+    size = "large",
+    tags = ["manual"],
+)
+
+# zig_configure_test drops the `env` of :gpu; env_test sets it (bazel/defs.bzl).
+env_test(
+    name = "gpu_release_fast",
+    actual = ":gpu_release_fast_exe",
+    env = GPU_ENV,
+    size = "large",
+    tags = GPU_TAGS + ["release_fast"],
+)
+
+# Fails when a pipeline the ReleaseFast GPU tests create spills VGPRs into LDS; the RADV
+# statistics are an undeclared output (bazel-testlogs/tests/gpu_spills/test.outputs).
+py_test(
+    name = "gpu_spills",
+    srcs = ["//tools:check_shader_spills.py"],
+    main = "//tools:check_shader_spills.py",
+    args = ["--", "$(rootpath :gpu_release_fast)"],
+    data = [":gpu_release_fast"] + GPU_RUNTIME,
+    env = GPU_ENV,
+    size = "large",
+    tags = GPU_TAGS,
+)
+
+# The same GPU tests on the host's installed Vulkan stack, the driver production runs on
+# (docs/specs/hermetic-build.md, "Host-driver GPU tests"). Not hermetic by design: the driver's
+# identity is an input through --test_env=ZERV_HOST_VULKAN_ID, which tools/zerv_build.py sets
+# (`tools/py tools/zerv_build.py --test-host-gpu`); production benchmarks run them first.
+[
+    py_test(
+        name = name,
+        srcs = ["//tools:gpu_host_test.py"],
+        main = "//tools:gpu_host_test.py",
+        args = ["$(rootpath %s)" % binary],
+        data = [
+            binary,
+            "//tools:host_info.py",
+        ],
+        size = "large",
+        tags = GPU_TAGS + ["host_driver"],
+    )
+    for name, binary in [
+        ("gpu_host", ":gpu"),
+        ("gpu_host_release_fast", ":gpu_release_fast_exe"),
+    ]
+]
+
+# GPU workload helpers, also modules of the GPU benchmarks (//bench).
+zig_library(
+    name = "gpu_workload",
+    main = "gpu_workload.zig",
+    extra_srcs = ["fixtures/gpu/affine.spv", "fixtures/gpu/dispatch.json"],
+    deps = ["//src:zerv_lib"],
+    visibility = ["//bench:__pkg__"],
+)
+
+zig_library(
+    name = "matvec_workload",
+    main = "matvec_workload.zig",
+    srcs = ["gpu_timing.zig"],
+    extra_srcs = ["fixtures/gpu/matvec.json", "fixtures/gpu/timing-abi.json"],
+    deps = ["//src/gpu", "//src/matvec"],
+    visibility = ["//bench:__pkg__"],
+)
+
+# Python tests (unittest), hermetic interpreter; each declares the files it reads.
+
+py_test(
+    name = "test_chat_bench",
+    srcs = ["test_chat_bench.py"],
+    data = [
+        "//tools:zerv_build.py",
+        "//bench:run_chat.py",
+    ],
+)
+
+py_test(
+    name = "test_gguf_bench",
+    srcs = ["test_gguf_bench.py"],
+    data = [
+        "//tools:zerv_build.py",
+        "//bench:run_gguf.py",
+        "reference/gguf_oracle.py",
+    ],
+)
+
+py_test(
+    name = "test_gpu_driver_bench",
+    srcs = ["test_gpu_driver_bench.py"],
+    data = [
+        "//tools:host_info.py",
+        "//tools:zerv_build.py",
+        "//bench:run_gpu_driver.py",
+        "fixtures/gpu/dispatch.json",
+    ],
+)
+
+py_test(
+    name = "test_gpu_matvec",
+    srcs = ["test_gpu_matvec.py"],
+    data = [
+        "//tools:host_info.py",
+        "//tools:zerv_build.py",
+        "//bench:run_gpu_driver.py",
+        "//bench:run_gpu_matvec.py",
+        "//src/matvec:matvec.comp",
+        "//src/matvec:matvec_rows.comp",
+        "//src/matvec:shaders",
+        "fixtures/gpu/matvec.json",
+        "fixtures/gpu/timing-abi.json",
+        "reference/generate_gpu_matvec.py",
+        "reference/generate_gpu_timing_abi.py",
+        "reference/generate_q4_1_goldens.py",
+        "reference/generate_q5_k_goldens.py",
+        "reference/generate_q6_k_goldens.py",
+        "reference/generate_vulkan_goldens.py",
+        "reference/gguf_oracle.py",
+        "reference/gpu_matvec.c",
+    ],
+)
+
+py_test(
+    name = "test_kv_quality",
+    srcs = ["test_kv_quality.py"],
+    data = [
+        "//tools:kv_quality.py",
+        "//bench:workloads/long-v1.json",
+    ],
+    deps = ["@zerv_pypi//numpy"],
+)
+
+py_test(
+    name = "test_model_market_summary",
+    srcs = ["test_model_market_summary.py"],
+    data = [
+        "//tools:model_market_summary.py",
+        "//docs:bigger_models",
+    ],
+)
+
+py_test(
+    name = "test_model",
+    srcs = ["test_model.py"],
+    data = [
+        "//src/model:shaders",
+        "//src/model:model.comp",
+        "//src/model:gemm.comp",
+        "//src/model:gemm_f16.comp",
+        "//src/model:gemm_f16d.comp",
+        "//src/model:gemm_f16x.comp",
+        "//src/model:gemm_rows.comp",
+        "//src/model:flash.comp",
+        "//src/model:flash_w.comp",
+        "fixtures/model/qwen38-oracle.json",
+        "fixtures/model/qwen38-oracle-long.json",
+        "reference/generate_chat_goldens.py",
+        "reference/generate_model_oracle.py",
+        "reference/model_capture.py",
+        "reference/model_oracle.c",
+        "reference/qwen35_reference.py",
+        "reference/render_chat.py",
+    ],
+)
+
+py_test(
+    name = "test_model_quant_bench",
+    srcs = ["test_model_quant_bench.py"],
+    data = [
+        "//tools:host_info.py",
+        "//tools:zerv_build.py",
+        "//bench:run_model_quant.py",
+        "fixtures/q4_1.json",
+        "fixtures/q5_k.json",
+        "fixtures/q6_k.json",
+        "reference/generate_q4_1_goldens.py",
+        "reference/generate_q5_k_goldens.py",
+        "reference/generate_q6_k_goldens.py",
+        "reference/gguf_oracle.py",
+    ],
+)
+
+py_test(
+    name = "test_nfc_bench",
+    srcs = ["test_nfc_bench.py"],
+    data = [
+        "//tools:zerv_build.py",
+        "//bench:run_nfc.py",
+        "reference/generate_nfc.py",
+        "//src/text:data/nfc9.bin",
+        "//src/text:data/UNICODE-LICENSE.txt",
+        "fixtures/nfc9/manifest.json",
+        "fixtures/nfc9/cases.bin",
+    ],
+)
+
+py_test(
+    name = "test_output_reference",
+    srcs = ["test_output_reference.py"],
+    data = [
+        "//tools:check_session.py",
+    ],
+)
+
+py_test(
+    name = "test_quant_bench",
+    srcs = ["test_quant_bench.py"],
+    data = [
+        "//tools:host_info.py",
+        "//tools:zerv_build.py",
+        "//bench:run_quant.py",
+        "reference/gguf_oracle.py",
+    ],
+)
+
+py_test(
+    name = "test_rented_gpu_economics",
+    srcs = ["test_rented_gpu_economics.py"],
+    data = [
+        "//tools:rented_gpu_economics.py",
+        "//docs:rented_gpu_economics",
+    ],
+)
+
+py_test(
+    name = "test_serving_harness",
+    srcs = ["test_serving_harness.py"],
+    data = [
+        "//bench:run_serving.py",
+        "//bench:run_multiturn.py",
+        "//bench:run_concurrent.py",
+        "//tools:host_info.py",
+    ],
+)
+
+py_test(
+    name = "test_split_bench",
+    srcs = ["test_split_bench.py"],
+    data = [
+        "//tools:zerv_build.py",
+        "//bench:run_split.py",
+        "reference/generate_split_goldens.py",
+        "//src/tokenizer:data/classes16.bin",
+        "//src/tokenizer:data/UNICODE-LICENSE.txt",
+        "fixtures/tokenizer-split/manifest.json",
+        "fixtures/tokenizer-split/cases.bin",
+    ],
+)
+
+py_test(
+    name = "test_token_economics",
+    srcs = ["test_token_economics.py"],
+    data = [
+        "//tools:token_economics.py",
+        "//docs:research/2026-09-26-token-economics/inputs.json",
+    ],
+)
+
+py_test(
+    name = "test_tokenizer_baseline_rebuild",
+    srcs = ["test_tokenizer_baseline_rebuild.py"],
+    data = [
+        "//tools:zerv_build.py",
+        "//bench:rebuild_tokenizer_baseline.py",
+        "//bench:run_tokenizer.py",
+    ],
+)
+
+py_test(
+    name = "test_tokenizer_bench",
+    srcs = ["test_tokenizer_bench.py"],
+    data = [
+        "//tools:zerv_build.py",
+        "//bench:run_tokenizer.py",
+        "reference/generate_tokenizer_goldens.py",
+        "reference/tokenizer_pieces.c",
+        "fixtures/tokenizer/manifest.json",
+        "fixtures/tokenizer/model.bin",
+    ],
+)
+
+py_test(
+    name = "test_tokenizer_matched_bench",
+    srcs = ["test_tokenizer_matched_bench.py"],
+    data = [
+        "//tools:host_info.py",
+        "//tools:zerv_build.py",
+        "//bench:run_tokenizer.py",
+        "//bench:run_tokenizer_matched.py",
+    ],
+)
+
+# Generated Vulkan fixtures (docs/specs/hermetic-build.md): the C ABI of the scoped Vulkan API
+# and of the timestamp queries as the hermetic C compiler sees the pinned headers
+# (@vulkan_headers), and the diagnostic shader compiled by the source-built glslc. Committed
+# in fixtures/gpu/; vulkan_fixtures_test checks them, `bazel run //tests:vulkan_fixtures_update`
+# rewrites them.
+# The scoped Vulkan API inventory (tests/reference/vulkan_api.py): the ABI fixture here and
+# zerv's bindings (//src/gpu:vk_zig, tools/generate_vulkan_bindings.py).
+py_library(
+    name = "vulkan_api",
+    srcs = ["reference/vulkan_api.py"],
+    imports = ["reference"],
+    visibility = ["//tools:__pkg__"],
+)
+
+py_binary(
+    name = "generate_vulkan_abi",
+    srcs = [
+        "reference/generate_vulkan_abi.py",
+        "reference/vulkan_api.py",
+    ],
+    imports = ["reference"],
+)
+
+py_binary(
+    name = "generate_gpu_timing_abi",
+    srcs = ["reference/generate_gpu_timing_abi.py"],
+)
+
+genrule(
+    name = "vulkan_abi_c",
+    srcs = ["@vulkan_headers//:registry/vk.xml"],
+    outs = ["vulkan_abi/abi.c"],
+    cmd = "$(execpath :generate_vulkan_abi) source $(location @vulkan_headers//:registry/vk.xml) $@",
+    tools = [":generate_vulkan_abi"],
+)
+
+genrule(
+    name = "timing_abi_c",
+    outs = ["vulkan_abi/timing_abi.c"],
+    cmd = "$(execpath :generate_gpu_timing_abi) source $@",
+    tools = [":generate_gpu_timing_abi"],
+)
+
+[
+    (
+        cc_binary(
+            name = name + "_probe",
+            srcs = [":" + name + "_c"],
+            copts = [
+                "-std=c11",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+            ],
+            deps = ["@vulkan_headers"],
+        ),
+        genrule(
+            name = name + "_probe_json",
+            outs = ["vulkan_abi/%s.probe.json" % name],
+            cmd = "$(execpath :%s_probe) > $@" % name,
+            tools = [":" + name + "_probe"],
+        ),
+    )
+    for name in [
+        "vulkan_abi",
+        "timing_abi",
+    ]
+]
+
+genrule(
+    name = "vulkan_fixtures",
+    srcs = [
+        "@vulkan_headers//:registry/vk.xml",
+        "@vulkan_headers//:include/vulkan/vulkan_core.h",
+        "fixtures/gpu/affine.comp",
+        ":vulkan_abi_c",
+        ":vulkan_abi_probe_json",
+        ":timing_abi_c",
+        ":timing_abi_probe_json",
+    ],
+    outs = [
+        "vulkan_fixtures/abi.json",
+        "vulkan_fixtures/affine.spv",
+        "vulkan_fixtures/timing-abi.json",
+    ],
+    cmd = """
+set -e
+xml=$(location @vulkan_headers//:registry/vk.xml)
+header=$(location @vulkan_headers//:include/vulkan/vulkan_core.h)
+$(execpath :generate_vulkan_abi) record $$xml $$header $(location :vulkan_abi_c) $(location :vulkan_abi_probe_json) $(location vulkan_fixtures/abi.json)
+$(execpath :generate_gpu_timing_abi) record $$header $(location :timing_abi_c) $(location :timing_abi_probe_json) $(location vulkan_fixtures/timing-abi.json)
+$(execpath @shaderc//:glslc) --target-env=vulkan1.1 -O $(location fixtures/gpu/affine.comp) -o $(location vulkan_fixtures/affine.spv)
+$(execpath @spirv_tools//:spirv-val) --target-env vulkan1.1 $(location vulkan_fixtures/affine.spv)
+""",
+    tools = [
+        ":generate_gpu_timing_abi",
+        ":generate_vulkan_abi",
+        "@shaderc//:glslc",
+        "@spirv_tools//:spirv-val",
+    ],
+)
+
+py_test(
+    name = "vulkan_fixtures_test",
+    srcs = ["//tools:check_generated.py"],
+    main = "//tools:check_generated.py",
+    args = [
+        "tests/vulkan_fixtures",
+        "tests/fixtures/gpu",
+        "--subset",
+        "--hint",
+        "'bazel run //tests:vulkan_fixtures_update'",
+    ],
+    data = [":vulkan_fixtures"] + glob(["fixtures/gpu/*"]),
+    size = "small",
+)
+
+py_binary(
+    name = "vulkan_fixtures_update",
+    srcs = ["//tools:check_generated.py"],
+    main = "//tools:check_generated.py",
+    args = [
+        "tests/vulkan_fixtures",
+        "tests/fixtures/gpu",
+        "--subset",
+        "--update",
+    ],
+    data = [":vulkan_fixtures"],
+)
+
+py_test(
+    name = "test_vulkan_fixtures",
+    srcs = ["test_vulkan_fixtures.py"],
+    data = [
+        "fixtures/gpu/abi.json",
+        "fixtures/gpu/affine.spv",
+        "fixtures/gpu/affine.comp",
+        "fixtures/gpu/dispatch.json",
+        "reference/generate_vulkan_abi.py",
+        "reference/vulkan_api.py",
+        "reference/generate_vulkan_goldens.py",
+        "reference/vulkan_driver.c",
+    ],
+)
+
+# Every Zig source of this package (the format check, //:zig_fmt).
+filegroup(
+    name = "zig_srcs",
+    srcs = glob(["**/*.zig"]),
+    visibility = ["//:__pkg__", "//tests:__pkg__"],
+)
+
+py_test(
+    name = "test_build_lists",
+    srcs = ["test_build_lists.py"],
+    data = ["BUILD.bazel", ":zig_srcs", "//bench:py_srcs", "//bench/isa_lab:py_srcs", "//tools:py_srcs"] + glob(["reference/*.py"]) + [
+        "//:.bazelrc",
+        "//:BUILD.bazel",
+        "//:MODULE.bazel",
+        "//bazel:BUILD.bazel",
+        "//bazel:bzl_files",
+        "//bazel/third_party:BUILD.bazel",
+        "//bazel/third_party:build_files",
+        "//bench:BUILD.bazel",
+        "//bench/isa_lab:BUILD.bazel",
+        "//docs:BUILD.bazel",
+        "//src:BUILD.bazel",
+        "//tests/support:BUILD.bazel",
+        "//tools:BUILD.bazel",
+    ] + [
+        "//src/artifact:BUILD.bazel",
+        "//src/artifact:zig_srcs",
+        "//src/chat:BUILD.bazel",
+        "//src/chat:zig_srcs",
+        "//src/gpu:BUILD.bazel",
+        "//src/gpu:zig_srcs",
+        "//src/matvec:BUILD.bazel",
+        "//src/matvec:zig_srcs",
+        "//src/model:BUILD.bazel",
+        "//src/model:zig_srcs",
+        "//src/quant:BUILD.bazel",
+        "//src/quant:zig_srcs",
+        "//src/serve:BUILD.bazel",
+        "//src/serve:zig_srcs",
+        "//src/storage:BUILD.bazel",
+        "//src/storage:zig_srcs",
+        "//src/session:BUILD.bazel",
+        "//src/session:zig_srcs",
+        "//src/text:BUILD.bazel",
+        "//src/text:zig_srcs",
+        "//src/tokenizer:BUILD.bazel",
+        "//src/tokenizer:zig_srcs",
+    ],
+)
+
+# Run-time linkage of every executable: system interfaces only, no run path (hermetic-build.md).
+EXECUTABLES = [
+        "//src:zerv",
+        "//tools:zerv-model-capture",
+        "//tools:zerv-inspect",
+        ":gpu",
+        "//bench:zerv-gpu-driver-bench",
+        "//bench:zerv-gpu-matvec-bench",
+        "//bench:zerv-gemm-bench",
+        "//bench:zerv-decode-f16-bench",
+        "//bench:zerv-matvec-rows-bench",
+        "//bench:zerv-model-profile",
+        "//bench:zerv-prefix-check",
+        "//bench:zerv-kv-quality",
+        "//bench:zerv-spec-check",
+        "//bench:zerv-batch-check",
+        "//bench:zerv-mtp-check",
+        "//bench:zerv-kernel-chain",
+        "//bench:zerv-coopmat-probe",
+        "//bench:zerv-quant-bench",
+        "//bench:zerv-tokenizer-bench",
+        "//bench:zerv-split-bench",
+        "//bench:zerv-nfc-bench",
+        "//bench:zerv-sampler-bench",
+        "//bench:zerv-chat-bench",
+        "//bench:zerv-gguf-bench",
+        "//bench:zerv-model-quant-bench",
+]
+
+py_test(
+    name = "test_linkage",
+    srcs = ["test_linkage.py"],
+    args = ["$(rootpaths %s)" % label for label in EXECUTABLES],
+    data = EXECUTABLES + ["//tools:host_info.py"],
+)
+
+# External test oracles (docs/specs/hermetic-build.md, phase 3): the reference programs of
+# tests/reference, built against the source-built ggml and llama.cpp. They are never part of
+# zerv; built on request (manual, tag oracle; tools/zerv_build.py builds them for harnesses).
+ORACLE_TAGS = [
+    "manual",
+    "oracle",
+]
+
+# llama.cpp's raw token pieces (tokenizer goldens; docs/research/tokenizer-bpe.md).
+cc_binary(
+    name = "oracle_tokenizer_pieces",
+    srcs = ["reference/tokenizer_pieces.c"],
+    copts = ["-std=c11"],
+    tags = ORACLE_TAGS,
+    deps = ["@llama_cpp//:llama"],
+)
+
+# libllama tokenizer benchmark (bench/run_tokenizer_matched.py).
+cc_binary(
+    name = "oracle_tokenizer_bench",
+    srcs = ["reference/tokenizer_bench.c"],
+    copts = [
+        "-std=c11",
+        "-O3",
+        "-march=native",
+    ],
+    tags = ORACLE_TAGS,
+    deps = ["@llama_cpp//:llama"],
+)
+
+# ggml row decoders over the real model (bench/run_model_quant.py).
+cc_binary(
+    name = "oracle_model_quant_bench",
+    srcs = ["reference/model_quant_bench.c"],
+    copts = [
+        "-std=c11",
+        "-O3",
+        "-march=native",
+    ],
+    tags = ORACLE_TAGS,
+    deps = [
+        "@boringssl//:crypto",
+        "@ggml//:ggml_base",
+    ],
+)
+
+# The Qwen3.8 model oracle and batch capture (tests/reference/generate_model_oracle.py,
+# tools/kv_quality.py, tools/prefill_quality.py): llama.cpp with ggml's Vulkan backend,
+# registered statically (no backend is loaded from the file system).
+[
+    cc_binary(
+        name = name,
+        srcs = ["reference/%s.c" % source],
+        copts = [
+            "-std=c11",
+            "-O2",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+        ],
+        linkopts = ["-lm"],
+        tags = ORACLE_TAGS,
+        deps = ["@llama_cpp//:llama_vulkan"],
+    )
+    for name, source in [
+        ("oracle_model", "model_oracle"),
+        ("oracle_llama_batch_capture", "llama_batch_capture"),
+    ]
+]
+
+# Independent C Vulkan transfer/dispatch program (tests/reference/generate_vulkan_goldens.py,
+# bench/run_gpu_driver.py): SHA-256 from the source-built BoringSSL; the Vulkan loader chosen at
+# run time (linked against the stub, like the Zig executables). -march=native as zerv's release
+# build (the harness times it against zerv).
+cc_binary(
+    name = "oracle_vulkan_driver",
+    srcs = ["reference/vulkan_driver.c"],
+    additional_linker_inputs = ["//src/gpu:vulkan"],
+    copts = [
+        "-std=c11",
+        "-O3",
+        "-march=native",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+    ],
+    linkopts = ["$(location //src/gpu:vulkan)"],
+    tags = ORACLE_TAGS,
+    deps = [
+        "@boringssl//:crypto",
+        "@vulkan_headers",
+    ],
+)
+
+# ggml-vulkan matvec reference (tests/reference/generate_gpu_matvec.py, bench/run_gpu_matvec.py).
+cc_binary(
+    name = "oracle_gpu_matvec",
+    srcs = ["reference/gpu_matvec.c"],
+    copts = [
+        "-std=c11",
+        "-O3",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+    ],
+    linkopts = ["-lm"],
+    tags = ORACLE_TAGS,
+    deps = ["@ggml//:ggml_vulkan_all"],
+)

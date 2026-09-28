@@ -1,0 +1,234 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+// Fused causal prefill attention (block 16a, docs/specs/prefill.md "Fused attention"):
+// O = softmax(Q K^T / 16 + causal mask) V without materializing the scores. FP32.
+// Workgroup: RW query rows and GROUPS query heads of one KV head; 64-thread group g
+// handles one query head (GQA: heads of a KV head read the same K/V addresses, which the
+// caches share).
+// Per 128-key tile: lane l owns keys 2l, 2l+1 for the scores (Q rows wave-uniform, read
+// as scalars; K read directly, coalesced), the group's rows reduce max and sum with
+// subgroup operations (combined through LDS when a subgroup is 32 wide), P goes to LDS,
+// and lane l accumulates head dims 4l..4l+3 of the 8 rows (V read directly, coalesced).
+// Summation structure: each score sums 32-dim partial fma chains; each tile's P V is its
+// own fma chain over the tile's keys, added as O = O a + O_tile (a = exp(m_old - m_new)).
+// Requires subgroups of 32 or 64 invocations that are aligned 64-thread-group slices (as
+// gemm.comp; host-checked). Bindings as the other KV kernels: 0 bank 0 (unused), 1 act,
+// 2 KV buffer, 3 io. Q: act[qr + row*6144 + h*256 + d]; K cache [kvh][d][ctx]; V cache
+// [kvh][ctx][d]; O -> act[out + row*6144 + h*256 + d]. Rows 0..count-1 at positions
+// p0 + row; row r sees keys 0..p0+r. Keys at or past p0 + count are never read.
+#ifndef RW
+#define RW 8    // query rows per workgroup (wave-uniform); a multiple of 4
+#endif
+#ifndef GROUPS
+#define GROUPS 6 // query heads per workgroup (6 / GROUPS workgroups per KV head and row block)
+#endif
+#define BC 128  // keys per tile (2 per lane)
+#ifndef OU
+#define OU 4    // keys per P V step (a divisor of BC)
+#endif
+#define HD 256
+layout(local_size_x=64*GROUPS) in;
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=1,std430) readonly restrict buffer ActQ { vec4 q4[]; };
+#ifdef KV16
+// f16 KV cache (docs/specs/model.md, "KV precision"): key pairs and 4-dim V rows are
+// loaded as raw 32/64-bit words (KRAW, VRAW) and converted exactly with unpackHalf2x16
+// where they are used, so the K prefetch stays a pure load one step ahead of its FMAs
+// (converting at the load exposed its latency: 2.1x slower attention). A key j whose
+// pair key j+1 is not live reads its word with the pair half zeroed (j is even and the
+// context even, so the word is in bounds).
+layout(set=0,binding=2,std430) readonly buffer Kv2 { uint kv2[]; };
+layout(set=0,binding=2,std430) readonly buffer Kv4 { uvec2 kv4[]; };
+#define KRAW uint
+#define VRAW uvec2
+#define KPAIR(ka) (both ? kv2[(ka)/2u] : (live0 ? (kv2[(ka)/2u]&0xffffu) : 0u))
+#define KCVT(x) unpackHalf2x16(x)
+#define VLOAD(i) kv4[i]
+#define VZERO uvec2(0u)
+#define VCVT(w) vec4(unpackHalf2x16((w).x), unpackHalf2x16((w).y))
+#else
+layout(set=0,binding=2,std430) readonly buffer Kv2 { vec2 kv2[]; };
+layout(set=0,binding=2,std430) readonly buffer Kv4 { vec4 kv4[]; };
+layout(set=0,binding=2,std430) readonly buffer Kv1 { float kv1[]; };
+#define KRAW vec2
+#define VRAW vec4
+#define KPAIR(ka) (both ? kv2[(ka)/2u] : vec2(live0 ? kv1[ka] : 0.0, 0.0))
+#define KCVT(x) x
+#define VLOAD(i) kv4[i]
+#define VZERO vec4(0.0)
+#define VCVT(x) x
+#endif
+layout(set=0,binding=3,std430) readonly buffer Io { uint io[]; };
+layout(push_constant) uniform P { uint qr, kcache, vcache, out_, ctx; float scale; uint ptab, pstride, slots; } p;
+// Paged KV (docs/specs/concurrent.md, "Addressing"): key tile j0's page is actu[ptab + j0 / KV_PAGE]
+// (a tile of BC keys lies in one page); a page starts at element page * pstride.
+layout(set=0,binding=1,std430) readonly buffer ActU { uint actu[]; };
+// Tokens per page: specialization constant 0 (`--kv-page-tokens`; the whole context for one page).
+layout(constant_id=0) const uint KV_PAGE=128u;
+#define IO_COUNT 2
+#define IO_P0 3
+
+// P of each group: [key][row] (RW/4 vec4 of rows per key).
+shared vec4 ps[GROUPS][BC][RW/4];
+// Cross-subgroup partials (at most 2 subgroups per group): [subgroup][row].
+shared float red[GROUPS*2][RW];
+
+void main() {
+    uint t=gl_LocalInvocationID.x;
+    uint g=subgroupBroadcastFirst(t/64u); // query head within the KV group
+    uint lane=t%64u;
+    uint kh=gl_WorkGroupID.y/(6u/GROUPS), h=gl_WorkGroupID.y*GROUPS+g;
+    uint count=io[IO_COUNT], p0=io[IO_P0];
+    uint row0=gl_WorkGroupID.x*RW;
+    if (row0>=count) return; // uniform per workgroup
+#if PACKED
+    // Packed prefill (docs/specs/concurrent.md, "18d.1 design"): `slots` is the io word of the
+    // per-row entries (position, page-table offset, state offset, padding flag). A sequence's
+    // rows start at a multiple of RW, so the group holds one sequence's rows (a prefix of nv)
+    // then padding: exactly the solo group with count - row0 = nv.
+    if (io[p.slots+row0*4u+3u]!=0u) return; // an all-padding group
+    uint nv=0u;
+    [[unroll]] for (uint r=0;r<RW;r++) if (row0+r<count && io[p.slots+(row0+r)*4u+3u]==0u) nv=r+1u;
+    uint ptab=p.ptab+io[p.slots+row0*4u+1u];
+    uint kv_end=io[p.slots+(row0+nv-1u)*4u]+1u;
+#else
+    // The slot's page table (docs/specs/concurrent.md, "18b.2 design"): offset io[slots + 1].
+    uint ptab=p.ptab+(p.slots!=0u ? io[p.slots+1u] : 0u);
+    uint kv_end=p0+min(row0+RW,count);
+#endif
+    bool split=gl_SubgroupSize<64u; // two subgroups per 64-thread group
+    uint sg_in_group=split ? lane/gl_SubgroupSize : 0u;
+    // Wave-uniform Q rows (clamped past count), as vec4 indices at d = 0.
+    uint qrow[RW], qpos[RW];
+    [[unroll]] for (uint r=0;r<RW;r++) {
+#if PACKED
+        uint row=row0+min(r,nv-1u);
+        qrow[r]=(p.qr+row*6144u+h*256u)/4u;
+        qpos[r]=io[p.slots+row*4u];
+#else
+        uint row=min(row0+r,count-1u);
+        qrow[r]=(p.qr+row*6144u+h*256u)/4u;
+        qpos[r]=p0+row;
+#endif
+    }
+    float m[RW], l[RW];
+    vec4 o[RW];
+    [[unroll]] for (uint r=0;r<RW;r++) { m[r]=-uintBitsToFloat(0x7f800000u); l[r]=0.0; o[r]=vec4(0.0); }
+    for (uint j0=0u;j0<kv_end;j0+=BC) {
+        uint pb=actu[ptab+j0/KV_PAGE]*p.pstride;
+        uint kbase=pb+p.kcache+kh*256u*KV_PAGE+(j0%KV_PAGE)-j0; // K[d][j] at kbase + d*KV_PAGE + j
+        uint vbase=pb+p.vcache+kh*KV_PAGE*256u+(j0%KV_PAGE)*256u-j0*256u; // V[j][d] at vbase + j*256 + d
+        uint j=j0+2u*lane; // this lane's keys j, j+1
+        bool live0=j<kv_end, live1=j+1u<kv_end, both=j+1u<kv_end;
+        vec2 s[RW];
+        [[unroll]] for (uint r=0;r<RW;r++) s[r]=vec2(0.0);
+        // K of 4 dims and Q of the 8 rows one step (4 dims) ahead of the FMAs.
+        KRAW kk[4];
+        vec4 qv[RW];
+        [[unroll]] for (uint dd=0;dd<4;dd++) {
+            uint ka=kbase+dd*KV_PAGE+j;
+            kk[dd]=KPAIR(ka);
+        }
+        [[unroll]] for (uint r=0;r<RW;r++) qv[r]=q4[qrow[r]];
+        for (uint dc=0u;dc<HD;dc+=32u) {
+            vec2 part[RW];
+            [[unroll]] for (uint r=0;r<RW;r++) part[r]=vec2(0.0);
+            [[dont_unroll]] for (uint d4=0u;d4<32u;d4+=4u) {
+                uint dn=min(dc+d4+4u,HD-4u); // next step (the last reloads itself)
+                KRAW kn[4];
+                vec4 qn[RW];
+                [[unroll]] for (uint dd=0;dd<4;dd++) {
+                    uint ka=kbase+(dn+dd)*KV_PAGE+j;
+                    kn[dd]=KPAIR(ka);
+                }
+                [[unroll]] for (uint r=0;r<RW;r++) qn[r]=q4[qrow[r]+dn/4u];
+#ifdef KV16
+                [[unroll]] for (uint dd=0;dd<4;dd++) {
+                    vec2 k2=KCVT(kk[dd]);
+                    [[unroll]] for (uint r=0;r<RW;r++) part[r]=fma(vec2(qv[r][dd]),k2,part[r]);
+                }
+#else
+                [[unroll]] for (uint dd=0;dd<4;dd++)
+                    [[unroll]] for (uint r=0;r<RW;r++) part[r]=fma(vec2(qv[r][dd]),kk[dd],part[r]);
+#endif
+                [[unroll]] for (uint dd=0;dd<4;dd++) kk[dd]=kn[dd];
+                [[unroll]] for (uint r=0;r<RW;r++) qv[r]=qn[r];
+            }
+            [[unroll]] for (uint r=0;r<RW;r++) s[r]+=part[r];
+        }
+        // Scale, causal mask, row maxima over the group.
+        float mx[RW];
+        [[unroll]] for (uint r=0;r<RW;r++) {
+            s[r].x=(j<=qpos[r] && live0) ? s[r].x*p.scale : -uintBitsToFloat(0x7f800000u);
+            s[r].y=(j+1u<=qpos[r] && live1) ? s[r].y*p.scale : -uintBitsToFloat(0x7f800000u);
+            mx[r]=subgroupMax(max(s[r].x,s[r].y));
+        }
+        if (split) {
+            barrier();
+            if (subgroupElect()) [[unroll]] for (uint r=0;r<RW;r++) red[g*2u+sg_in_group][r]=mx[r];
+            barrier();
+            [[unroll]] for (uint r=0;r<RW;r++) mx[r]=max(red[g*2u][r],red[g*2u+1u][r]);
+        }
+        float alpha[RW], sm[RW];
+        [[unroll]] for (uint r=0;r<RW;r++) {
+            float mn=max(m[r],mx[r]); // finite: key 0 is in tile 0 and live for every row
+            alpha[r]=exp(m[r]-mn);
+            m[r]=mn;
+            s[r]=exp(s[r]-vec2(mn));
+            sm[r]=subgroupAdd(s[r].x+s[r].y);
+        }
+        if (split) {
+            barrier();
+            if (subgroupElect()) [[unroll]] for (uint r=0;r<RW;r++) red[g*2u+sg_in_group][r]=sm[r];
+            barrier();
+            [[unroll]] for (uint r=0;r<RW;r++) sm[r]=red[g*2u][r]+red[g*2u+1u][r];
+        }
+        [[unroll]] for (uint r=0;r<RW;r++) l[r]=l[r]*alpha[r]+sm[r];
+        // P to LDS: keys 2l, 2l+1, all rows. With one subgroup per group, P is private to
+        // it (subgroup-scope ordering suffices); two subgroups need workgroup barriers.
+        if (split) barrier(); else { subgroupMemoryBarrierShared(); subgroupBarrier(); } // previous readers done
+        [[unroll]] for (uint b=0;b<RW/4;b++) {
+            ps[g][2u*lane][b]=vec4(s[4u*b].x,s[4u*b+1u].x,s[4u*b+2u].x,s[4u*b+3u].x);
+            ps[g][2u*lane+1u][b]=vec4(s[4u*b].y,s[4u*b+1u].y,s[4u*b+2u].y,s[4u*b+3u].y);
+        }
+        if (split) barrier(); else { subgroupMemoryBarrierShared(); subgroupBarrier(); }
+        vec4 ot[RW];
+        [[unroll]] for (uint r=0;r<RW;r++) ot[r]=vec4(0.0);
+        uint kn=min(BC,kv_end-j0); // live keys of the tile (uniform)
+        uint vrow=(vbase+j0*256u)/4u+lane; // vec4 index of V[j0][4 lane]
+        // OU keys per step, their V rows loaded before the FMAs (keys past kn: zero rows).
+        [[dont_unroll]] for (uint k=0u;k<kn;k+=OU) {
+            VRAW v[OU];
+            [[unroll]] for (uint c=0;c<OU;c++) v[c]=k+c<kn ? VLOAD(vrow+(k+c)*64u) : VZERO;
+#ifdef KV16
+            [[unroll]] for (uint c=0;c<OU;c++) {
+                vec4 vc=VCVT(v[c]);
+                [[unroll]] for (uint b=0;b<RW/4;b++) {
+                    vec4 pb=ps[g][k+c][b];
+                    [[unroll]] for (uint r=0;r<4;r++) ot[4u*b+r]=fma(vec4(pb[r]),vc,ot[4u*b+r]);
+                }
+            }
+#else
+            [[unroll]] for (uint c=0;c<OU;c++) [[unroll]] for (uint b=0;b<RW/4;b++) {
+                vec4 pb=ps[g][k+c][b];
+                [[unroll]] for (uint r=0;r<4;r++) ot[4u*b+r]=fma(vec4(pb[r]),v[c],ot[4u*b+r]);
+            }
+#endif
+        }
+        [[unroll]] for (uint r=0;r<RW;r++) o[r]=fma(o[r],vec4(alpha[r]),ot[r]);
+    }
+    [[unroll]] for (uint r=0;r<RW;r++) {
+        uint row=row0+r;
+#if PACKED
+        if (r>=nv) continue;
+#else
+        if (row>=count) continue;
+#endif
+        uint ob=p.out_+row*6144u+h*256u+lane*4u;
+        vec4 y=o[r]/l[r];
+        act[ob]=y.x; act[ob+1u]=y.y; act[ob+2u]=y.z; act[ob+3u]=y.w;
+    }
+}

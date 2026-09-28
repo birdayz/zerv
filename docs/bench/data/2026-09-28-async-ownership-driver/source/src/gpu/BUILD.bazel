@@ -1,0 +1,88 @@
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_test.bzl", "py_test")
+load("@rules_zig//zig:defs.bzl", "zig_library", "zig_shared_library")
+
+zig_library(
+    name = "gpu",
+    main = "root.zig",
+    srcs = glob(["*.zig"], exclude = ["root.zig"]),
+    visibility = ["//visibility:public"],
+)
+
+# vk.zig, the scoped Vulkan declarations, generated from the pinned registry
+# (tools/generate_vulkan_bindings.py) and formatted by the toolchain's `zig fmt`; vk_zig_test: the committed file is exactly that,
+# `bazel run //src/gpu:vk_zig_update` rewrites it.
+genrule(
+    name = "vk_zig",
+    srcs = ["@vulkan_headers//:registry/vk.xml"],
+    outs = ["generated/vk.zig"],
+    cmd = "$(execpath //tools:generate_vulkan_bindings) --registry $< --revision 'vulkan-sdk-1.4.357.0 (@vulkan_headers)' --output $@ && $(execpath //bazel:zig) fmt $@ >/dev/null",
+    tools = [
+        "//bazel:zig",
+        "//tools:generate_vulkan_bindings",
+    ],
+)
+
+py_test(
+    name = "vk_zig_test",
+    srcs = ["//tools:check_generated.py"],
+    main = "//tools:check_generated.py",
+    args = [
+        "src/gpu/generated",
+        "src/gpu",
+        "--subset",
+        "--hint",
+        "'bazel run //src/gpu:vk_zig_update'",
+    ],
+    data = [
+        "vk.zig",
+        ":vk_zig",
+    ],
+    size = "small",
+)
+
+py_binary(
+    name = "vk_zig_update",
+    srcs = ["//tools:check_generated.py"],
+    main = "//tools:check_generated.py",
+    args = [
+        "src/gpu/generated",
+        "src/gpu",
+        "--subset",
+        "--update",
+    ],
+    data = [":vk_zig"],
+)
+
+# Link-time stand-in for the Vulkan loader: every core Vulkan command of the registry, in a
+# shared library named libvulkan.so.1 (tools/vulkan_stub.py). Executables link it instead of
+# the host's loader; at run time the dynamic linker loads the real libvulkan.so.1.
+genrule(
+    name = "vulkan_stub_zig",
+    srcs = ["@vulkan_headers//:registry/vk.xml"],
+    outs = ["vulkan_stub.zig"],
+    cmd = "$(location //tools:vulkan_stub) $< $@",
+    tools = ["//tools:vulkan_stub"],
+)
+
+zig_shared_library(
+    name = "vulkan",
+    # Also the link stub of the source-built test oracles (@ggml//:ggml_vulkan).
+    main = ":vulkan_stub_zig",
+    # Output file and SONAME libvulkan.so.1; only the stub symbols (no sanitizer runtime).
+    shared_lib_name = "libvulkan.so.1",
+    zigopts = [
+        "-fno-ubsan-rt",
+        "-fstrip",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# Every Zig source of this package (the format check, //:zig_fmt).
+filegroup(
+    name = "zig_srcs",
+    srcs = glob(["*.zig"]),
+    visibility = ["//:__pkg__", "//tests:__pkg__"],
+)
+
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])

@@ -275,9 +275,9 @@ pub const ModelBackend = struct {
     cache: ?session.kvcache.Cache = null,
     disk_archive: ?*disk.Disk = null,
 
-    pub fn initDisk(self: *ModelBackend, allocator: std.mem.Allocator, options: disk.Options) !void {
+    pub fn initDisk(self: *ModelBackend, allocator: std.mem.Allocator, io: std.Io, options: disk.Options) !void {
         if (self.disk_archive != null) return error.InvalidOptions;
-        self.disk_archive = try disk.Disk.create(allocator, self.m, options);
+        self.disk_archive = try disk.Disk.create(allocator, io, self.m, options);
     }
     pub fn deinitDisk(self: *ModelBackend) void {
         if (self.disk_archive) |d| d.destroy();
@@ -405,7 +405,8 @@ pub const ModelBackend = struct {
     }
     /// After a failed call: a pending command or a lost device makes the engine unusable.
     fn noteFailure(self: *ModelBackend) void {
-        if (self.m.device.lost or self.m.device.pending != 0) self.fatal.store(true, .release);
+        const owned_pending: u32 = if (self.disk_archive) |d| @intFromBool(d.commands.state == .pending) else 0;
+        if (self.m.device.lost or self.m.device.pending != owned_pending) self.fatal.store(true, .release);
     }
     pub fn reset(self: *ModelBackend, slot: u32) !void {
         self.m.select(slot) catch |e| return self.check(e);

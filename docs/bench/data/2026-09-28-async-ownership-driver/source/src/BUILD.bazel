@@ -1,0 +1,52 @@
+load("@rules_zig//zig:defs.bzl", "zig_library")
+load("//bazel:defs.bzl", "no_cc_test", "zerv_vk_binary")
+
+# The `zerv` umbrella: every package, for executables that use several (the server,
+# benchmarks, tools, GPU tests). Packages never import it.
+zig_library(
+    name = "zerv_lib",
+    import_name = "zerv",
+    main = "root.zig",
+    deps = [
+        "//src/quant",
+        "//src/gpu",
+        "//src/artifact",
+        "//src/text",
+        "//src/chat",
+        "//src/matvec",
+        "//src/tokenizer",
+        "//src/model",
+        "//src/session",
+        "//src/serve",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+
+# The OpenAI Chat Completions v1 server.
+zerv_vk_binary(
+    name = "zerv",
+    main = "main.zig",
+    deps = [":zerv_lib"],
+    visibility = ["//visibility:public"],
+)
+
+# AGENTS.md "No C++ dependencies": no C/C++ rule in what zerv ships (C/C++ is built only for
+# development tools, docs/specs/hermetic-build.md).
+no_cc_test(
+    name = "no_cc",
+    targets = [
+        ":zerv",
+        ":zerv_lib",
+    ],
+)
+
+# Every Zig source of this package (the format check, //:zig_fmt).
+filegroup(
+    name = "zig_srcs",
+    srcs = glob(["*.zig"]),
+    visibility = ["//:__pkg__"],
+)
+
+# Read by //tests:test_build_lists.
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])

@@ -1,0 +1,53 @@
+//! Native Qwen3.8 (qwen35) forward pass: configuration, layout and resident runtime.
+pub const config = @import("config.zig");
+pub const layout = @import("layout.zig");
+pub const gemm = @import("gemm.zig");
+pub const attention = @import("attention.zig");
+pub const pages = @import("pages.zig");
+pub const Model = @import("runtime.zig").Model;
+pub const Options = @import("runtime.zig").Options;
+pub const BatchRow = @import("runtime.zig").BatchRow;
+pub const prefill_segments = @import("runtime.zig").prefill_segments;
+pub const Segment = @import("runtime.zig").Segment;
+pub const PackItem = @import("runtime.zig").PackItem;
+pub const PackedSegment = @import("runtime.zig").PackedSegment;
+pub const DecodePrecision = @import("runtime.zig").DecodePrecision;
+pub const DecodeF16Kernel = @import("runtime.zig").DecodeF16Kernel;
+pub const DecodeF16Formats = @import("runtime.zig").DecodeF16Formats;
+pub const F16Split = @import("runtime.zig").F16Split;
+pub const max_pool_pages = @import("runtime.zig").max_pool_pages;
+pub const snapshot_bytes = @import("runtime.zig").snapshot_bytes;
+pub const vram_headroom = @import("runtime.zig").vram_headroom;
+pub const context_max = @import("runtime.zig").context_max;
+pub const ContextShape = @import("runtime.zig").ContextShape;
+pub const contextBytes = @import("runtime.zig").contextBytes;
+pub const fitContext = @import("runtime.zig").fitContext;
+pub const Capture = @import("runtime.zig").Capture;
+pub const Error = @import("runtime.zig").Error;
+pub const Hooks = @import("runtime.zig").Hooks;
+pub const Probe = @import("runtime.zig").Probe;
+pub const Phase = @import("runtime.zig").Phase;
+pub const Plan = @import("runtime.zig").Plan;
+pub const max_plans = @import("runtime.zig").max_plans;
+pub const Chunk = @import("runtime.zig").Chunk;
+pub const makePlans = @import("runtime.zig").makePlans;
+pub const chunkFor = @import("runtime.zig").chunkFor;
+/// f16-mode producer kernels (model.comp with F16OUT; block 16b) and their modules.
+pub const F16Producer = @import("runtime.zig").HKernel;
+pub const f16ProducerModule = @import("runtime.zig").hModule;
+/// Fused prefill attention module (flash.comp, block 16a).
+pub const flashModule = @import("runtime.zig").flashModule;
+/// KV cache writers (qkprep: decode rows; qk_b: prefill rows) and their pushes.
+pub const qkprepModule = @import("runtime.zig").qkprepModule;
+pub const qkBModule = @import("runtime.zig").qkBModule;
+pub const QkPush = @import("runtime.zig").QkPush;
+pub const QkBPush = @import("runtime.zig").QkBPush;
+pub const KvType = layout.KvType;
+pub const flash_rows = @import("runtime.zig").flash_rows;
+pub const flashWModule = @import("runtime.zig").flashWModule;
+pub const flashWModuleFor = @import("runtime.zig").flashWModuleFor;
+pub const flash_w_heads = @import("runtime.zig").flash_w_heads;
+pub const flash_w_rows = @import("runtime.zig").flash_w_rows;
+pub const flash_w_subgroup = @import("runtime.zig").flash_w_subgroup;
+pub const PrefillAttention = @import("runtime.zig").PrefillAttention;
+pub const flash_groups = @import("runtime.zig").flash_groups;

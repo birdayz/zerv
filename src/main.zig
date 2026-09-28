@@ -272,7 +272,7 @@ pub fn main(init: std.process.Init) !void {
     // --parallel N > 1: the batcher owns the model on its scheduler task.
     var model_backend: zerv.serve.ModelBackend = .{ .m = &model };
     defer model_backend.deinitDisk();
-    if (disk_dir) |directory| try model_backend.initDisk(gpa, .{ .directory = directory, .bytes = disk_mib << 20, .records = disk_entries, .alignment = if (disk_alignment == 0) null else .{ .memory = disk_alignment, .offset = disk_alignment } });
+    if (disk_dir) |directory| try model_backend.initDisk(gpa, init.io, .{ .directory = directory, .bytes = disk_mib << 20, .records = disk_entries, .alignment = if (disk_alignment == 0) null else .{ .memory = disk_alignment, .offset = disk_alignment } });
     var batch = try zerv.serve.Batcher.init(io, &model_backend, .{ .slots = parallel, .vocab = zerv.model.config.vocab, .stall = stall, .order = prefill_order, .swap_slice = if (model.swap_pages > 0 and kv_swap_slice_ms > 0) std.Io.Duration.fromMilliseconds(@intCast(kv_swap_slice_ms)) else null, .pack = if (model.packable()) @max(1, @min(prefill_pack, model.pack_seqs)) else 1 });
     var scheduler: ?std.Io.Future(void) = null;
     if (parallel > 1) {

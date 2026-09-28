@@ -1,0 +1,48 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_python//python:py_binary.bzl", "py_binary")
+
+# The native gemm_f16x kernel's generator and assembler/splicer (docs/specs/prefill.md,
+# "Native gemm_f16x machine code"); //src/model:native_code runs them.
+
+py_binary(
+    name = "gen_f16x",
+    srcs = ["gen_f16x.py"],
+    visibility = ["//src/model:__pkg__"],
+)
+
+py_binary(
+    name = "isa_tool",
+    srcs = ["isa_tool.py"],
+    visibility = ["//src/model:__pkg__"],
+)
+
+# The lab (research and development tool, never part of zerv): captures a kernel's RADV
+# pipeline binary and checks and times a pipeline binary against the SPIR-V kernel (sweep.py,
+# race.py, tools/build_native_gemm.py build it through tools/zerv_build.py). Linked against the
+# link stub libvulkan.so.1 like the oracles: the loader it uses is chosen at run time (the
+# host's, or the test-only GPU runtime's: //tests:gpu_runtime).
+cc_binary(
+    name = "pipeline_binary_lab",
+    srcs = ["pipeline_binary_lab.c"],
+    additional_linker_inputs = ["//src/gpu:vulkan"],
+    copts = [
+        "-std=c11",
+        "-O2",
+    ],
+    linkopts = [
+        "$(location //src/gpu:vulkan)",
+        "-lm",
+    ],
+    tags = ["manual"],
+    deps = ["@vulkan_headers"],
+)
+
+# Read by //tests:test_build_lists.
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])
+
+# Every Python script (//tests:test_build_lists checks how they run).
+filegroup(
+    name = "py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tests:__pkg__"],
+)

@@ -1,0 +1,99 @@
+{
+ "version": 1,
+ "temperature": 0,
+ "seed": 1234,
+ "note": "Output-format parity cases (tools/check_parity.py): greedy, JSON and SSE.",
+ "cases": [
+  {
+   "name": "think-low-complete",
+   "max_tokens": 1024,
+   "options": {
+    "reasoning_effort": "low"
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "What is 17 * 23? Reply with the number only."
+    }
+   ]
+  },
+  {
+   "name": "think-cut-in-reasoning",
+   "max_tokens": 40,
+   "options": {
+    "reasoning_effort": "xhigh"
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Explain step by step how to compute the greatest common divisor of 1071 and 462 using the Euclidean algorithm."
+    }
+   ]
+  },
+  {
+   "name": "think-stop-think-end",
+   "max_tokens": 1024,
+   "options": {
+    "reasoning_effort": "low",
+    "stop": [
+     "</think>"
+    ]
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "What is 17 * 23? Reply with the number only."
+    }
+   ]
+  },
+  {
+   "name": "think-stop-blank-line",
+   "max_tokens": 1024,
+   "options": {
+    "reasoning_effort": "low",
+    "stop": [
+     "\n\n"
+    ]
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "What is 17 * 23? Reply with the number only."
+    }
+   ]
+  },
+  {
+   "name": "nothink-stop-blank-line",
+   "max_tokens": 300,
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    },
+    "stop": [
+     "\n\n"
+    ]
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Write two short paragraphs about the sea, separated by a blank line."
+    }
+   ]
+  },
+  {
+   "name": "nothink-length",
+   "max_tokens": 48,
+   "options": {
+    "chat_template_kwargs": {
+     "enable_thinking": false
+    }
+   },
+   "messages": [
+    {
+     "role": "user",
+     "content": "Write two short paragraphs about the sea, separated by a blank line."
+    }
+   ]
+  }
+ ]
+}

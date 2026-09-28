@@ -1,0 +1,198 @@
+load("@rules_zig//zig:defs.bzl", "zig_binary")
+load("//bazel:defs.bzl", "native_cpu_binary", "zerv_vk_binary")
+
+# Executables are visible to the tests (//tests:test_linkage checks how they link).
+package(default_visibility = ["//tests:__pkg__"])
+
+# Component benchmarks and model checks. Measure with `bazel build -c opt` (ReleaseFast).
+
+zig_binary(
+    name = "zerv-archive-bench",
+    main = "archive.zig",
+    deps = ["//src/session", "//src/storage"],
+)
+
+zig_binary(
+    name = "zerv-residency-bench",
+    main = "residency.zig",
+    deps = ["//src/session"],
+)
+
+zig_binary(
+    name = "zerv-storage-bench",
+    main = "storage.zig",
+    deps = ["//src/storage"],
+)
+
+# The serving competitor llama-server (Vulkan), built in the graph from the pinned llama.cpp
+# and ggml and compiled for this CPU like zerv's release build (docs/specs/hermetic-build.md,
+# phase 5; the A/B against the host package: docs/bench/2026-09-26-bazel-build.md).
+native_cpu_binary(
+    name = "llama-server",
+    binary = "@llama_cpp//:llama-server",
+    tags = ["manual"],
+)
+
+zerv_vk_binary(
+    name = "zerv-gpu-driver-bench",
+    main = "gpu_driver.zig",
+    deps = ["//src:zerv_lib", "//tests:gpu_workload"],
+)
+
+zerv_vk_binary(
+    name = "zerv-gpu-matvec-bench",
+    main = "gpu_matvec.zig",
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
+)
+
+zerv_vk_binary(
+    name = "zerv-gemm-bench",
+    main = "gemm.zig",
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
+)
+
+zerv_vk_binary(
+    name = "zerv-decode-f16-bench",
+    main = "decode_f16.zig",
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
+)
+
+zerv_vk_binary(
+    name = "zerv-matvec-rows-bench",
+    main = "matvec_rows.zig",
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
+)
+
+zerv_vk_binary(
+    name = "zerv-model-profile",
+    main = "profile_model.zig",
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
+)
+
+zerv_vk_binary(
+    name = "zerv-archive-model-check",
+    main = "archive_model_check.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zerv_vk_binary(
+    name = "zerv-prefix-check",
+    main = "prefix_check.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zerv_vk_binary(
+    name = "zerv-kv-quality",
+    main = "kv_quality.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zerv_vk_binary(
+    name = "zerv-spec-check",
+    main = "spec_check.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zerv_vk_binary(
+    name = "zerv-batch-check",
+    main = "batch_check.zig",
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
+)
+
+zerv_vk_binary(
+    name = "zerv-mtp-check",
+    main = "mtp_check.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zerv_vk_binary(
+    name = "zerv-kernel-chain",
+    main = "kernel_chain.zig",
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
+)
+
+zerv_vk_binary(
+    name = "zerv-coopmat-probe",
+    main = "coopmat_probe.zig",
+    deps = ["//src:zerv_lib", "//tests:matvec_workload"],
+)
+
+zerv_vk_binary(
+    name = "zerv-quant-bench",
+    main = "quant.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zig_binary(
+    name = "zerv-tokenizer-bench",
+    main = "tokenizer.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zig_binary(
+    name = "zerv-split-bench",
+    main = "split.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zig_binary(
+    name = "zerv-nfc-bench",
+    main = "nfc.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zig_binary(
+    name = "zerv-sampler-bench",
+    main = "sampler.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zig_binary(
+    name = "zerv-chat-bench",
+    main = "chat.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zig_binary(
+    name = "zerv-gguf-bench",
+    main = "gguf.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zig_binary(
+    name = "zerv-model-quant-bench",
+    main = "model_quant.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+# Python harnesses (tests/test_*.py load them).
+exports_files(glob(["*.py", "workloads/*.json"]), visibility = ["//tests:__pkg__"])
+
+# Every Python script (//tests:test_build_lists checks how they build).
+filegroup(
+    name = "py_srcs",
+    srcs = glob(["*.py", "gemm_lab/*.py"]),
+    visibility = ["//tests:__pkg__"],
+)
+
+# Every Zig source of this package (the format check, //:zig_fmt).
+filegroup(
+    name = "zig_srcs",
+    srcs = glob(["*.zig"]),
+    visibility = ["//:__pkg__"],
+)
+
+# Read by //tests:test_build_lists.
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])
+
+zerv_vk_binary(
+    name = "zerv-attn-bench",
+    main = "attn_bench.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zerv_vk_binary(
+    name = "zerv-disk-probe",
+    main = "disk_probe.zig",
+    deps = ["//src:zerv_lib"],
+)

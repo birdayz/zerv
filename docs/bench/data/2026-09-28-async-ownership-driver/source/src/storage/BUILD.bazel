@@ -1,0 +1,15 @@
+load("@rules_zig//zig:defs.bzl", "zig_library")
+
+zig_library(
+    name = "storage",
+    main = "root.zig",
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "zig_srcs",
+    srcs = glob(["*.zig"]),
+    visibility = ["//:__pkg__", "//tests:__pkg__"],
+)
+
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])

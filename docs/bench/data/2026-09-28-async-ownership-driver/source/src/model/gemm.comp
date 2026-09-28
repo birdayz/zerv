@@ -1,0 +1,312 @@
+#version 450
+#extension GL_EXT_control_flow_attributes : require
+// Tiled FP32 GEMM for batched prefill: Y[z][t][m] = sum_k X[z][t][k] * A[z/group][m][k].
+// A: quantized weight rows (k-contiguous, exact decode) or FP32 with arbitrary strides.
+// X, Y: FP32 in the activation arena. Row count n (tokens) and optionally M or K come
+// from the io block at run time. Rows t >= n are neither read meaningfully nor written.
+// FORMAT: 0 F32 (A_MCONTIG selects the coalesced loader), 2 Q4_0, 3 Q4_1, 8 Q8_0 (the MTP
+// layer's eh_proj, block 17b), 13 Q5_K, 14 Q6_K.
+// Tile 256 (M) x 32 (rows), 256 threads. A 64-thread group w (made uniform with
+// subgroupBroadcastFirst; valid for subgroup sizes 32 and 64, required by the host) owns
+// 8 X rows, read as wave-uniform vec4s (4 consecutive k) through the read-only X binding,
+// which the compiler turns into scalar loads; lane tid%64 owns 4 M rows and reads one
+// conflict-free vec4 of the LDS A tile per k. Per output element: part = sum over one
+// 32-wide K tile in k order (fma), then total += part (block 13e, docs/specs/prefill.md).
+// Block 13h (same arithmetic and order, bit-identical): X is read one kb (4 k) ahead in a
+// non-unrolled loop, which bounds the scalar registers holding X (no SGPR spills); Q4_0/
+// Q4_1 blocks are read as the aligned words holding them, one tile ahead in registers.
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#define TM 4
+// X rows per 64-thread group: 8 (tile 256x32) or 16 (tile 256x64, X read as vec2 pairs).
+#ifndef XW
+#define XW 8
+#endif
+#define BN (4*XW)
+#define BM 256
+#define BK 32
+#define VPT (BM*BK/256) // A values loaded per thread per K tile
+layout(local_size_x=256) in;
+layout(set=0,binding=0,std430) readonly buffer A { uint aw[]; };
+// Same binding, 16-byte view: Q5_K rows are 16-byte aligned (validated on the host).
+layout(set=0,binding=0,std430) readonly buffer A4 { uvec4 aw4[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=2,std430) readonly buffer Io { uint io[]; };
+// The activation buffer again, read-only: X rows (x_base, x_rs, x_bs multiples of 4).
+layout(set=0,binding=3,std430) readonly restrict buffer ActX { vec4 xin4[]; };
+#if XW==16
+layout(set=0,binding=3,std430) readonly restrict buffer ActX2 { vec2 xin2[]; };
+#endif
+layout(push_constant) uniform P {
+    uint a_base;  // quant: byte offset of row 0; F32: word offset
+    uint a_rs;    // quant: row bytes; F32: word stride between m
+    uint a_cs;    // F32: word stride between k
+    uint a_bs;    // stride per A batch (bytes for quant, words for F32)
+    uint a_group; // A batch = z / a_group
+    uint x_base, x_rs, x_bs; // words (k stride 1)
+    uint y_base, y_rs, y_bs; // words (m stride 1)
+    uint m, k;
+    uint flags;   // 1: M = keys, 2: K = keys (keys = io[P0] + io[COUNT])
+    uint k_chunk; // >0: split-K; z = split index, partials at y_base + z*y_bs (batch 0)
+} p;
+#define IO_COUNT 2
+#define IO_P0 3
+
+shared vec4 As[BK][BM/4];
+
+uint word_at(uint b) {
+    uint lo=aw[b>>2];
+    if ((b&2)==0) return lo;
+    return (lo>>16)|(aw[(b>>2)+1]<<16);
+}
+float half_at(uint b) { return unpackHalf2x16(aw[b>>2]>>(8*(b&2))).x; }
+void put_a(uint kk, uint mm, float v) { As[kk][mm>>2][mm&3]=v; }
+
+#if FORMAT==2 || FORMAT==3
+// One 32-value block (VPT == 32: one block per thread) through the aligned words that
+// hold its bytes: Q4_0 18 bytes (5 words), Q4_1 20 bytes (5 words, 6 when the block
+// starts at 2 mod 4). In range: validate() bounds the tensor end rounded up to 4 bytes.
+struct Raw { uint w0, w1, w2, w3, w4, w5; };
+Raw load_block(uint b) {
+    uint wb=b>>2u;
+    Raw r;
+    r.w0=aw[wb]; r.w1=aw[wb+1u]; r.w2=aw[wb+2u]; r.w3=aw[wb+3u]; r.w4=aw[wb+4u];
+#if FORMAT==3
+    r.w5=aw[wb+((b&2u)!=0u ? 5u : 4u)];
+#else
+    r.w5=0u;
+#endif
+    return r;
+}
+// Writes the block's 32 values d*q+c to the LDS tile (dead rows: d = c = 0).
+void decode_block(Raw r, uint b, bool live, uint mm) {
+    bool odd=(b&2u)!=0u;
+    uint w0=r.w0, w1=r.w1, w2=r.w2, w3=r.w3, w4=r.w4, w5=r.w5;
+#if FORMAT==2
+    // Q4_0: d at bytes 0-1, 16 payload bytes at 2..17; c = -8d.
+    float d=live ? unpackHalf2x16(odd ? w0>>16u : w0).x : 0.0;
+    float c=-8.0*d;
+    uint qw[4]=uint[4](odd ? w1 : (w0>>16u)|(w1<<16u), odd ? w2 : (w1>>16u)|(w2<<16u),
+                       odd ? w3 : (w2>>16u)|(w3<<16u), odd ? w4 : (w3>>16u)|(w4<<16u));
+#else
+    // Q4_1: d at bytes 0-1, m at 2-3, 16 payload bytes at 4..19.
+    float d=live ? unpackHalf2x16(odd ? w0>>16u : w0).x : 0.0;
+    float c=live ? unpackHalf2x16(odd ? w1 : w0>>16u).x : 0.0;
+    uint qw[4]=uint[4](odd ? (w1>>16u)|(w2<<16u) : w1, odd ? (w2>>16u)|(w3<<16u) : w2,
+                       odd ? (w3>>16u)|(w4<<16u) : w3, odd ? (w4>>16u)|(w5<<16u) : w4);
+#endif
+    // Byte j of the payload holds k = j (low nibble) and k = j + 16 (high nibble).
+    [[unroll]] for (uint w=0;w<4;w++) {
+        uint q=qw[w];
+        [[unroll]] for (uint e=0;e<4;e++) {
+            float lo=float((q>>(8u*e))&15u), hi=float((q>>(8u*e+4u))&15u);
+            put_a(w*4u+e,mm,fma(d,lo,c));
+            put_a(w*4u+e+16u,mm,fma(d,hi,c));
+        }
+    }
+}
+#endif
+
+#if FORMAT==8
+// Q8_0: d (f16) at bytes 0-1, 32 int8 at 2..33; value d*q, exact in FP32 (11 x 8 bits).
+// The 34-byte block starts at 0 or 2 mod 4 and lies in the 9 aligned words from b/4 (in
+// range: validate() bounds the tensor end rounded up to 4 bytes).
+struct Raw { uint w[9]; };
+Raw load_block(uint b) {
+    uint wb=b>>2u;
+    Raw r;
+    [[unroll]] for (uint i=0;i<9;i++) r.w[i]=aw[wb+i];
+    return r;
+}
+void decode_block(Raw r, uint b, bool live, uint mm) {
+    bool odd=(b&2u)!=0u;
+    float d=live ? unpackHalf2x16(odd ? r.w[0]>>16u : r.w[0]).x : 0.0;
+    [[unroll]] for (uint w=0;w<8;w++) {
+        uint q=odd ? r.w[w+1u] : (r.w[w]>>16u)|(r.w[w+1u]<<16u);
+        [[unroll]] for (uint e=0;e<4;e++) put_a(w*4u+e,mm,d*float(int(q<<(24u-8u*e))>>24));
+    }
+}
+#endif
+
+#if FORMAT==13
+// The five aligned 16-byte words one thread decodes for a row's 32-value group at k0:
+// header (d, dmin, scales), both high-bit words, and the group pair's 32 payload bytes.
+struct Raw5 { uvec4 hdr, h0, h1, s0, s1; };
+Raw5 load_q5k(uint rb, uint k0) {
+    uint sb=k0/256u, g=(k0%256u)/32u;
+    uint b=rb+sb*176u;
+    Raw5 r;
+    r.hdr=aw4[b>>4u]; r.h0=aw4[(b+16u)>>4u]; r.h1=aw4[(b+32u)>>4u];
+    r.s0=aw4[(b+48u+(g/2u)*32u)>>4u]; r.s1=aw4[(b+64u+(g/2u)*32u)>>4u];
+    return r;
+}
+#endif
+
+void main() {
+    uint tid=gl_LocalInvocationID.x, z=gl_WorkGroupID.z;
+    uint n=io[IO_COUNT], keys=io[IO_P0]+io[IO_COUNT];
+    uint M=(p.flags&1u)!=0u ? keys : p.m;
+    uint K=(p.flags&2u)!=0u ? keys : p.k;
+    uint m0=gl_WorkGroupID.x*BM, t0=gl_WorkGroupID.y*BN;
+    if (m0>=M || t0>=n) return; // uniform per workgroup
+    uint batch=p.k_chunk!=0u ? 0u : z;
+    uint k_begin=p.k_chunk!=0u ? z*p.k_chunk : 0u;
+    uint k_end=p.k_chunk!=0u ? min(K,k_begin+p.k_chunk) : K;
+    uint abase=p.a_base+(batch/p.a_group)*p.a_bs;
+    uint xbase=p.x_base+batch*p.x_bs;
+    uint lane=tid%64u, trow=t0+XW*subgroupBroadcastFirst(tid/64u);
+    float total[TM][XW], part[TM][XW];
+    [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<XW;j++) total[i][j]=0.0;
+    // vec4 index of each of the wave's X rows at k = 0 (x_base, x_rs multiples of 4).
+    uint xrow[XW];
+    [[unroll]] for (uint j=0;j<XW;j++) xrow[j]=(xbase+min(trow+j,n-1u)*p.x_rs)/4u;
+#if FORMAT==2 || FORMAT==3 || FORMAT==8 || FORMAT==13
+    // The first tile's block; later tiles are loaded during the previous tile's FMAs.
+    // This thread's row (mm = tid, VPT == BK), clamped like the loader's rb, so the
+    // loads are in range for dead rows too (their values are multiplied by 0).
+    uint pf_rb=abase+min(m0+tid,M-1u)*p.a_rs;
+#if FORMAT==13
+    Raw5 raw5=load_q5k(pf_rb,k_begin);
+#else
+    Raw raw=load_block(pf_rb+(k_begin/32u)*BLOCK_BYTES);
+#endif
+#endif
+    for (uint k0=k_begin;k0<k_end;k0+=BK) {
+        // ---- A tile: BM rows x BK k ----
+#if FORMAT==0
+        [[unroll]] for (uint r=0;r<VPT;r++) {
+            uint e=tid+256u*r;
+#if A_MCONTIG
+            uint mm=e%BM, kk=e/BM;
+#else
+            uint mm=e/BK, kk=e%BK;
+#endif
+            float v=0.0;
+            if (m0+mm<M && k0+kk<k_end) v=uintBitsToFloat(aw[abase+(m0+mm)*p.a_rs+(k0+kk)*p.a_cs]);
+            put_a(kk,mm,v);
+        }
+#else
+        {
+            // VPT consecutive values of one row per thread; (BK/VPT) threads per row.
+            uint mm=tid/(BK/VPT), part_k=(tid%(BK/VPT))*VPT;
+            uint row=m0+mm;
+            bool live=row<M;
+            uint rb=abase+min(row,M-1u)*p.a_rs;
+#if FORMAT==2 || FORMAT==3 || FORMAT==8
+            decode_block(raw, rb+(k0/32u)*BLOCK_BYTES, live, mm);
+#elif FORMAT==13
+            // One thread per row and 32-value group: five aligned 16-byte words (loaded
+            // one tile ahead), then the exact decode (same values as the matvec decoder).
+            uint g=(k0%256u)/32u;
+            uvec4 hdr=raw5.hdr, h0=raw5.h0, h1=raw5.h1, s0=raw5.s0, s1=raw5.s1;
+            float dd=0.0, dm=0.0;
+            if (live) {
+                vec2 globals=unpackHalf2x16(hdr.x);
+                uint sa=hdr.y, sbw=hdr.z, sc=hdr.w;
+                uint shift=(g%4u)*8u;
+                uint scale=(sa>>shift)&63u, minimum=(sbw>>shift)&63u;
+                if (g>=4u) {
+                    scale=((sc>>shift)&15u)|(((sa>>(shift+6u))&3u)<<4u);
+                    minimum=((sc>>(shift+4u))&15u)|(((sbw>>(shift+6u))&3u)<<4u);
+                }
+                dd=globals.x*float(scale); dm=globals.y*float(minimum);
+            }
+            uint qsw[8]=uint[8](s0.x,s0.y,s0.z,s0.w,s1.x,s1.y,s1.z,s1.w);
+            uint qhw[8]=uint[8](h0.x,h0.y,h0.z,h0.w,h1.x,h1.y,h1.z,h1.w);
+            [[unroll]] for (uint w=0;w<8;w++) [[unroll]] for (uint e=0;e<4;e++) {
+                uint q=((qsw[w]>>(8u*e+4u*(g%2u)))&15u)|(((qhw[w]>>(8u*e+g))&1u)<<4u);
+                put_a(w*4u+e,mm,fma(dd,float(q),-dm));
+            }
+#else
+            uint sb=k0/256u, g=(k0%256u)/32u, h=g/4u, gg=g%4u;
+            uint b=rb+sb*210u;
+            float d=live ? half_at(b+208u) : 0.0;
+            [[unroll]] for (uint w=0;w<VPT/4;w++) {
+                uint lane=part_k+w*4u;
+                uint ql=live ? word_at(b+h*64u+(gg%2u)*32u+lane) : 0u;
+                uint qh=live ? word_at(b+128u+h*32u+lane) : 0u;
+                uint sw=live ? word_at(b+192u+h*8u+gg*2u) : 0u; // two signed scales (lanes <16, >=16)
+                [[unroll]] for (uint e=0;e<4;e++) {
+                    uint l=lane+e;
+                    int s=int(((sw>>(8u*(l/16u)))&255u)^128u)-128;
+                    float scale=d*float(s);
+                    uint q=((ql>>(8u*e+4u*(gg/2u)))&15u)|(((qh>>(8u*e+2u*gg))&3u)<<4u);
+                    put_a(l,mm,fma(scale,float(q),-32.0*scale));
+                }
+            }
+#endif
+        }
+#endif
+        barrier();
+#if FORMAT==2 || FORMAT==3 || FORMAT==8
+        if (k0+BK<k_end) raw=load_block(pf_rb+((k0+BK)/32u)*BLOCK_BYTES);
+#elif FORMAT==13
+        if (k0+BK<k_end) raw5=load_q5k(pf_rb,k0+BK);
+#endif
+        [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<XW;j++) part[i][j]=0.0;
+        // Wave-uniform X: 4 consecutive k of each of the wave's rows per kb, the next kb's
+        // loaded before this kb's FMAs. Rows >= n load row n-1 (never stored). Quant K is a
+        // multiple of 32; for F32, a partial final K tile (runtime K) zeroes k >= k_end.
+        // Loads stay in the 32-k block (the last kb reloads itself).
+#if FORMAT==0
+        bool partial=k0+BK>k_end;
+#endif
+#if XW==16
+        // 16 rows: X two k at a time (16 x vec2 live, plus the next pair), which keeps
+        // the scalar registers holding X within the SGPR budget.
+        vec2 xv[XW];
+        [[unroll]] for (uint j=0;j<XW;j++) xv[j]=xin2[xrow[j]*2u+k0/2u];
+        [[dont_unroll]] for (uint kp=0;kp<BK/2;kp++) {
+            vec2 xn[XW];
+            uint np=min(kp+1u,BK/2u-1u);
+            [[unroll]] for (uint j=0;j<XW;j++) xn[j]=xin2[xrow[j]*2u+k0/2u+np];
+#if FORMAT==0
+            if (partial) {
+                uint kq0=k0+kp*2u;
+                [[unroll]] for (uint j=0;j<XW;j++)
+                    xv[j]=vec2(kq0<k_end ? xv[j].x : 0.0, kq0+1u<k_end ? xv[j].y : 0.0);
+            }
+#endif
+            [[unroll]] for (uint kq=0;kq<2;kq++) {
+                vec4 a=As[kp*2u+kq][lane];
+                [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<XW;j++)
+                    part[i][j]=fma(a[i],xv[j][kq],part[i][j]);
+            }
+            [[unroll]] for (uint j=0;j<XW;j++) xv[j]=xn[j];
+        }
+#else
+        vec4 xv[XW];
+        [[unroll]] for (uint j=0;j<XW;j++) xv[j]=xin4[xrow[j]+k0/4u];
+        [[dont_unroll]] for (uint kb=0;kb<BK/4;kb++) {
+            vec4 xn[XW];
+            uint nb=min(kb+1u,BK/4u-1u);
+            [[unroll]] for (uint j=0;j<XW;j++) xn[j]=xin4[xrow[j]+k0/4u+nb];
+#if FORMAT==0
+            if (partial) {
+                uint kq0=k0+kb*4u;
+                [[unroll]] for (uint j=0;j<XW;j++)
+                    xv[j]=vec4(kq0<k_end ? xv[j].x : 0.0, kq0+1u<k_end ? xv[j].y : 0.0,
+                               kq0+2u<k_end ? xv[j].z : 0.0, kq0+3u<k_end ? xv[j].w : 0.0);
+            }
+#endif
+            [[unroll]] for (uint kq=0;kq<4;kq++) {
+                vec4 a=As[kb*4u+kq][lane];
+                [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<XW;j++)
+                    part[i][j]=fma(a[i],xv[j][kq],part[i][j]);
+            }
+            [[unroll]] for (uint j=0;j<XW;j++) xv[j]=xn[j];
+        }
+#endif
+        [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<XW;j++) total[i][j]+=part[i][j];
+        barrier();
+    }
+    uint ybase=p.y_base+z*p.y_bs; // batch or split index
+    [[unroll]] for (uint j=0;j<XW;j++) {
+        uint t=trow+j;
+        if (t>=n) continue;
+        [[unroll]] for (uint i=0;i<TM;i++) {
+            uint mm=m0+TM*lane+i;
+            if (mm<M) act[ybase+t*p.y_rs+mm]=total[i][j];
+        }
+    }
+}

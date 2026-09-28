@@ -1,0 +1,161 @@
+"""zerv: every build and test step runs through Bazel (docs/development.md, "Bazel")."""
+
+module(name = "zerv", version = "0.0.0")
+
+# Zig: rules_zig fetches the pinned SDK (0.16.0, sha256 70e49664..., the same tarball
+# .tools/ held) and compiles each binary at its use site from the declared modules.
+bazel_dep(name = "rules_zig", version = "0.16.0")
+
+zig = use_extension("@rules_zig//zig:extensions.bzl", "zig")
+zig.toolchain(default = True, zig_version = "0.16.0")
+use_repo(zig, "zig_toolchains")
+
+bazel_dep(name = "platforms", version = "1.1.0")
+
+# This host's glibc first (bazel/BUILD.bazel), then rules_zig's targets.
+register_toolchains("//bazel:x86_64-linux-gnu.2.43_toolchain")
+
+register_toolchains("@rules_zig//zig/target:all")
+
+register_toolchains("@zig_toolchains//:all")
+
+# C/C++, for development tools only (docs/specs/hermetic-build.md): clang from a pinned Zig
+# SDK with its bundled libc/libc++ headers. The host's C/C++ toolchain is never configured
+# (.bazelrc: BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN). Nothing zerv ships links C/C++.
+bazel_dep(name = "rules_cc", version = "0.2.25")
+bazel_dep(name = "hermetic_cc_toolchain", version = "4.3.0")
+
+cc_toolchains = use_extension("@hermetic_cc_toolchain//toolchain:ext.bzl", "toolchains")
+use_repo(cc_toolchains, "zig_sdk")
+
+register_toolchains("@zig_sdk//toolchain:linux_amd64_gnu.2.28")
+
+bazel_dep(name = "bazel_skylib", version = "1.9.2")
+
+# SHA-256 (openssl/sha.h) for the reference C programs (tests/reference), test oracles only.
+bazel_dep(name = "boringssl", version = "0.20260813.0")
+
+# Meson and Ninja build the test-only GPU runtime (Mesa RADV, docs/specs/hermetic-build.md).
+bazel_dep(name = "meson", version = "1.12.1")
+bazel_dep(name = "ninja", version = "1.13.2")
+bazel_dep(name = "rules_shell", version = "0.8.0")
+
+# Vulkan API registry and headers (the link stub //src/gpu:vulkan, reference programs), and the
+# shader compiler and validator, built from source at the revisions of the host packages
+# that produced the committed SPIR-V (shaderc 2026.3 with glslang and SPIRV-Tools of
+# vulkan-sdk-1.4.357.0); bazel/shaders.bzl runs them. SPIRV-Headers and SPIRV-Tools carry
+# upstream BUILD files; glslang and shaderc use bazel/third_party/*.BUILD.
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "vulkan_headers",
+    build_file = "//bazel/third_party:vulkan_headers.BUILD",
+    sha256 = "e87dce08116151f6b6d7de6b6faf41498e87e6cf848ff16fa3bd5402190ad4a3",
+    strip_prefix = "Vulkan-Headers-vulkan-sdk-1.4.357.0",
+    urls = ["https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/vulkan-sdk-1.4.357.0.tar.gz"],
+)
+
+# External test oracles (never linked into zerv): ggml and llama.cpp at the revisions of the
+# host packages that produced the oracle fixtures, built from source (bazel/third_party).
+http_archive(
+    name = "ggml",
+    build_file = "//bazel/third_party:ggml.BUILD",
+    sha256 = "77e3579b4f2a7059db03821899f78843f80756c831359805ab0db1e8c039fe34",
+    strip_prefix = "ggml-456172ec733a135778adcd32d00e576a58232e45",
+    urls = ["https://github.com/ggml-org/ggml/archive/456172ec733a135778adcd32d00e576a58232e45.tar.gz"],
+)
+
+http_archive(
+    name = "llama_cpp",
+    build_file = "//bazel/third_party:llama_cpp.BUILD",
+    sha256 = "03fb04316eb32a7b7347004a79a8dd60531c02f5a064d853fed3b53828951723",
+    strip_prefix = "llama.cpp-b29c606e28a01b1bc8c1351026a0fa6e616bf6c4",
+    urls = ["https://github.com/ggml-org/llama.cpp/archive/b29c606e28a01b1bc8c1351026a0fa6e616bf6c4.tar.gz"],
+)
+
+# The test-only GPU runtime (docs/specs/hermetic-build.md, phase 4): Mesa RADV and its libdrm.
+http_archive(
+    name = "mesa",
+    build_file = "//bazel/third_party:mesa.BUILD",
+    # Applied by Bazel's own patcher (no host tool); the patch says why.
+    patch_strip = 1,
+    patches = ["//bazel/third_party:mesa-addrlib-no-x86-simd.patch"],
+    sha256 = "1628058a8d2c0615975de5a15ab7bbb9638c50000b5bed9456ff423ea034a81f",
+    strip_prefix = "mesa-26.2.3",
+    urls = ["https://archive.mesa3d.org/mesa-26.2.3.tar.xz"],
+)
+
+http_archive(
+    name = "vulkan_loader",
+    build_file = "//bazel/third_party:vulkan_loader.BUILD",
+    sha256 = "54f2537df22313768da0317dda2abdaaab7711b4081c48c869a79db343d0ae70",
+    strip_prefix = "Vulkan-Loader-vulkan-sdk-1.4.357.0",
+    urls = ["https://github.com/KhronosGroup/Vulkan-Loader/archive/refs/tags/vulkan-sdk-1.4.357.0.tar.gz"],
+)
+
+# vulkaninfo (Vulkan-Tools, the SDK of the headers): what benchmark manifests record about the
+# Vulkan device and driver they ran on (a development tool, never part of zerv).
+http_archive(
+    name = "vulkan_tools",
+    build_file = "//bazel/third_party:vulkan_tools.BUILD",
+    sha256 = "6c94b86c850808aba316d999dd6742133d6197ae2135248d3a8aed9b32ebd1f7",
+    strip_prefix = "Vulkan-Tools-vulkan-sdk-1.4.357.0",
+    urls = ["https://github.com/KhronosGroup/Vulkan-Tools/archive/refs/tags/vulkan-sdk-1.4.357.0.tar.gz"],
+)
+
+http_archive(
+    name = "libdrm",
+    build_file = "//bazel/third_party:libdrm.BUILD",
+    sha256 = "fc68f9d0ba2ea63c9432a299e14fea09fad7a8a66e8039fcd7802ca59f77b4f5",
+    strip_prefix = "libdrm-2.4.133",
+    urls = ["https://dri.freedesktop.org/libdrm/libdrm-2.4.133.tar.xz"],
+)
+
+http_archive(
+    name = "spirv_headers",
+    sha256 = "232899f1ad4104fb5bc377b94596c7621575eee62ad9a9e8f929b63a7dd8a7ad",
+    strip_prefix = "SPIRV-Headers-29981f65241605e08b0ede4cfeb999fe3b723c6a",
+    urls = ["https://github.com/KhronosGroup/SPIRV-Headers/archive/29981f65241605e08b0ede4cfeb999fe3b723c6a.tar.gz"],
+)
+
+http_archive(
+    name = "spirv_tools",
+    sha256 = "5cd1a935296c324e7bfa8f0e4c223742ac490d45d6af0577fa3c2cf7e1a7dd22",
+    # Its BUILD.bazel uses the C/C++ rules without load() (removed from Bazel 9's globals);
+    # applied by Bazel's own patcher (no host tool).
+    patch_strip = 1,
+    patches = ["//bazel/third_party:spirv-tools-rules-cc-load.patch"],
+    strip_prefix = "SPIRV-Tools-9a49b0883b9b635689a85b5647dbfcb223268151",
+    urls = ["https://github.com/KhronosGroup/SPIRV-Tools/archive/9a49b0883b9b635689a85b5647dbfcb223268151.tar.gz"],
+)
+
+http_archive(
+    name = "glslang",
+    build_file = "//bazel/third_party:glslang.BUILD",
+    sha256 = "c167b2474af06cbab93abae8249efaf88fb79a09f30488e2a24d399e4258ce7a",
+    strip_prefix = "glslang-168d452a4f460d24b588fed08477a81c44ee27a1",
+    urls = ["https://github.com/KhronosGroup/glslang/archive/168d452a4f460d24b588fed08477a81c44ee27a1.tar.gz"],
+)
+
+http_archive(
+    name = "shaderc",
+    build_file = "//bazel/third_party:shaderc.BUILD",
+    sha256 = "ee493ccf1b3038b4ef2fe024664c5eb2dc4bcc1f6b05b33e3909de0e19c81024",
+    strip_prefix = "shaderc-2026.3",
+    urls = ["https://github.com/google/shaderc/archive/v2026.3.tar.gz"],
+)
+
+# Python: a hermetic interpreter and hash-locked packages (requirements_lock.txt) for the
+# Python tests and tools.
+bazel_dep(name = "rules_python", version = "2.3.4")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(is_default = True, python_version = "3.14")
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    hub_name = "zerv_pypi",
+    python_version = "3.14",
+    requirements_lock = "//:requirements_lock.txt",
+)
+use_repo(pip, "zerv_pypi")

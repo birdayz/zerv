@@ -1,0 +1,105 @@
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_python//python:py_library.bzl", "py_library")
+load("@rules_zig//zig:defs.bzl", "zig_binary")
+load("//bazel:defs.bzl", "zerv_vk_binary")
+
+# Executables are visible to the tests (//tests:test_linkage checks how they link).
+package(default_visibility = ["//tests:__pkg__"])
+
+zerv_vk_binary(
+    name = "zerv-model-capture",
+    main = "model_capture.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zig_binary(
+    name = "zerv-inspect",
+    main = "inspect.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+exports_files(glob(["*.py"], exclude = ["check_generated.py"]), visibility = ["//tests:__pkg__"])
+
+# The generated-files check (bazel/shaders.bzl), used by every package with generated files.
+exports_files(["check_generated.py"], visibility = ["//visibility:public"])
+
+# The SPIR-V compile scripts (bazel/shaders.bzl runs them), each with its GLSL sources.
+py_library(
+    name = "compile_matvec_lib",
+    srcs = ["compile_matvec.py"],
+    imports = ["."],
+    data = ["//src/matvec:glsl"],
+)
+
+# The pinned interpreter with every locked package, for running repository scripts: tools/py.
+py_binary(
+    name = "py",
+    srcs = ["py.py"],
+    deps = [
+        "@zerv_pypi//jinja2",
+        "@zerv_pypi//numpy",
+        "@zerv_pypi//regex",
+        "@zerv_pypi//tokenizers",
+    ],
+)
+
+py_binary(
+    name = "generate_vulkan_bindings",
+    srcs = ["generate_vulkan_bindings.py"],
+    visibility = ["//src/gpu:__pkg__"],
+    deps = ["//tests:vulkan_api"],
+)
+
+py_binary(
+    name = "vulkan_stub",
+    srcs = ["vulkan_stub.py"],
+    visibility = ["//src/gpu:__pkg__"],
+)
+
+# `bazel run //tools:compile_matvec -- --output-dir DIR` compiles with the source-built tools.
+SHADER_TOOL_ARGS = [
+    "--glslc",
+    "$(rootpath @shaderc//:glslc)",
+    "--spirv-val",
+    "$(rootpath @spirv_tools//:spirv-val)",
+]
+
+SHADER_TOOLS = [
+    "@shaderc//:glslc",
+    "@spirv_tools//:spirv-val",
+]
+
+py_binary(
+    name = "compile_matvec",
+    srcs = ["compile_matvec.py"],
+    args = SHADER_TOOL_ARGS,
+    data = SHADER_TOOLS,
+    deps = [":compile_matvec_lib"],
+    visibility = ["//src:__subpackages__"],
+)
+
+py_binary(
+    name = "compile_model",
+    srcs = ["compile_model.py"],
+    args = SHADER_TOOL_ARGS,
+    data = ["//src/model:glsl"] + SHADER_TOOLS,
+    deps = [":compile_matvec_lib"],
+    visibility = ["//src:__subpackages__"],
+)
+
+# Every Python script (//tests:test_build_lists checks how they build).
+filegroup(
+    name = "py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tests:__pkg__"],
+)
+
+# Every Zig source of this package (the format check, //:zig_fmt).
+filegroup(
+    name = "zig_srcs",
+    srcs = glob(["*.zig"]),
+    visibility = ["//:__pkg__"],
+)
+
+# Read by //tests:test_build_lists.
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])

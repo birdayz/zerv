@@ -1,0 +1,20 @@
+load("@rules_zig//zig:defs.bzl", "zig_library")
+
+zig_library(
+    name = "text",
+    main = "root.zig",
+    srcs = glob(["*.zig"], exclude = ["root.zig"]),
+    extra_srcs = ["data/nfc9.bin"],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(glob(["data/*"]), visibility = ["//tests:__pkg__"])
+
+# Every Zig source of this package (the format check, //:zig_fmt).
+filegroup(
+    name = "zig_srcs",
+    srcs = glob(["*.zig"]),
+    visibility = ["//:__pkg__", "//tests:__pkg__"],
+)
+
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])

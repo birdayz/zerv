@@ -85,8 +85,9 @@ round-robin at scheduler boundaries (not inside a packed prefill chunk). Each po
 performs at most one chunk GPU copy/hash plus bounded completion/submission work.
 Decoding and other prompt work remain eligible. An idle scheduler uses a bounded
 100-us completion poll timeout; no blocking disk wait or busy spin. Useful progress
-can trigger an immediate next iteration. GPU copies are bounded synchronous fence
-waits; this does not claim asynchronous GPU copy/compute overlap.
+can trigger an immediate next iteration. The original GPU adapter used bounded
+synchronous fence waits; implemented amendment 18d.7b below replaces these with
+submit/poll/drain. Neither version demonstrates hardware copy/compute overlap.
 
 Stop/cancel drains pending operations, aborting a packed chunk first if needed during
 shutdown. A disk restore that cannot reserve its target pages becomes a cold miss;
@@ -232,3 +233,45 @@ pressure, GPU→RAM and RAM→disk threshold transitions, slot-pressure-only evi
 no rewrite of clean disk-backed entries, saturated-queue forward progress, retained
 live state, corruption/cancel/drain and exact 80k state/logits. Repeat the cold/reuse
 serving comparison; asynchronous transport alone does not establish a latency win.
+
+## Asynchronous device quanta (18d.7b; specified before implementation)
+
+Execution amendment to the baseline; **not yet pressure-driven admission**.
+[Plan](../design/async-tiering.md), [resolved lifecycle research](../research/2026-09-28-async-transfers.md).
+Implemented and verified ([report](../bench/2026-09-28-async-archive.md)).
+Supersedes the synchronous adapter callback/fence-wait paragraphs above; stream
+format, precision, immutable catalog and error policy stay.
+
+Device interface: `start(ctx, slot, offset, bytes, importing) !void` borrows exactly
+that span until `poll(ctx) !bool` reports true or a terminal error. Only one device
+operation outstanding per archive. False means pending. Errors may return only
+when no device access remains; uncertain DMA ownership fails-stop in the adapter.
+`start` must not wait for completion. CPU reference adapters may finish immediately,
+but still acknowledge through poll. No default synchronous callback in production.
+
+An acquired write ticket is GPU-owned until D2H completion, then hashed/submitted
+and disk-owned until completion. A completed read ticket is verified, then GPU-owned
+until H2D completion. Pending jobs retain source/target slots, tokens and mappings
+through both phases. Store.release is never called on a GPU-owned ticket even
+though the store itself sees held/done. Padding remains zero, SHA256 covers full
+chunks, only valid final bytes are transferred. Polls perform bounded work and do
+not wait on device or disk. At most one device start per call; no steady allocations.
+
+Cancellation/failure stops acquisition and drains both kinds of leases. No done,
+error, record publication, slot release or reuse until this job has zero leases.
+A read with partial upload is reset/released only after drain. An owned pending
+archive command alone does not make ModelBackend fatal; lost device or unaccounted
+pending commands still do. Disk owns a borrowed std.Io whose lifetime covers its
+creation through destruction; elapsed monotonic GPU timeout uses the existing model
+limit. On deadline, check completion first; still-pending DMA fails-stop, not an
+unsafe cold fallback. No new process/thread/queue or unbounded resource collection.
+
+Acceptance: unchanged independent POSIX/hash byte fixture; deterministic delayed
+D2H and H2D cancellation, zero write-before-capture, no release-before-upload,
+multiple slots making disk progress, start/completion faults and slot retry;
+Debug/ReleaseFast and allocator-failure/no-steady-allocation tests. Production
+257/80k exact state and continuation, cancellation and last-chunk corruption;
+independent FP64/libllama gate and all GPU/spill/host gates. Repeat component and
+three-process serving measurements with tuned llama-server. Nonblocking submission
+is not a claim of hardware overlap or faster serving. Earlier eager persistence
+cost remains until the separate pressure-policy increment passes its gates.

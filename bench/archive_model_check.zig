@@ -5,6 +5,7 @@ const zerv = @import("zerv");
 const gpu = zerv.gpu;
 const model = zerv.model;
 const quantum = 1 << 20;
+var max_poll_ns: i96 = 0;
 pub fn main(init: std.process.Init) !void {
     const a = init.gpa;
     const args = try init.minimal.args.toSlice(init.arena.allocator());
@@ -28,7 +29,7 @@ pub fn main(init: std.process.Init) !void {
     if (disk_mode) {
         try backend.initCache(a, .radix, 128, false);
         const alignment = try std.fmt.parseInt(u32, args[4], 10);
-        try backend.initDisk(a, .{ .directory = args[3], .bytes = std.mem.alignForward(u64, try m.archiveBytes(n), quantum) * 2, .records = 4, .alignment = if (alignment == 0) null else .{ .memory = alignment, .offset = alignment } });
+        try backend.initDisk(a, init.io, .{ .directory = args[3], .bytes = std.mem.alignForward(u64, try m.archiveBytes(n), quantum) * 2, .records = 4, .alignment = if (alignment == 0) null else .{ .memory = alignment, .offset = alignment } });
     }
     const mem = try a.alignedAlloc(u8, .fromByteUnits(65536), quantum);
     defer a.free(mem);
@@ -40,6 +41,17 @@ pub fn main(init: std.process.Init) !void {
     const tokens = try a.alloc(u32, n);
     defer a.free(tokens);
     for (tokens, 0..) |*t, i| t.* = @intCast((i * 7919 + 13) % 150000);
+    // Independent slot's solo logits, later replayed before acknowledging archive DMA.
+    const other_tokens = [_]u32{ 17, 29 };
+    const other_logits = try a.alloc(f32, other_tokens.len * model.config.vocab);
+    defer a.free(other_logits);
+    if (disk_mode) {
+        try backend.reset(1);
+        try m.ensurePages(1, other_tokens.len);
+        for (other_tokens, 0..) |token, i| @memcpy(other_logits[i * model.config.vocab ..][0..model.config.vocab], try m.step(token));
+        try backend.reset(1);
+        try m.select(0);
+    }
     try m.ensurePages(0, n + 4);
     const start = std.Io.Clock.awake.now(init.io);
     _ = try m.prefill(tokens);
@@ -62,6 +74,19 @@ pub fn main(init: std.process.Init) !void {
     if (disk_mode) {
         const write_start = std.Io.Clock.awake.now(init.io);
         try std.testing.expectError(error.PendingIo, backend.checkpoint(0, tokens));
+        _ = try backend.pollCache(0, false); // submit capture, deliberately do not acknowledge
+        try std.testing.expectEqual(gpu.Commands.State.pending, backend.disk_archive.?.commands.state);
+        // An unrelated rejected operation must not misclassify that owned transfer as fatal.
+        try std.testing.expectError(error.InvalidSlot, backend.reset(m.state_layout.slots));
+        try std.testing.expect(!backend.fatal.load(.acquire));
+        try backend.reset(1);
+        try m.ensurePages(1, other_tokens.len);
+        for (other_tokens, 0..) |token, i| {
+            const got = try m.step(token);
+            if (!std.mem.eql(u8, std.mem.sliceAsBytes(got), std.mem.sliceAsBytes(other_logits[i * model.config.vocab ..][0..model.config.vocab]))) return error.WrongIndependentLogits;
+        }
+        try backend.reset(1);
+        try m.select(0);
         _ = try drain(&backend, init.io, 0, false);
         disk_write_ns = write_start.durationTo(std.Io.Clock.awake.now(init.io)).nanoseconds;
     }
@@ -139,7 +164,12 @@ pub fn main(init: std.process.Init) !void {
         // Exercise production begin, cancellation drain, successful retry, and cold
         // fallback after physical corruption, not only the owner copy callback.
         try std.testing.expectError(error.PendingIo, backend.begin(1, prompt));
-        _ = try backend.pollCache(1, false); // one submitted read
+        // Cancel after an actual GPU upload is submitted, not only a disk read.
+        while (d.catalog.device_pending == null) {
+            _ = try backend.pollCache(1, false);
+            try std.Io.sleep(init.io, .fromMicroseconds(100), .awake);
+        }
+        try std.testing.expectEqual(gpu.Commands.State.pending, d.commands.state);
         try std.testing.expectError(error.Canceled, drain(&backend, init.io, 1, true));
         try std.testing.expectEqual(@as(u32, 0), m.slotPosition(1));
         try std.testing.expectError(error.PendingIo, backend.begin(1, prompt));
@@ -163,12 +193,15 @@ pub fn main(init: std.process.Init) !void {
         try std.testing.expectEqual(@as(u32, 0), m.mappedPages(1));
         try std.testing.expectEqual(null, d.catalog.lookup(prompt));
     }
-    std.debug.print("{{\"prefix\":{d},\"state_bytes\":{d},\"exact_state\":true,\"exact_vocab_rows\":4,\"elapsed_ns\":{d},\"capture_ns\":{d},\"restore_ns\":{d},\"disk_write_ns\":{d},\"disk\":{}}}\n", .{ n, bytes, start.durationTo(std.Io.Clock.awake.now(init.io)).nanoseconds, capture_ns, restore_ns, disk_write_ns, disk_mode });
+    const stats = if (backend.disk_archive) |d| d.catalog.stats else zerv.session.archive.Stats{};
+    std.debug.print("{{\"prefix\":{d},\"state_bytes\":{d},\"exact_state\":true,\"exact_vocab_rows\":4,\"elapsed_ns\":{d},\"capture_ns\":{d},\"restore_ns\":{d},\"disk_write_ns\":{d},\"disk\":{},\"independent_rows\":{d},\"device_starts\":{d},\"device_pending_polls\":{d},\"max_poll_ns\":{d}}}\n", .{ n, bytes, start.durationTo(std.Io.Clock.awake.now(init.io)).nanoseconds, capture_ns, restore_ns, disk_write_ns, disk_mode, if (disk_mode) @as(u32, 2) else 0, stats.device_starts, stats.device_pending_polls, max_poll_ns });
 }
 
 fn drain(b: *zerv.serve.ModelBackend, io: std.Io, slot: u32, cancel: bool) !u32 {
     while (true) {
+        const start = std.Io.Clock.awake.now(io);
         const p = try b.pollCache(slot, cancel);
+        max_poll_ns = @max(max_poll_ns, start.durationTo(std.Io.Clock.awake.now(io)).nanoseconds);
         if (p.done) return p.position;
         if (!p.progressed) try std.Io.sleep(io, .fromMicroseconds(100), .awake);
     }

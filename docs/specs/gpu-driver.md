@@ -169,3 +169,33 @@ Primary semantics: Vulkan-Docs v1.4.357, `VkImportMemoryHostPointerInfoEXT`,
 `vkGetMemoryHostPointerPropertiesEXT` (VUIDs 01747–01755), allocation-size VUID 01745,
 and extension issues 2–6. Source provenance: research/nvme note. This remains within the
 existing OS/GPU-driver boundary; no new runtime library.
+
+## Asynchronous completion ownership (18d.7a)
+
+2026-09-28 pre-implementation amendment; supersedes the earlier device-wide host
+mapping prohibition, not the barriers or stable-owner contract.
+[Resolved research](../research/2026-09-28-async-transfers.md),
+[ordered integration plan](../design/async-tiering.md).
+
+`Commands.poll() Error!bool` is a zero-time fence wait: false preserves pending
+state and every resource lease; true acknowledges completion exactly once and
+returns the command to executable. Other errors propagate using the existing wait
+contract (device loss is terminal; uncertain ownership is not completion).
+Polling an unsubmitted/already acknowledged command is InvalidState. `run` remains
+submit + bounded wait for synchronous callers.
+
+`Buffer.pending_uses` counts outstanding submitted references, including kernel
+bindings. Copy/dispatch duplicates may contribute multiple balanced uses. Counters
+are bounded by command/binding limits, externally serialized, allocation-free.
+Increment only after successful submission, decrement on acknowledged completion
+or terminal lost-device cleanup; never on timeout. `mapped` rejects pending uses
+of **that buffer**, not unrelated device commands. Returned spans cannot be used
+across a conflicting submission. Recorded references still prevent destruction
+until reset/deinit even after completion. Device.pending still counts commands.
+
+Acceptance before advancing: native-independent byte/affine goldens, two pending
+owners of one allocation and unrelated host access, both acknowledgment orders,
+replay, kernel-only bindings, double-poll and pending reset/destroy rejection;
+`bazel test //...`, both GPU modes/spill gate and host GPU gate. Run the existing
+matched native/C driver benchmark (fixed sizes, warmup, seven trials) to quantify
+counter overhead; this is a component change, not a serving speedup.

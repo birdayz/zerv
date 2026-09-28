@@ -1,0 +1,18 @@
+# Research data read by the tests of the economics tools (tests/test_*_economics.py).
+
+filegroup(
+    name = "bigger_models",
+    srcs = glob(["research/2026-09-26-bigger-models/**"]),
+    visibility = ["//tests:__pkg__"],
+)
+
+filegroup(
+    name = "rented_gpu_economics",
+    srcs = glob(["research/2026-09-26-rented-gpu-economics/**"]),
+    visibility = ["//tests:__pkg__"],
+)
+
+exports_files(["research/2026-09-26-token-economics/inputs.json"], visibility = ["//tests:__pkg__"])
+
+# Read by //tests:test_build_lists.
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])

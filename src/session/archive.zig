@@ -7,9 +7,11 @@ const none = std.math.maxInt(u32);
 
 pub const Device = struct {
     ctx: *anyopaque,
-    /// Export/import precisely bytes.len logical bytes at offset; synchronous completion.
-    /// On uncertain GPU ownership the adapter must fail-stop, not return a reusable span.
-    copy: *const fn (*anyopaque, slot: u32, offset: u64, bytes: []u8, importing: bool) anyerror!void,
+    /// Submit precisely bytes.len logical bytes; borrow the span until poll acknowledges.
+    /// One operation at a time. Errors must leave no device access; otherwise fail-stop.
+    start: *const fn (*anyopaque, slot: u32, offset: u64, bytes: []u8, importing: bool) anyerror!void,
+    /// Nonblocking: false retains ownership; true or a terminal error releases it.
+    poll: *const fn (*anyopaque) anyerror!bool,
 };
 pub const Options = struct { records: u32, context: u32, slots: u32, max_bytes: u64 };
 pub const Stats = struct {
@@ -21,6 +23,9 @@ pub const Stats = struct {
     skips: u64 = 0,
     failures: u64 = 0,
     cancellations: u64 = 0,
+    device_starts: u64 = 0,
+    device_polls: u64 = 0,
+    device_pending_polls: u64 = 0,
 };
 pub const Entry = struct {
     phase: enum { free, writing, ready, bad } = .free,
@@ -53,6 +58,8 @@ pub const Archive = struct {
     owners: []u32,
     jobs: []Job,
     pending: []?Pending,
+    /// A held (capture) or disk-done (upload) ticket still borrowed by the device.
+    device_pending: ?Pending = null,
     free_chunks: u32,
     tick: u64 = 0,
     stats: Stats = .{},
@@ -90,6 +97,7 @@ pub const Archive = struct {
     }
     pub fn deinit(self: *Archive) !void {
         for (self.jobs) |j| if (j.active) return error.Busy;
+        if (self.device_pending != null) return error.Busy;
         for (self.pending) |p| if (p != null) return error.Busy;
         const a = self.allocator;
         a.free(self.entries);
@@ -204,8 +212,27 @@ pub const Archive = struct {
         if (j.failure == null) j.failure = err;
     }
 
-    /// At most one completed upload or one capture/hash quantum per call. Never waits on disk.
-    /// An error is returned only after every submitted request of this job has drained.
+    fn release(self: *Archive, held: Pending) !void {
+        try self.store.release(held.ticket);
+        self.jobs[held.slot].pending -= 1;
+    }
+    fn submitDisk(self: *Archive, held: Pending) !void {
+        const j = &self.jobs[held.slot];
+        try self.store.submit(held.ticket, if (j.writing) .write else .read, @as(u64, self.blocks[self.index(j.record, held.chunk)]) * self.store.slot_bytes, self.store.slot_bytes);
+        self.pending[held.ticket.slot] = held;
+    }
+    fn startDevice(self: *Archive, dev: Device, held: Pending) !void {
+        const j = &self.jobs[held.slot];
+        const e = &self.entries[j.record];
+        const bytes = try self.store.buffer(held.ticket);
+        const offset = @as(u64, held.chunk) * self.store.slot_bytes;
+        try dev.start(dev.ctx, held.slot, offset, bytes[0..@intCast(@min(bytes.len, e.bytes - offset))], !j.writing);
+        self.device_pending = held;
+        self.stats.device_starts += 1;
+    }
+
+    /// At most one device poll/start, one disk completion and one acquisition per call.
+    /// Never waits. An error is returned only after this job's device AND disk leases drain.
     pub fn advance(self: *Archive, dev: Device, slot: u32, cancel: bool) !Progress {
         if (slot >= self.jobs.len or !self.jobs[slot].active) return error.InvalidSlot;
         const j = &self.jobs[slot];
@@ -213,9 +240,29 @@ pub const Archive = struct {
         if (cancel) fail(j, error.Canceled);
         if (e.phase == .bad) fail(j, error.CorruptRecord);
         var progress = false;
+        if (self.device_pending) |held| if (held.slot == slot) {
+            self.stats.device_polls += 1;
+            const done = dev.poll(dev.ctx) catch |err| done: {
+                fail(j, err); // callback contract: terminal, no remaining access
+                break :done true;
+            };
+            if (done) {
+                self.device_pending = null;
+                if (j.writing and j.failure == null) {
+                    const bytes = try self.store.buffer(held.ticket);
+                    Sha256.hash(bytes, &self.digests[self.index(j.record, held.chunk)], .{});
+                    self.submitDisk(held) catch |err| fail(j, err);
+                }
+                if (!j.writing or j.failure != null) try self.release(held);
+                progress = true;
+            } else self.stats.device_pending_polls += 1;
+        };
         for (self.pending) |*p| {
             const held = p.* orelse continue;
             if (held.slot != slot) continue;
+            // Leave completed reads on disk-owned tickets until an upload can start.
+            // Canceled jobs can drain without waiting for another job's device quantum.
+            if (!j.writing and j.failure == null and self.device_pending != null) continue;
             const c = (try self.store.poll(held.ticket)) orelse continue;
             if (!c.exact()) fail(j, error.DiskIoFailed) else {
                 if (j.writing) self.stats.write_bytes += self.store.slot_bytes else self.stats.read_bytes += self.store.slot_bytes;
@@ -225,32 +272,24 @@ pub const Archive = struct {
                     Sha256.hash(bytes, &digest, .{});
                     if (!std.mem.eql(u8, &digest, &self.digests[self.index(j.record, held.chunk)])) {
                         fail(j, error.CorruptRecord);
-                    } else {
-                        const offset = @as(u64, held.chunk) * self.store.slot_bytes;
-                        dev.copy(dev.ctx, slot, offset, bytes[0..@intCast(@min(bytes.len, e.bytes - offset))], true) catch |err| fail(j, err);
-                    }
+                    } else self.startDevice(dev, held) catch |err| fail(j, err);
                 }
             }
-            try self.store.release(held.ticket);
             p.* = null;
-            j.pending -= 1;
+            if (j.writing or j.failure != null) try self.release(held);
             progress = true;
             break;
         }
         if (!j.writing and j.failure != null and j.failure.? != error.Canceled) e.phase = .bad;
-        if (j.failure == null and j.next < e.chunks) {
+        if (j.failure == null and j.next < e.chunks and (!j.writing or self.device_pending == null)) {
             const ticket: ?storage.Ticket = self.store.acquire() catch |err| if (err == error.QueueFull) null else return err;
             if (ticket) |t| {
-                const bytes = try self.store.buffer(t);
+                const held: Pending = .{ .ticket = t, .slot = slot, .chunk = j.next };
                 if (j.writing) {
-                    @memset(bytes, 0);
-                    const offset = @as(u64, j.next) * self.store.slot_bytes;
-                    dev.copy(dev.ctx, slot, offset, bytes[0..@intCast(@min(bytes.len, e.bytes - offset))], false) catch |err| fail(j, err);
-                    if (j.failure == null) Sha256.hash(bytes, &self.digests[self.index(j.record, j.next)], .{});
-                }
-                if (j.failure == null) self.store.submit(t, if (j.writing) .write else .read, @as(u64, self.blocks[self.index(j.record, j.next)]) * self.store.slot_bytes, bytes.len) catch |err| fail(j, err);
+                    @memset(try self.store.buffer(t), 0);
+                    self.startDevice(dev, held) catch |err| fail(j, err);
+                } else self.submitDisk(held) catch |err| fail(j, err);
                 if (j.failure != null) try self.store.release(t) else {
-                    self.pending[t.slot] = .{ .ticket = t, .slot = slot, .chunk = j.next };
                     j.pending += 1;
                     j.next += 1;
                 }

@@ -187,9 +187,41 @@ is a lifetime protocol; the engine cannot recycle pages still being read by DMA.
 Its paper does not establish our GPU/CPU/device-error contract, which needs our
 own tests.
 
+## Baseline zerv GPU↔RAM synchronization (pre-18d.7 source inspection)
+
+Historical finding before A/B below; snapshot/page transfers still have this
+behavior, but production archive quanta no longer immediately wait.
+Follow-up user question: are GPU/RAM transfers asynchronous? **Not at the model
+adapter boundary in the inspected baseline.** `gpu.Commands.submit` submits without waiting, but
+`Commands.run` calls `submit` then `wait` (`vkWaitForFences`). Model `copyPages`,
+`snapshotCopy` and `archiveCopy` call `run`; demotion/promotion commit ownership
+after that wait. `gpu.Device` creates one compute-capable queue. Disk transport
+is asynchronous, but each archive GPU copy quantum synchronously waits for its
+fence. No copy/compute overlap is demonstrated by that implementation.
+
+Write-through/write-back selects **when to copy**; synchronous/asynchronous selects
+**how dependencies and completion are handled**. A nonblocking submission still
+requires fences/events before consuming destinations or reusing sources. Independent
+requests may progress only if the engine schedules them and the queue dependencies
+allow it; changing the API call alone is not a demonstrated overlap optimization.
+
+For immutable cached KV, leases can protect a pending source. Recurrent state is
+mutated by the next token: either delay that mutation until the copy finishes or
+first freeze the state in a separate bounded device snapshot and offload that.
+The latter consumes extra VRAM and a device copy; it is a proposal, not free overlap.
+Restores must complete before the dependent model layer/request reads the data.
+The target is to avoid unnecessary host/global waits, not to remove correctness
+synchronization. No runtime changes made for this source inspection.
+
+Subsequent implementation: [A/B report](../bench/2026-09-28-async-archive.md).
+Per-buffer ownership and archive submit/poll/drain now pass the device/model/serving
+gates; snapshot/page copies remain synchronous. Checkpoint-triggered NVMe admission
+and source pause are unchanged. No serving speedup or hardware overlap established.
+
 ## Proposed policy for zerv after this review
 
-Not a completed spec and no implementation started:
+Policy proposal, not implemented. A/B completed only the asynchronous archive
+prerequisite; C/D in the [ordered plan](../design/async-tiering.md) remain open:
 
 1. **Checkpoint creation:** retain the exact recurrent snapshot and reference the
    immutable KV prefix. Do not enqueue an NVMe write. Snapshot-slot consumption is
@@ -197,7 +229,7 @@ Not a completed spec and no implementation started:
 2. **GPU reclamation preparation:** keep a bounded reserve of cached pages safe to
    reclaim. Copy selected cold pages to host when projected demand consumes that
    reserve, not every time a token/checkpoint is produced. Actual transfer overlap
-   on this Vulkan path must be measured; current fences are synchronous.
+   on this Vulkan path must be measured; page-demotion fences remain synchronous.
 3. **Host reclamation preparation:** similarly prepare a bounded reserve of entries
    with complete disk backing. Candidates are cold, unleased cache state with no
    near-term queued reuse. Write only if valid disk backing is absent; count pending

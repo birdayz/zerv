@@ -1,0 +1,152 @@
+#version 450
+// f16 batched-decode GEMM v2 (block 18e, `Options.decode_precision = .f16`; docs/specs/
+// concurrent.md "18e design"). Same arithmetic as gemm_f16n (gemm_f16.comp -DSMALLN), bit
+// for bit: Y[z][t][m] = sum over the 16-k slices of part z, in k order from 0, of one
+// f16 x f16 -> f32 WMMA (16x16x16); weights f16(d*(q-8)) (exact bit trick, as gemm_f16x),
+// X rounded once to f16 (RNE). Only data movement differs from v1:
+// - every wave32 owns one 16 (M) x 16 (rows) output tile per MT and streams its 16 weight
+//   rows itself (UNROLL Q4_0 blocks per iteration, loaded before use): no LDS, no barriers;
+// - SPLITDQ: lane half hl = lane / 16 dequantizes half hl of each block and receives the
+//   other half from lane ^ 16 (the A fragment's two lane halves are copies);
+// - the B fragment is the lane's X row (lane l: token row t0 + l % 16, rows >= n read row
+//   n - 1), 16 consecutive k, converted in registers (XF16: from an f16 copy of X).
+// Measured (docs/bench/2026-09-25-decode-v2.md): bounded near 600 GB/s by the 16-row access
+// pattern, not by the math.
+// FORMAT 2 (Q4_0) only. Required subgroup size 32 with full subgroups. Host-validated:
+// M % 64 == 0, K and k_chunk multiples of 32 UNROLL, rows % 16 == 0, flags 0, a_group 1,
+// x_base and x_rs multiples of 4 words (XF16: 8 halves).
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_cooperative_matrix : require
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_shuffle : require
+#if FORMAT != 2
+#error gemm_f16d: only Q4_0 (FORMAT 2) so far
+#endif
+// MT 16-row M tiles per wave share each B fragment (X reuse); WAVES * MT * 16 = 64 M rows
+// per workgroup (the host grid).
+#ifndef MT
+#define MT 1
+#endif
+#define WAVES (4/MT)
+#ifndef UNROLL
+#define UNROLL 8
+#endif
+#ifndef SPLITDQ
+#define SPLITDQ 1
+#endif
+layout(local_size_x=WAVES*32) in;
+layout(set=0,binding=0,std430) readonly buffer A { uint aw[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=2,std430) readonly buffer Io { uint io[]; };
+layout(set=0,binding=3,std430) readonly restrict buffer ActX { vec4 xin4[]; };
+// XF16: X is an f16 copy (x_base, x_rs in halves, multiples of 8), read as uvec4 (8 halves).
+layout(set=0,binding=3,std430) readonly restrict buffer ActX16 { uvec4 x16[]; };
+layout(push_constant) uniform P {
+    uint a_base, a_rs, a_cs, a_bs, a_group;
+    uint x_base, x_rs, x_bs;
+    uint y_base, y_rs, y_bs;
+    uint m, k;
+    uint flags;
+    uint k_chunk;
+} p;
+#define IO_COUNT 2
+
+void main() {
+    uint lane=gl_SubgroupInvocationID, wave=gl_SubgroupID;
+    uint n=io[IO_COUNT];
+    uint m0=(gl_WorkGroupID.x*WAVES+wave)*16u*MT, t0=gl_WorkGroupID.y*16u;
+    if (t0>=n) return; // uniform per workgroup
+    uint tok=min(t0+lane%16u,n-1u);
+    uint kb=gl_WorkGroupID.z*p.k_chunk, ke=p.k_chunk!=0u ? min(p.k,kb+p.k_chunk) : p.k;
+    coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> acc[MT];
+    [[unroll]] for (uint mt=0u;mt<MT;mt++) acc[mt]=coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(0.0);
+#if XF16
+    uint xrow=(p.x_base+tok*p.x_rs)/8u;
+#else
+    uint xrow=(p.x_base+tok*p.x_rs)/4u;
+#endif
+    for (uint k0=kb;k0<ke;k0+=32u*UNROLL) {
+        uint w[MT][UNROLL][5];
+        bool odd[MT][UNROLL];
+        [[unroll]] for (uint mt=0u;mt<MT;mt++) [[unroll]] for (uint u=0u;u<UNROLL;u++) {
+            uint b=p.a_base+(m0+mt*16u+lane%16u)*p.a_rs+((k0/32u)+u)*18u;
+            uint wb=b>>2u;
+            odd[mt][u]=(b&2u)!=0u;
+            [[unroll]] for (uint i=0u;i<5u;i++) w[mt][u][i]=aw[wb+i];
+        }
+        uint mine[MT][8], theirs[MT][8];
+        [[unroll]] for (uint u=0u;u<UNROLL;u++) {
+            [[unroll]] for (uint h=0u;h<2u;h++) {
+                coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB> fb;
+#if XF16
+                uint xk=xrow+(k0+32u*u)/8u;
+                [[unroll]] for (uint c=0u;c<2u;c++) {
+                    uvec4 xv=x16[xk+2u*h+c];
+                    uint xw[4]=uint[4](xv.x,xv.y,xv.z,xv.w);
+                    [[unroll]] for (uint q=0u;q<4u;q++) { f16vec2 v=unpackFloat2x16(xw[q]); fb[8u*c+2u*q]=v.x; fb[8u*c+2u*q+1u]=v.y; }
+                }
+#else
+                uint xk=xrow+(k0+32u*u)/4u;
+                [[unroll]] for (uint c=0u;c<4u;c++) {
+                    vec4 xv=xin4[xk+4u*h+c];
+                    fb[4u*c]=float16_t(xv.x); fb[4u*c+1u]=float16_t(xv.y); fb[4u*c+2u]=float16_t(xv.z); fb[4u*c+3u]=float16_t(xv.w);
+                }
+#endif
+#if SPLITDQ
+                // Lane half hl = lane / 16 dequantizes half hl of block u for its row; the
+                // other half comes from lane ^ 16 (the fragment's two lane halves are copies).
+                [[unroll]] for (uint mt=0u;mt<MT;mt++) {
+                    uint w0=w[mt][u][0], w1=w[mt][u][1], w2=w[mt][u][2], w3=w[mt][u][3], w4=w[mt][u][4];
+                    bool o=odd[mt][u];
+                    f16vec2 d=f16vec2(float16_t(unpackHalf2x16(o ? w0>>16u : w0).x));
+                    uint qw[4]=uint[4](o ? w1 : (w0>>16u)|(w1<<16u), o ? w2 : (w1>>16u)|(w2<<16u),
+                                       o ? w3 : (w2>>16u)|(w3<<16u), o ? w4 : (w3>>16u)|(w4<<16u));
+                    if (h==0u) {
+                        uint hl=lane>>4u;
+                        [[unroll]] for (uint q=0u;q<4u;q++) {
+                            uint x=(qw[q]>>(4u*hl))&0x0F0F0F0Fu;
+                            uint p01=(x&0xFFu)|((x<<8u)&0xFF0000u), p23=((x>>16u)&0xFFu)|((x>>8u)&0xFF0000u);
+                            mine[mt][2u*q]=packFloat2x16((unpackFloat2x16(p01|0x64006400u)-f16vec2(float16_t(1032.0)))*d);
+                            mine[mt][2u*q+1u]=packFloat2x16((unpackFloat2x16(p23|0x64006400u)-f16vec2(float16_t(1032.0)))*d);
+                        }
+                        [[unroll]] for (uint i=0u;i<8u;i++) theirs[mt][i]=subgroupShuffleXor(mine[mt][i],16u);
+                    }
+                    bool own=(lane>>4u)==h;
+                    coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> fa;
+                    [[unroll]] for (uint i=0u;i<8u;i++) {
+                        f16vec2 v=unpackFloat2x16(own ? mine[mt][i] : theirs[mt][i]);
+                        fa[2u*i]=v.x; fa[2u*i+1u]=v.y;
+                    }
+                    acc[mt]=coopMatMulAdd(fa, fb, acc[mt]);
+                }
+            }
+        }
+    }
+#else
+                [[unroll]] for (uint mt=0u;mt<MT;mt++) {
+            uint w0=w[mt][u][0], w1=w[mt][u][1], w2=w[mt][u][2], w3=w[mt][u][3], w4=w[mt][u][4];
+            bool o=odd[mt][u];
+            f16vec2 d=f16vec2(float16_t(unpackHalf2x16(o ? w0>>16u : w0).x));
+            uint qw[4]=uint[4](o ? w1 : (w0>>16u)|(w1<<16u), o ? w2 : (w1>>16u)|(w2<<16u),
+                               o ? w3 : (w2>>16u)|(w3<<16u), o ? w4 : (w3>>16u)|(w4<<16u));
+                coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> fa;
+                // Half h: k = 16h + e is nibble h of payload byte e (Q4_0: byte j holds k = j
+                // low, j + 16 high).
+                [[unroll]] for (uint q=0u;q<4u;q++) {
+                    uint x=(qw[q]>>(4u*h))&0x0F0F0F0Fu;
+                    uint p01=(x&0xFFu)|((x<<8u)&0xFF0000u), p23=((x>>16u)&0xFFu)|((x>>8u)&0xFF0000u);
+                    f16vec2 v01=(unpackFloat2x16(p01|0x64006400u)-f16vec2(float16_t(1032.0)))*d;
+                    f16vec2 v23=(unpackFloat2x16(p23|0x64006400u)-f16vec2(float16_t(1032.0)))*d;
+                    fa[4u*q]=v01.x; fa[4u*q+1u]=v01.y; fa[4u*q+2u]=v23.x; fa[4u*q+3u]=v23.y;
+                }
+                acc[mt]=coopMatMulAdd(fa, fb, acc[mt]);
+                }
+            }
+        }
+    }
+#endif
+    [[unroll]] for (uint mt=0u;mt<MT;mt++)
+        coopMatStore(acc[mt], act, p.y_base+gl_WorkGroupID.z*p.y_bs+t0*p.y_rs+m0+mt*16u, p.y_rs, gl_CooperativeMatrixLayoutColumnMajor);
+}

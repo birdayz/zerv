@@ -1,0 +1,52 @@
+# Conventions follow ../fdb-go's .bazelrc.
+
+common --enable_platform_specific_config
+
+# Don't inherit the shell environment into actions: Bazel's fixed defaults.
+build --incompatible_strict_action_env
+
+# Hermetic (docs/specs/hermetic-build.md): never configure the host's C/C++ toolchain; C/C++
+# comes from hermetic_cc_toolchain (MODULE.bazel).
+common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+
+# Python executables start the pinned interpreter directly (a shell bootstrap). The default
+# bootstrap runs `/usr/bin/env python3` first, i.e. the host's Python.
+common --@rules_python//python/config_settings:bootstrap_impl=script
+
+# rules_zig keeps Zig's own compiler cache under /tmp/zig-cache across actions; the sandbox
+# must let it persist (rules_zig README, "Zig Cache").
+build:linux --sandbox_add_mount_pair=/tmp
+
+# Every action result is kept by content in a disk cache shared by all worktrees of this
+# repository (and branches): switching back to an earlier state, or building the same
+# sources in another worktree, is a cache hit instead of a rebuild. Bounded: collected down
+# to 20 GB when Bazel is idle.
+common --disk_cache=~/.cache/bazel/zerv-disk
+common --experimental_disk_cache_gc_max_size=20G
+
+# Native CPU for every Zig compile, as `zig build` did (AVX2 and the rest of the host's
+# features; without it rules_zig targets baseline x86-64). The action key holds the flag, not
+# the CPU: a cache shared between different machines would need an explicit model
+# (-mcpu=znver2 on this Ryzen 3900X) instead.
+common --@rules_zig//zig/settings:zigopt=-mcpu=native
+
+# Measured binaries (server, benchmarks): ReleaseFast.  bazel build --config=release //...
+build:release -c opt
+
+# Fast inner loop: Debug tests only (the ReleaseFast variants carry the tag release_fast).
+test:quick --test_tag_filters=-release_fast,-gpu
+
+# Keep debug info (Bazel strips fastbuild outputs by default, and rules_zig follows it):
+# Debug tests print symbolized stack traces. Optimized tests strip explicitly
+# (bazel/defs.bzl).
+build --strip=never
+
+test --test_output=errors
+test --test_summary=terse
+
+# Undeclared test outputs (the spill gate's shader statistics, //tests:gpu_spills) as plain
+# files under bazel-testlogs/<package>/<test>/test.outputs/, not zipped.
+test --nozip_undeclared_test_outputs
+
+# Per-user settings (e.g. --disk_cache shared between worktrees), not committed.
+try-import %workspace%/user.bazelrc

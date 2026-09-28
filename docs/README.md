@@ -342,6 +342,12 @@ finish independent tests and benchmark gates before advancing.
      host caching and tuned llama-server finish faster. Not P2P or restart-persistent.
 107. [KV tiering papers: Mooncake, Pensieve, CachedAttention, LMCache](research/2026-09-28-kv-tier-papers.md)
      (research only): paper versus current SSD implementation, eager versus eviction-driven
-     policies, bounded proactive copying/leases and scheduler-aware prefetch. Our blocking
+     policies, bounded proactive copying/leases and scheduler-aware prefetch. The baseline
      full-image NVMe write-through is a poor measured fit; eager DRAM handoff is a different
-     policy. Proposed replacement and acceptance gates, no new implementation.
+     policy. Proposed replacement; subsequent execution-only changes are in entry 108.
+108. [Asynchronous pressure-driven tiering plan](design/async-tiering.md): staged
+     [GPU ownership prerequisite](research/2026-09-28-async-transfers.md) and archive
+     submit/poll/drain implemented ([A report](bench/2026-09-28-async-ownership.md),
+     [B report](bench/2026-09-28-async-archive.md)). 80k state/logits exact, 72 HTTP
+     outputs identical; no serving speedup, long restore regression retained.
+     Pressure policy/proactive preparation remain pending; write-through is unchanged.

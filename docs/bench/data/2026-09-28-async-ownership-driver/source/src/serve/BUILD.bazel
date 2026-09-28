@@ -1,0 +1,18 @@
+load("@rules_zig//zig:defs.bzl", "zig_library")
+
+zig_library(
+    name = "serve",
+    main = "root.zig",
+    srcs = glob(["*.zig"], exclude = ["root.zig"]),
+    deps = ["//src/chat", "//src/session", "//src/model", "//src/tokenizer", "//src/gpu", "//src/storage"],
+    visibility = ["//visibility:public"],
+)
+
+# Every Zig source of this package (the format check, //:zig_fmt).
+filegroup(
+    name = "zig_srcs",
+    srcs = glob(["*.zig"]),
+    visibility = ["//:__pkg__", "//tests:__pkg__"],
+)
+
+exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])

@@ -1513,6 +1513,13 @@ pub const Model = struct {
     /// Exact bounded stream quantum, no conversion or allocation. Imported staging is
     /// borrowed through the fence. A timed-out command MUST NOT release/reuse its memory.
     pub fn archiveCopy(self: *Model, c: *gpu.Commands, staging: *gpu.Buffer, staging_offset: u64, slot: u32, tokens: u32, map: []const u32, offset: u64, bytes: u64, importing: bool) Error!void {
+        try self.archiveSubmit(c, staging, staging_offset, slot, tokens, map, offset, bytes, importing);
+        try c.wait(self.options.timeout_ns);
+    }
+
+    /// Submit only. Caller leases the slot/map/staging until c.poll acknowledges;
+    /// cancellation cannot release them early. Other slots may execute on this queue.
+    pub fn archiveSubmit(self: *Model, c: *gpu.Commands, staging: *gpu.Buffer, staging_offset: u64, slot: u32, tokens: u32, map: []const u32, offset: u64, bytes: u64, importing: bool) Error!void {
         const total = try self.archiveBytes(tokens);
         if (slot >= self.state_layout.slots or self.chunk != null or self.pending_verify != 0) return error.InvalidState;
         if (map.len != (std.math.divCeil(u32, tokens, self.state_layout.page) catch unreachable)) return error.PagesMissing;
@@ -1562,7 +1569,7 @@ pub const Model = struct {
         }
         try c.barrier(.transfer, if (importing) .compute else .host);
         try c.end();
-        try c.run(self.options.timeout_ns);
+        try c.submit();
     }
 
     /// Commit position only after every verified chunk has arrived. On failed restore,

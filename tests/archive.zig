@@ -13,16 +13,30 @@ fn hex(bytes: []const u8) [64]u8 {
 const Fake = struct {
     output: [3][fixture.len]u8 = undefined,
     fail_import: bool = false,
-    fn copy(ctx: *anyopaque, slot: u32, offset: u64, bytes: []u8, importing: bool) !void {
+    fail_start: bool = false,
+    fail_poll: bool = false,
+    ready: bool = true,
+    pending: ?struct { slot: u32, offset: u64, bytes: []u8, importing: bool } = null,
+    fn start(ctx: *anyopaque, slot: u32, offset: u64, bytes: []u8, importing: bool) !void {
         const self: *Fake = @ptrCast(@alignCast(ctx));
+        if (self.pending != null) return error.DeviceBusy;
         if (slot >= 3 or offset + bytes.len > fixture.len) return error.BadCopy;
-        if (importing) {
-            if (self.fail_import) return error.InjectedDeviceError;
-            @memcpy(self.output[slot][@intCast(offset)..][0..bytes.len], bytes);
-        } else @memcpy(bytes, fixture[@intCast(offset)..][0..bytes.len]);
+        if (self.fail_start) return error.InjectedStartError;
+        self.pending = .{ .slot = slot, .offset = offset, .bytes = bytes, .importing = importing };
+    }
+    fn poll(ctx: *anyopaque) !bool {
+        const self: *Fake = @ptrCast(@alignCast(ctx));
+        const p = self.pending orelse return error.NoCopy;
+        if (!self.ready) return false;
+        self.pending = null;
+        if (self.fail_poll or (p.importing and self.fail_import)) return error.InjectedDeviceError;
+        if (p.importing) {
+            @memcpy(self.output[p.slot][@intCast(p.offset)..][0..p.bytes.len], p.bytes);
+        } else @memcpy(p.bytes, fixture[@intCast(p.offset)..][0..p.bytes.len]);
+        return true;
     }
     fn device(self: *Fake) archive.Device {
-        return .{ .ctx = self, .copy = copy };
+        return .{ .ctx = self, .start = start, .poll = poll };
     }
 };
 fn finish(a: *archive.Archive, fake: *Fake, slot: u32, cancel: bool) !u32 {
@@ -176,4 +190,133 @@ test "archive options, longest prefix and device-error drain" {
     try a.startRead(2, best);
     try t.expectError(error.InjectedDeviceError, finish(&a, &fake, 2, false));
     try t.expectEqual(@as(u32, 1), a.entries[a.lookup(&.{ 1, 2, 3 }).?].len);
+}
+
+test "async capture keeps staging leased, submits no early disk write, cancellation waits for device" {
+    var tmp = t.tmpDir(.{});
+    defer tmp.cleanup();
+    const mem = try t.allocator.alignedAlloc(u8, .fromByteUnits(4096), 8192);
+    defer t.allocator.free(mem);
+    const store = try open(tmp.dir, mem);
+    defer store.destroy() catch @panic("pending disk");
+    var a = try archive.Archive.init(t.allocator, store, opts);
+    defer a.deinit() catch @panic("pending archive");
+    var fake: Fake = .{ .ready = false };
+    try t.expect(try a.startWrite(0, &.{1}, 8193));
+    _ = try a.advance(fake.device(), 0, false);
+    const ticket = a.device_pending.?.ticket;
+    try t.expectError(error.InvalidState, store.poll(ticket)); // held, never submitted
+    const other = try store.acquire();
+    try t.expectError(error.QueueFull, store.acquire());
+    for (0..4) |_| {
+        const p = try a.advance(fake.device(), 0, true);
+        try t.expect(!p.done and !p.progressed);
+        try t.expect(a.active(0));
+        try t.expectError(error.Busy, a.startWrite(0, &.{2}, 4));
+        try t.expectError(error.Busy, a.deinit());
+        try t.expectError(error.QueueFull, store.acquire());
+        try t.expectError(error.InvalidState, store.poll(ticket));
+        try t.expectEqual(@as(u64, 0), a.stats.write_bytes);
+        try t.expectEqual(@as(u64, 0), a.stats.writes);
+    }
+    fake.ready = true;
+    try t.expectError(error.Canceled, a.advance(fake.device(), 0, true));
+    try t.expect(fake.pending == null and a.device_pending == null);
+    try t.expect(!a.active(0));
+    try t.expectEqual(@as(u32, 16), a.free_chunks);
+    const reused = try store.acquire();
+    try t.expectEqual(ticket.slot, reused.slot);
+    try t.expect(reused.generation > ticket.generation);
+    try t.expectError(error.InvalidTicket, store.buffer(ticket));
+    try store.release(reused);
+    try store.release(other);
+    // Same request slot can now retry; all bytes still match the independent payload.
+    try t.expect(try a.startWrite(0, &.{1}, 8193));
+    _ = try finish(&a, &fake, 0, false);
+    try a.startRead(0, a.lookup(&.{ 1, 2 }).?);
+    _ = try finish(&a, &fake, 0, false);
+    try t.expectEqualSlices(u8, fixture[0..8193], fake.output[0][0..8193]);
+}
+
+test "async upload keeps disk-done ticket until acknowledgment, other slot disk progress and cancel" {
+    var tmp = t.tmpDir(.{});
+    defer tmp.cleanup();
+    const mem = try t.allocator.alignedAlloc(u8, .fromByteUnits(4096), 8192);
+    defer t.allocator.free(mem);
+    const store = try open(tmp.dir, mem);
+    defer store.destroy() catch @panic("pending disk");
+    var a = try archive.Archive.init(t.allocator, store, opts);
+    defer a.deinit() catch @panic("pending archive");
+    var fake: Fake = .{};
+    try t.expect(try a.startWrite(0, &.{1}, 8193));
+    _ = try finish(&a, &fake, 0, false);
+    const record = a.lookup(&.{ 1, 2 }).?;
+    fake.ready = false;
+    @memset(&fake.output[0], 0xcc);
+    try a.startRead(0, record);
+    for (0..10000) |_| {
+        _ = try a.advance(fake.device(), 0, false);
+        if (fake.pending != null) break;
+        try std.Io.sleep(t.io, .fromMilliseconds(1), .awake);
+    }
+    try t.expect(fake.pending != null);
+    const held = a.device_pending.?.ticket;
+    try t.expect((try store.poll(held)).?.exact()); // disk is done, GPU is not
+    for (0..4) |_| {
+        const p = try a.advance(fake.device(), 0, true);
+        try t.expect(!p.done);
+        try t.expectEqual(held, a.device_pending.?.ticket);
+        try t.expectError(error.Busy, a.deinit());
+        for (fake.output[0][0..4096]) |b| try t.expectEqual(@as(u8, 0xcc), b);
+    }
+    // Wait for canceled DISK requests, not for the deliberately blocked device.
+    // Their real worker completion is independent of the number/speed of our polls.
+    for (0..10000) |_| {
+        if (a.jobs[0].pending == 1) break;
+        _ = try a.advance(fake.device(), 0, true);
+        try std.Io.sleep(t.io, .fromMilliseconds(1), .awake);
+    }
+    try t.expectEqual(@as(u32, 1), a.jobs[0].pending);
+    // Another reader can submit/drain disk work while slot 0 owns the device.
+    try a.startRead(1, record);
+    _ = try a.advance(fake.device(), 1, false);
+    try t.expect(a.jobs[1].pending != 0);
+    try t.expectError(error.Canceled, finish(&a, &fake, 1, true));
+    try t.expect(a.active(0));
+    fake.ready = true;
+    try t.expectError(error.Canceled, finish(&a, &fake, 0, true));
+    try t.expect(fake.pending == null and a.device_pending == null);
+    try t.expectEqual(record, a.lookup(&.{ 1, 2 }).?);
+    try a.startRead(0, record);
+    _ = try finish(&a, &fake, 0, false);
+    try t.expectEqualSlices(u8, fixture[0..8193], fake.output[0][0..8193]);
+}
+
+test "async device start and completion faults drain before slot reuse" {
+    var tmp = t.tmpDir(.{});
+    defer tmp.cleanup();
+    const mem = try t.allocator.alignedAlloc(u8, .fromByteUnits(4096), 8192);
+    defer t.allocator.free(mem);
+    const store = try open(tmp.dir, mem);
+    defer store.destroy() catch @panic("pending disk");
+    var a = try archive.Archive.init(t.allocator, store, opts);
+    defer a.deinit() catch @panic("pending archive");
+    for ([_]bool{ false, true }) |importing| {
+        for ([_]bool{ false, true }) |at_start| {
+            var fake: Fake = .{};
+            try t.expect(try a.startWrite(0, &.{1}, 8193));
+            if (importing) {
+                _ = try finish(&a, &fake, 0, false);
+                try a.startRead(0, a.lookup(&.{ 1, 2 }).?);
+            }
+            fake.fail_start = at_start;
+            fake.fail_poll = !at_start;
+            try t.expectError(if (at_start) error.InjectedStartError else error.InjectedDeviceError, finish(&a, &fake, 0, false));
+            try t.expect(fake.pending == null and a.device_pending == null);
+            try t.expect(!a.active(0));
+            try t.expectEqual(@as(u32, 16), a.free_chunks);
+            for (a.pending) |p| try t.expect(p == null);
+            try t.expect(a.lookup(&.{ 1, 2 }) == null);
+        }
+    }
 }

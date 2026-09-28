@@ -1,0 +1,30 @@
+INFO: Invocation ID: 9e5313dc-e9fa-4601-93ae-906bd01ba227
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (0 packages loaded, 2322 targets configured).
+[26 / 31] zig test //tests:archive; 1s disk-cache, linux-sandbox ... (2 actions running)
+[27 / 31] 1 / 2 tests; zig test //tests:archive; 2s disk-cache, linux-sandbox
+[28 / 31] 1 / 2 tests; [Prepa] runfiles for //tests:archive
+FAIL: //tests:archive_release_fast (Aborted) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/archive_release_fast/test.log)
+INFO: From Testing //tests:archive_release_fast:
+==================== Test output for //tests:archive_release_fast:
+1/7 archive.test.archive independent POSIX SHA256 goldens, eviction, exact partial tails and no steady allocation...OK
+2/7 archive.test.archive cancellation drains, leases block eviction, corruption and I/O failures never publish...OK
+3/7 archive.test.archive options, longest prefix and device-error drain...OK
+4/7 archive.test.async capture keeps staging leased, submits no early disk write, cancellation waits for device...OK
+5/7 archive.test.async upload keeps disk-done ticket until acknowledgment, other slot disk progress and cancel...thread 12 panic: pending archive
+Cannot print stack trace: stack tracing is disabled
+================================================================================
+INFO: Found 2 test targets...
+INFO: Elapsed time: 9.117s, Critical Path: 8.88s
+INFO: 9 processes: 23 action cache hit, 5 internal, 6 linux-sandbox.
+INFO: Build completed, 1 test FAILED, 9 total actions
+//tests:archive_release_fast                                             FAILED in 0.4s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/archive_release_fast/test.log
+
+Executed 2 out of 2 tests: 1 test passes and 1 fails locally.
+There were tests whose specified size is too big. Use the --test_verbose_timeout_warnings command line option to see which ones these are.

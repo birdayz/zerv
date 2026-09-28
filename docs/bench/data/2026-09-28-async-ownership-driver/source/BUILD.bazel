@@ -1,0 +1,46 @@
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
+load("//bazel:defs.bzl", "zig_fmt_test")
+
+exports_files(["requirements_lock.txt"])
+
+# requirements_lock.txt from requirements.in, with hashes: bazel run //:requirements.update.
+# Its check (requirements_test) needs the network, so it is manual.
+compile_pip_requirements(
+    name = "requirements",
+    src = "requirements.in",
+    requirements_txt = "requirements_lock.txt",
+    tags = ["manual"],
+)
+
+# The build definitions, read by //tests:test_build_lists.
+exports_files(
+    [
+        ".bazelrc",
+        "BUILD.bazel",
+        "MODULE.bazel",
+    ],
+    visibility = ["//tests:__pkg__"],
+)
+
+# `zig fmt --check` over every Zig source (one of the required checks).
+zig_fmt_test(
+    name = "zig_fmt",
+    srcs = [
+        "//bench:zig_srcs",
+        "//src:zig_srcs",
+        "//src/artifact:zig_srcs",
+        "//src/chat:zig_srcs",
+        "//src/gpu:zig_srcs",
+        "//src/matvec:zig_srcs",
+        "//src/model:zig_srcs",
+        "//src/quant:zig_srcs",
+        "//src/serve:zig_srcs",
+        "//src/session:zig_srcs",
+        "//src/storage:zig_srcs",
+        "//src/text:zig_srcs",
+        "//src/tokenizer:zig_srcs",
+        "//tests:zig_srcs",
+        "//tests/support:zig_srcs",
+        "//tools:zig_srcs",
+    ],
+)

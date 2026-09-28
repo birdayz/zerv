@@ -1,0 +1,81 @@
+#version 450
+// Batched decode projection, FP32, shape-fixed order (block 18e part 4, `Options.decode_precision
+// = .split`; docs/specs/concurrent.md "18e.4 design"). Q4_0 (FORMAT 2) only.
+// Arithmetic per output element Y[t][m], identical for every row count ROWS (1..8, one module
+// each) and every batch composition:
+// - split part z covers k in [z k_chunk, min(K, (z+1) k_chunk)) (k_chunk from the shape only);
+// - within it, K-lane kl = 0..KL-1 accumulates blocks kl, kl+KL, ... of the part in order, from
+//   +0, with one fma per value: acc = fma(w, x, acc), w = fma(d, q, -8d) (exact, as matvec.comp);
+//   within a block the order is q = 0..3, c = 0..3, value 4q+c then value 16+4q+c;
+// - the lanes are added in order: ((lane0 + lane1) + lane2) + ... ;
+// - the reduce kernel adds the parts in z order (a separate dispatch; single part: stored).
+// Data flow: a workgroup = 64 weight rows x KL K-lanes (64 KL threads); each thread streams one
+// weight row; the K-lane index is made subgroup-uniform (subgroup size <= 64, dividing 64, host
+// requirement), so X loads are scalar and shared by the rows of a subgroup.
+// Push: gemm.Push; rows t < ROWS at x_base + t x_rs and y_base + z y_bs + t y_rs, all written.
+// Host-validated: M % 64 == 0, K % 32 == 0, k_chunk % 32 == 0, x_base and x_rs % 4 == 0.
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#ifndef ROWS
+#define ROWS 8
+#endif
+#define KL 8u
+layout(local_size_x=64*KL) in;
+layout(set=0,binding=0,std430) readonly buffer A { uint aw[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=2,std430) readonly buffer Io { uint io[]; };
+layout(set=0,binding=3,std430) readonly restrict buffer ActX { vec4 xin4[]; };
+layout(push_constant) uniform P {
+    uint a_base, a_rs, a_cs, a_bs, a_group;
+    uint x_base, x_rs, x_bs;
+    uint y_base, y_rs, y_bs;
+    uint m, k;
+    uint flags;
+    uint k_chunk;
+} p;
+shared float red[KL-1u][ROWS][64];
+
+void main() {
+    uint tid=gl_LocalInvocationID.x;
+    uint lrow=tid%64u, kl=subgroupBroadcastFirst(tid/64u);
+    uint row=gl_WorkGroupID.x*64u+lrow;
+    uint kb=gl_WorkGroupID.z*p.k_chunk, ke=p.k_chunk!=0u ? min(p.k,kb+p.k_chunk) : p.k;
+    float acc[ROWS];
+    [[unroll]] for (uint r=0u;r<ROWS;r++) acc[r]=0.0;
+    uint rb=p.a_base+row*p.a_rs;
+    for (uint blk=kb/32u+kl;blk<ke/32u;blk+=KL) {
+        uint b=rb+blk*18u, wb=b>>2u;
+        bool o=(b&2u)!=0u;
+        uint w0=aw[wb], w1=aw[wb+1u], w2=aw[wb+2u], w3=aw[wb+3u], w4=aw[wb+4u];
+        float d=unpackHalf2x16(o ? w0>>16u : w0).x, nd=-8.0*d;
+        uint qw[4]=uint[4](o ? w1 : (w0>>16u)|(w1<<16u), o ? w2 : (w1>>16u)|(w2<<16u),
+                           o ? w3 : (w2>>16u)|(w3<<16u), o ? w4 : (w3>>16u)|(w4<<16u));
+        vec4 wl[4], wh[4];
+        [[unroll]] for (uint q=0u;q<4u;q++) {
+            vec4 lo=vec4(uvec4(qw[q],qw[q]>>8u,qw[q]>>16u,qw[q]>>24u)&0xFu);
+            vec4 hi=vec4(uvec4(qw[q]>>4u,qw[q]>>12u,qw[q]>>20u,qw[q]>>28u)&0xFu);
+            precise vec4 a=fma(vec4(d),lo,vec4(nd)), z=fma(vec4(d),hi,vec4(nd));
+            wl[q]=a; wh[q]=z;
+        }
+        uint xo=(p.x_base+blk*32u)/4u;
+        [[unroll]] for (uint r=0u;r<ROWS;r++) {
+            uint xr=xo+r*(p.x_rs/4u);
+            [[unroll]] for (uint q=0u;q<4u;q++) {
+                vec4 xl=xin4[xr+q], xh=xin4[xr+4u+q];
+                [[unroll]] for (uint c=0u;c<4u;c++) {
+                    precise float s1=fma(wl[q][c],xl[c],acc[r]);
+                    precise float s2=fma(wh[q][c],xh[c],s1);
+                    acc[r]=s2;
+                }
+            }
+        }
+    }
+    if (kl>0u) [[unroll]] for (uint r=0u;r<ROWS;r++) red[kl-1u][r][lrow]=acc[r];
+    barrier();
+    if (kl==0u) [[unroll]] for (uint r=0u;r<ROWS;r++) {
+        precise float s=acc[r];
+        [[unroll]] for (uint j=0u;j<KL-1u;j++) s=s+red[j][r][lrow];
+        act[p.y_base+gl_WorkGroupID.z*p.y_bs+r*p.y_rs+row]=s;
+    }
+}

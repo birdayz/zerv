@@ -1,0 +1,154 @@
+#version 450
+// LAB COPY of src/model/gemm_f16.comp for block 16b ablations (docs/design/speed.md).
+// With no ABL_* define the build must be byte-identical to the shipped module.
+// ABL_NO_DEQUANT  weights: store a runtime-derived value instead of dequantizing
+// ABL_NO_X        activations: store a runtime-derived value instead of loading X
+// ABL_NO_LDSLOAD  fragments: construct from a runtime value instead of coopMatLoad
+// ABL_NO_BARRIER  remove both workgroup barriers (results invalid; timing only)
+// The runtime value is io[3] (the benchmark writes 0), so nothing is constant-folded.
+// f16 prefill GEMM (block 14, explicit --prefill-precision f16; docs/specs/prefill.md):
+//   Y[z][t][m] = sum_k f16(W[m][k]) * f16(X[t][k]), f16 x f16 -> f32 WMMA (16x16x16), k order.
+// Same arithmetic class as llama.cpp's matmul_quant_f16 with f32 accumulation. Weights are
+// dequantized exactly in f32 and rounded once to f16; X is rounded once to f16.
+// FORMAT: 2 Q4_0, 3 Q4_1, 13 Q5_K. Bindings/push constants as gemm.comp (A, act, io, act).
+// Tile 128 (M) x 128 (rows), 256 threads = 4 subgroups of 64 (the host requires subgroup
+// size 64), each 64 x 64. Host-validated: M % 128 == 0, plan rows % 128 == 0, K % 32 == 0,
+// k_chunk == 0, flags == 0. Rows t >= n read row n-1; their results are stored into the
+// plan's unused rows (never read). One 32-k step per iteration.
+#extension GL_EXT_control_flow_attributes : require
+#extension GL_KHR_cooperative_matrix : require
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_KHR_shader_subgroup_basic : require
+#define BM 128
+#define BN 128
+#define WM 64
+#define WN 64
+#define TM (WM/16)
+#define TN (WN/16)
+#define BK 32
+#define AS (BK+8)
+layout(local_size_x=256) in;
+layout(set=0,binding=0,std430) readonly buffer A { uint aw[]; };
+layout(set=0,binding=0,std430) readonly buffer A4 { uvec4 aw4[]; };
+layout(set=0,binding=1,std430) buffer Act { float act[]; };
+layout(set=0,binding=2,std430) readonly buffer Io { uint io[]; };
+layout(set=0,binding=3,std430) readonly restrict buffer ActX { vec4 xin4[]; };
+layout(push_constant) uniform P {
+    uint a_base, a_rs, a_cs, a_bs, a_group;
+    uint x_base, x_rs, x_bs;
+    uint y_base, y_rs, y_bs;
+    uint m, k;
+    uint flags;
+    uint k_chunk;
+} p;
+#define IO_COUNT 2
+
+shared float16_t As[BM*AS];
+shared float16_t Bs[BN*AS];
+
+// Thread e < 256 dequantizes half h = e % 2 (16 consecutive k) of row e / 2 at step k0.
+void load_a(uint row, uint h, uint k0) {
+    uint rb=p.a_base+(gl_WorkGroupID.x*BM+row)*p.a_rs;
+    uint o=row*AS+h*16u;
+#if FORMAT==2 || FORMAT==3
+    uint b=rb+(k0/32u)*BLOCK_BYTES;
+    uint wb=b>>2u; bool odd=(b&2u)!=0u;
+    uint w0=aw[wb], w1=aw[wb+1u], w2=aw[wb+2u], w3=aw[wb+3u], w4=aw[wb+4u];
+#if FORMAT==2
+    // Q4_0: d at bytes 0-1, payload 2..17; byte j holds k = j (low) and j + 16 (high).
+    float d=unpackHalf2x16(odd ? w0>>16u : w0).x;
+    uint qw[4]=uint[4](odd ? w1 : (w0>>16u)|(w1<<16u), odd ? w2 : (w1>>16u)|(w2<<16u),
+                       odd ? w3 : (w2>>16u)|(w3<<16u), odd ? w4 : (w3>>16u)|(w4<<16u));
+    [[unroll]] for (uint w=0;w<4;w++) [[unroll]] for (uint c=0;c<4;c++)
+        As[o+w*4u+c]=float16_t((float((qw[w]>>(8u*c+4u*h))&15u)-8.0)*d);
+#else
+    // Q4_1: d at 0-1, m at 2-3, payload 4..19 (a sixth word when the block starts at 2 mod 4).
+    uint w5=aw[wb+(odd ? 5u : 4u)];
+    float d=unpackHalf2x16(odd ? w0>>16u : w0).x;
+    float mn=unpackHalf2x16(odd ? w1 : w0>>16u).x;
+    uint qw[4]=uint[4](odd ? (w1>>16u)|(w2<<16u) : w1, odd ? (w2>>16u)|(w3<<16u) : w2,
+                       odd ? (w3>>16u)|(w4<<16u) : w3, odd ? (w4>>16u)|(w5<<16u) : w4);
+    [[unroll]] for (uint w=0;w<4;w++) [[unroll]] for (uint c=0;c<4;c++)
+        As[o+w*4u+c]=float16_t(fma(d,float((qw[w]>>(8u*c+4u*h))&15u),mn));
+#endif
+#else
+    // Q5_K: 176-byte superblock of 256 (16-byte aligned rows, validated); group g of 32.
+    // Value k of the group: low/high nibble (g % 2) of qs byte k of the group pair
+    // (g / 2), plus bit g of qh byte k. Half h covers k = 16h .. 16h + 15.
+    uint sb=k0/256u, g=(k0%256u)/32u;
+    uint b=rb+sb*176u;
+    uvec4 hdr=aw4[b>>4u];
+    uvec4 qh=aw4[(b+16u+16u*h)>>4u];
+    uvec4 qs=aw4[(b+48u+(g/2u)*32u+16u*h)>>4u];
+    vec2 globals=unpackHalf2x16(hdr.x);
+    uint sa=hdr.y, sbw=hdr.z, sc=hdr.w;
+    uint shift=(g%4u)*8u;
+    uint scale=(sa>>shift)&63u, minimum=(sbw>>shift)&63u;
+    if (g>=4u) {
+        scale=((sc>>shift)&15u)|(((sa>>(shift+6u))&3u)<<4u);
+        minimum=((sc>>(shift+4u))&15u)|(((sbw>>(shift+6u))&3u)<<4u);
+    }
+    float dd=globals.x*float(scale), dm=globals.y*float(minimum);
+    uint qsw[4]=uint[4](qs.x,qs.y,qs.z,qs.w);
+    uint qhw[4]=uint[4](qh.x,qh.y,qh.z,qh.w);
+    [[unroll]] for (uint w=0;w<4;w++) [[unroll]] for (uint c=0;c<4;c++) {
+        uint q=((qsw[w]>>(8u*c+4u*(g%2u)))&15u)|(((qhw[w]>>(8u*c+g))&1u)<<4u);
+        As[o+w*4u+c]=float16_t(fma(dd,float(q),-dm));
+    }
+#endif
+}
+
+void main() {
+    uint tid=gl_LocalInvocationID.x;
+    uint n=io[IO_COUNT];
+    uint m0=gl_WorkGroupID.x*BM, t0=gl_WorkGroupID.y*BN;
+    if (t0>=n) return; // uniform per workgroup
+    uint wave=gl_SubgroupID, wm=wave%2u, wn=wave/2u;
+    coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> acc[TM][TN];
+    [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++)
+        acc[i][j]=coopmat<float, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(0.0);
+    for (uint k0=0u;k0<p.k;k0+=BK) {
+#ifdef ABL_NO_DEQUANT
+        { uint o=(tid/2u)*AS+(tid%2u)*16u; float16_t v=float16_t(float(io[3]+k0));
+          [[unroll]] for (uint c=0u;c<16u;c++) As[o+c]=v; }
+#else
+        load_a(tid/2u, tid%2u, k0);
+#endif
+        // X: 128 rows x 32 k = 2 passes of 8 values per thread, rounded to f16.
+        [[unroll]] for (uint pass=0u;pass<2u;pass++) {
+            uint e=tid+256u*pass;
+            uint tok=e/4u, qk=(e%4u)*8u;
+#ifdef ABL_NO_X
+            vec4 x0=vec4(float(io[3]+k0)), x1=x0;
+#else
+            uint src=(p.x_base+min(t0+tok,n-1u)*p.x_rs+k0+qk)/4u;
+            vec4 x0=xin4[src], x1=xin4[src+1u];
+#endif
+            uint o=tok*AS+qk;
+            Bs[o]=float16_t(x0.x); Bs[o+1u]=float16_t(x0.y); Bs[o+2u]=float16_t(x0.z); Bs[o+3u]=float16_t(x0.w);
+            Bs[o+4u]=float16_t(x1.x); Bs[o+5u]=float16_t(x1.y); Bs[o+6u]=float16_t(x1.z); Bs[o+7u]=float16_t(x1.w);
+        }
+#ifndef ABL_NO_BARRIER
+        barrier();
+#endif
+        [[unroll]] for (uint s=0u;s<2u;s++) {
+            coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> fa[TM];
+            coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB> fb[TN];
+#ifdef ABL_NO_LDSLOAD
+            [[unroll]] for (uint i=0;i<TM;i++) fa[i]=coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA>(float16_t(float(io[3]+k0+s+i)));
+            [[unroll]] for (uint j=0;j<TN;j++) fb[j]=coopmat<float16_t, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB>(float16_t(float(io[3]+k0+s+j)));
+#else
+            [[unroll]] for (uint i=0;i<TM;i++) coopMatLoad(fa[i], As, (wm*WM+i*16u)*AS+s*16u, AS, gl_CooperativeMatrixLayoutRowMajor);
+            [[unroll]] for (uint j=0;j<TN;j++) coopMatLoad(fb[j], Bs, (wn*WN+j*16u)*AS+s*16u, AS, gl_CooperativeMatrixLayoutColumnMajor);
+#endif
+            [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++) acc[i][j]=coopMatMulAdd(fa[i], fb[j], acc[i][j]);
+        }
+#ifndef ABL_NO_BARRIER
+        barrier();
+#endif
+    }
+    // Y[t][m] at y_base + t*y_rs + m: the M x rows result is column-major, stride y_rs.
+    [[unroll]] for (uint i=0;i<TM;i++) [[unroll]] for (uint j=0;j<TN;j++)
+        coopMatStore(acc[i][j], act, p.y_base+(t0+wn*WN+j*16u)*p.y_rs+m0+wm*WM+i*16u, p.y_rs, gl_CooperativeMatrixLayoutColumnMajor);
+}

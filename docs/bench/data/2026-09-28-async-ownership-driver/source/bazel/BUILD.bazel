@@ -1,0 +1,63 @@
+# Starlark macros for zerv (defs.bzl), the Zig target and the Zig executable.
+load("@rules_zig//zig:toolchain.bzl", "zig_target_toolchain")
+load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load(":defs.bzl", "zig_exe")
+
+# The build definitions, read by //tests:test_build_lists.
+exports_files(
+    glob(["*.bzl"]) + ["BUILD.bazel"],
+    visibility = ["//tests:__pkg__"],
+)
+
+filegroup(
+    name = "bzl_files",
+    srcs = glob(["*.bzl"]),
+    visibility = ["//tests:__pkg__"],
+)
+
+# Runs a meson project's build in one action (meson.bzl), with the packages Mesa's build uses.
+py_binary(
+    name = "meson_build",
+    srcs = ["meson_build.py"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@zerv_pypi//mako",
+        "@zerv_pypi//packaging",
+        "@zerv_pypi//pyyaml",
+    ],
+)
+
+sh_binary(
+    name = "nm_unavailable",
+    srcs = ["nm_unavailable.sh"],
+    visibility = ["//visibility:public"],
+)
+
+# The hermetic Zig every target compiles with.
+zig_exe(
+    name = "zig",
+    visibility = ["//visibility:public"],
+)
+
+# Zig target: x86_64 Linux with glibc 2.43, the newest Zig 0.16 provides (this host has 2.44;
+# `zig build`'s native target used 2.43 the same way). rules_zig's own gnu target is glibc
+# 2.17 (portable binaries), whose symbol set lacks
+# what the host's Vulkan loader references (glibc 2.34/2.38 symbols; zig test links with
+# --no-allow-shlib-undefined), and it links libm/libpthread/libdl separately. Registered
+# before rules_zig's targets (MODULE.bazel). A binary for an older-glibc host needs a lower
+# version here.
+zig_target_toolchain(
+    name = "x86_64-linux-gnu.2.43",
+    target = "x86_64-linux-gnu.2.43",
+)
+
+toolchain(
+    name = "x86_64-linux-gnu.2.43_toolchain",
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    toolchain = ":x86_64-linux-gnu.2.43",
+    toolchain_type = "@rules_zig//zig/target:toolchain_type",
+)

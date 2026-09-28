@@ -57,3 +57,8 @@ before coding it. Do not invent untested commands in docs and label them working
 
 - [RAM-staged disk prefix archive](disk-prefix-cache.md): immutable full checkpoint
   images, integrity, bounded pending I/O, model/scheduler ownership and 80k gates.
+
+- [Asynchronous tiering plan](../design/async-tiering.md): GPU ownership and archive
+  completion implemented; pressure policy still pending. Functional amendments in
+  [GPU driver](gpu-driver.md#asynchronous-completion-ownership-18d7a) and
+  [disk archive](disk-prefix-cache.md#asynchronous-device-quanta-18d7b-specified-before-implementation).

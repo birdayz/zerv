@@ -10,6 +10,8 @@ pub const staging_bytes = 8 << 20;
 pub const Options = struct { directory: []const u8, bytes: u64, records: u32 = 64, alignment: ?storage.Alignment = null };
 pub const Disk = struct {
     allocator: std.mem.Allocator,
+    io: std.Io,
+    submitted_ns: i96 = 0,
     m: *model.Model,
     raw: []u8,
     memory: []u8,
@@ -20,7 +22,7 @@ pub const Disk = struct {
     maps: []u32,
     positions: [64]u32 = @splat(0),
 
-    pub fn create(a: std.mem.Allocator, m: *model.Model, o: Options) !*Disk {
+    pub fn create(a: std.mem.Allocator, io: std.Io, m: *model.Model, o: Options) !*Disk {
         if (m.options.mtp or !m.options.kv_share or m.state_layout.slots < 2 or o.bytes == 0 or o.bytes % (1 << 20) != 0) return error.InvalidOptions;
         const max_bytes = try m.archiveBytes(m.state_layout.context);
         const alignment: usize = @intCast(@max(4096, m.device.host_import_alignment, if (o.alignment) |al| al.memory else 1));
@@ -44,7 +46,7 @@ pub const Disk = struct {
         errdefer catalog.deinit() catch @panic("new archive busy");
         const maps = try a.alloc(u32, @as(usize, m.state_layout.slots) * m.state_layout.seq_pages);
         errdefer a.free(maps);
-        self.* = .{ .allocator = a, .m = m, .raw = raw, .memory = memory, .store = store, .catalog = catalog, .maps = maps, .imported = undefined, .commands = undefined };
+        self.* = .{ .allocator = a, .io = io, .m = m, .raw = raw, .memory = memory, .store = store, .catalog = catalog, .maps = maps, .imported = undefined, .commands = undefined };
         self.imported = try gpu.Buffer.initImported(m.device, memory);
         errdefer self.imported.deinit() catch @panic("new import busy");
         self.commands = try gpu.Commands.init(m.device);
@@ -78,19 +80,30 @@ pub const Disk = struct {
         try self.catalog.startRead(slot, record);
         self.positions[slot] = n;
     }
-    fn copy(ctx: *anyopaque, slot: u32, offset: u64, bytes: []u8, importing: bool) !void {
+    fn startCopy(ctx: *anyopaque, slot: u32, offset: u64, bytes: []u8, importing: bool) !void {
         const self: *Disk = @ptrCast(@alignCast(ctx));
         const host_offset = @intFromPtr(bytes.ptr) - @intFromPtr(self.memory.ptr);
-        self.m.archiveCopy(&self.commands, &self.imported, host_offset, slot, self.positions[slot], self.map(slot, self.positions[slot]), offset, bytes.len, importing) catch |e| {
+        self.m.archiveSubmit(&self.commands, &self.imported, host_offset, slot, self.positions[slot], self.map(slot, self.positions[slot]), offset, bytes.len, importing) catch |e| {
             // Returning this span to the disk worker after an uncertain GPU fence would
             // allow concurrent DMA into freed/reused memory. There is no safe fallback.
-            if (self.m.device.pending != 0) @panic("archive GPU DMA ownership unresolved");
+            if (self.commands.state == .pending) @panic("archive GPU DMA ownership unresolved");
             return e;
         };
+        self.submitted_ns = std.Io.Clock.awake.now(self.io).nanoseconds;
+    }
+    fn pollCopy(ctx: *anyopaque) !bool {
+        const self: *Disk = @ptrCast(@alignCast(ctx));
+        const done = self.commands.poll() catch |e| {
+            if (self.commands.state == .pending) @panic("archive GPU DMA ownership unresolved");
+            return e;
+        };
+        if (!done and std.Io.Clock.awake.now(self.io).nanoseconds - self.submitted_ns >= self.m.options.timeout_ns)
+            @panic("archive GPU DMA deadline exceeded; ownership unresolved");
+        return done;
     }
     pub fn poll(self: *Disk, slot: u32, cancel: bool) !archive.Progress {
         const writing = self.catalog.writing(slot);
-        const p = self.catalog.advance(.{ .ctx = self, .copy = copy }, slot, cancel) catch |e| {
+        const p = self.catalog.advance(.{ .ctx = self, .start = startCopy, .poll = pollCopy }, slot, cancel) catch |e| {
             if (!writing) {
                 try self.m.select(slot);
                 try self.m.reset();

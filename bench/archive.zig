@@ -7,14 +7,17 @@ const size = 64 << 20;
 const Device = struct {
     source: []u8,
     target: []u8,
-    fn copy(ctx: *anyopaque, _: u32, offset: u64, bytes: []u8, importing: bool) !void {
+    fn start(ctx: *anyopaque, _: u32, offset: u64, bytes: []u8, importing: bool) !void {
         const d: *Device = @ptrCast(@alignCast(ctx));
         if (importing) @memcpy(d.target[@intCast(offset)..][0..bytes.len], bytes) else @memcpy(bytes, d.source[@intCast(offset)..][0..bytes.len]);
+    }
+    fn poll(_: *anyopaque) !bool {
+        return true; // CPU memcpy completed at start; still acknowledge the same protocol.
     }
 };
 fn drain(a: *archive.Archive, d: *Device, io: std.Io) !void {
     while (true) {
-        const p = try a.advance(.{ .ctx = d, .copy = Device.copy }, 0, false);
+        const p = try a.advance(.{ .ctx = d, .start = Device.start, .poll = Device.poll }, 0, false);
         if (p.done) return;
         if (!p.progressed) try std.Io.sleep(io, .fromMicroseconds(10), .awake);
     }

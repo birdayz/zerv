@@ -1,0 +1,53 @@
+INFO: Invocation ID: 9942d5b9-6319-4750-88f2-c7fb3a887bed
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (2 packages loaded, 2435 targets configured).
+[27 / 32] zig test //tests:archive; 1s disk-cache, linux-sandbox ... (2 actions running)
+FAIL: //tests:archive (Aborted) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/archive/test.log)
+INFO: From Testing //tests:archive:
+==================== Test output for //tests:archive:
+1/7 archive.test.archive independent POSIX SHA256 goldens, eviction, exact partial tails and no steady allocation...FAIL (DeviceBusy)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6417/execroot/_main/src/session/archive.zig:312:13: 0x12634ba in advance (root.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6417/execroot/_main/tests/archive.zig:44:19: 0x1263f58 in finish (archive.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6417/execroot/_main/tests/archive.zig:86:40: 0x12cbb39 in test.archive independent POSIX SHA256 goldens, eviction, exact partial tails and no steady allocation (archive.zig)
+2/7 archive.test.archive cancellation drains, leases block eviction, corruption and I/O failures never publish...FAIL (DeviceBusy)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6417/execroot/_main/src/session/archive.zig:312:13: 0x12634ba in advance (root.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6417/execroot/_main/tests/archive.zig:44:19: 0x1263f58 in finish (archive.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6417/execroot/_main/tests/archive.zig:131:9: 0x12c1e9c in test.archive cancellation drains, leases block eviction, corruption and I/O failures never publish (archive.zig)
+3/7 archive.test.archive options, longest prefix and device-error drain...thread 12 panic: pending archive
+error return context:
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6417/execroot/_main/src/session/archive.zig:312:13: 0x12634ba in advance (root.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6417/execroot/_main/tests/archive.zig:44:19: 0x1263f58 in finish (archive.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6417/execroot/_main/src/session/archive.zig:99:43: 0x125f503 in deinit (root.zig)
+
+stack trace:
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6417/execroot/_main/tests/archive.zig:176:28: 0x1296cde in test.archive options, longest prefix and device-error drain (archive.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6417/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/compiler/test_runner.zig:291:25: 0x1211d56 in mainTerminal (test_runner.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6417/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/compiler/test_runner.zig:73:28: 0x1211572 in main (test_runner.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6417/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/start.zig:699:88: 0x120dd85 in callMain (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/6417/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/start.zig:190:5: 0x120d761 in _start (std.zig)
+================================================================================
+[28 / 32] 1 / 2 tests, 1 failed; zig test //tests:archive; 2s disk-cache, linux-sandbox
+[29 / 32] 1 / 2 tests, 1 failed; [Prepa] runfiles for //tests:archive
+FAIL: //tests:archive_release_fast (Aborted) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/archive_release_fast/test.log)
+INFO: From Testing //tests:archive_release_fast:
+==================== Test output for //tests:archive_release_fast:
+1/7 archive.test.archive independent POSIX SHA256 goldens, eviction, exact partial tails and no steady allocation...FAIL (DeviceBusy)
+2/7 archive.test.archive cancellation drains, leases block eviction, corruption and I/O failures never publish...FAIL (DeviceBusy)
+3/7 archive.test.archive options, longest prefix and device-error drain...thread 12 panic: pending archive
+Cannot print stack trace: stack tracing is disabled
+================================================================================
+INFO: Found 2 test targets...
+INFO: Elapsed time: 8.455s, Critical Path: 8.14s
+INFO: 9 processes: 24 action cache hit, 5 internal, 6 linux-sandbox.
+INFO: Build completed, 2 tests FAILED, 9 total actions
+//tests:archive                                                          FAILED in 0.7s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/archive/test.log
+//tests:archive_release_fast                                             FAILED in 0.2s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/archive_release_fast/test.log
+
+Executed 2 out of 2 tests: 2 fail locally.

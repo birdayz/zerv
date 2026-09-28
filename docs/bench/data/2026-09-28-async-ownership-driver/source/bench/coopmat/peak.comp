@@ -1,0 +1,61 @@
+#version 450
+// Research probe (block 13g): peak throughput of chained 16x16x16 matrix ops on
+// register-resident data, one wave64 per workgroup. MODE: 0 = f16 WMMA (f32 acc),
+// 1 = s8 WMMA (s32 acc), 2 = scalar FP32 fma on VALU (same FLOP accounting),
+// 3 = as 2 with a wave-uniform (SGPR) multiplier.
+// CHAINS independent accumulators; ITERS (push constant) outer iterations.
+#extension GL_KHR_cooperative_matrix : require
+#extension GL_KHR_memory_scope_semantics : require
+#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
+layout(local_size_x = 64) in;
+layout(std430, binding = 0) readonly buffer In { uint data[]; };
+layout(std430, binding = 1) writeonly buffer Out { uint result[]; };
+layout(push_constant) uniform P { uint iters; } p;
+#ifndef CHAINS
+#define CHAINS 4
+#endif
+#if MODE == 0
+#define ET float16_t
+#define AT float
+#elif MODE == 1
+#define ET int8_t
+#define AT int
+#endif
+void main() {
+#if MODE < 2
+    coopmat<ET, gl_ScopeSubgroup, 16, 16, gl_MatrixUseA> ma;
+    coopmat<ET, gl_ScopeSubgroup, 16, 16, gl_MatrixUseB> mb;
+    coopMatLoad(ma, data, 0, 8, gl_CooperativeMatrixLayoutRowMajor);
+    coopMatLoad(mb, data, 64, 8, gl_CooperativeMatrixLayoutColumnMajor);
+    coopmat<AT, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator> acc[CHAINS];
+    for (int c = 0; c < CHAINS; ++c) acc[c] = coopmat<AT, gl_ScopeSubgroup, 16, 16, gl_MatrixUseAccumulator>(AT(0));
+    for (uint i = 0; i < p.iters; ++i)
+        for (int c = 0; c < CHAINS; ++c) acc[c] = coopMatMulAdd(ma, mb, acc[c]);
+    for (int c = 1; c < CHAINS; ++c) acc[0] = acc[0] + acc[c];
+    coopMatStore(acc[0], result, gl_WorkGroupID.x * 256u, 16, gl_CooperativeMatrixLayoutRowMajor);
+#elif MODE == 3
+    // As MODE 2, but the multiplier is wave-uniform (scalar register, like the GEMM's X).
+    float xs[4];
+    for (int c = 0; c < 4; ++c) xs[c] = uintBitsToFloat(data[c] & 0x3f7fffffu);
+    float acc[CHAINS * 4];
+    for (int c = 0; c < CHAINS * 4; ++c) acc[c] = float(gl_LocalInvocationID.x + c);
+    for (uint i = 0; i < p.iters; ++i)
+        for (int r = 0; r < 16; ++r)
+            for (int c = 0; c < CHAINS * 4; ++c) acc[c] = fma(acc[c], xs[c & 3], 1.0);
+    float s = 0.0;
+    for (int c = 0; c < CHAINS * 4; ++c) s += acc[c];
+    result[gl_WorkGroupID.x * 64u + gl_LocalInvocationID.x] = floatBitsToUint(s);
+#else
+    // 16*16*16 fma per matrix op spread over 64 lanes = 64 fma per lane per op.
+    float x = uintBitsToFloat(data[gl_LocalInvocationID.x]);
+    float acc[CHAINS * 4];
+    for (int c = 0; c < CHAINS * 4; ++c) acc[c] = float(c);
+    for (uint i = 0; i < p.iters; ++i)
+        for (int r = 0; r < 16; ++r)
+            for (int c = 0; c < CHAINS * 4; ++c) acc[c] = fma(acc[c], x, 1.0);
+    float s = 0.0;
+    for (int c = 0; c < CHAINS * 4; ++c) s += acc[c];
+    result[gl_WorkGroupID.x * 64u + gl_LocalInvocationID.x] = floatBitsToUint(s);
+#endif
+}
