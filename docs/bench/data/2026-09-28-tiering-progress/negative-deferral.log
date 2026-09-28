@@ -1,0 +1,85 @@
+INFO: Invocation ID: f90453b6-f724-4cdc-86a6-e375ad345574
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+WARNING: Build option --compilation_mode has changed, discarding analysis cache (this can be expensive, see https://bazel.build/advanced/performance/iteration-speed).
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (2 packages loaded, 2989 targets configured).
+[36 / 41] zig test //tests:batcher; 1s disk-cache, linux-sandbox ... (2 actions running)
+[37 / 41] Testing //tests:batcher; 4s disk-cache, linux-sandbox ... (2 actions, 1 running)
+[40 / 42] Testing //tests:batcher; 6s disk-cache, linux-sandbox ... (2 actions running)
+[40 / 42] Testing //tests:batcher; 15s disk-cache, linux-sandbox ... (2 actions running)
+
+TIMEOUT: //tests:batcher (Summary)
+      /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/batcher/test.log
+INFO: From Testing //tests:batcher:
+==================== Test output for //tests:batcher:
+1/24 batcher.test.batcher: concurrent generations get exactly their solo logits, with joins, leaves and holds...OK
+2/24 batcher.test.batcher: shortest remaining prompt goes first between chunks; fifo keeps arrival order...OK
+3/24 batcher.test.batcher: a generation canceled mid-chunk aborts its chunk; the slot is reset and reused...OK
+4/24 batcher.test.batcher: a slow client does not hold the others (gather expires)...OK
+5/24 batcher.test.batcher: a canceled waiter withdraws; a backend error fails only its batch; stop...OK
+6/24 batcher.test.batcher: a canceled generation's prompt is never read after its submit returns...OK
+7/24 batcher.test.batcher: a row that cannot run fails alone; the other rows of its batch run...OK
+8/24 batcher.test.batcher: pending prompts pack into one chunk; each gets its solo logits; a canceled member does not stop the others...FAIL (TestUnexpectedResult)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7726/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:615:14: 0x1255cc9 in expect (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7726/execroot/_main/tests/batcher.zig:763:9: 0x1282cee in test.batcher: pending prompts pack into one chunk; each gets its solo logits; a canceled member does not stop the others (batcher.zig)
+9/24 batcher.test.batcher: shared memory pool: prompts wait for memory, a large prompt is not starved, memory comes back...OK
+10/24 batcher.test.batcher: prompt admission grows page by page; the youngest sequence swaps out and back, outputs unchanged...OK
+11/24 batcher.test.batcher: prompt admission without a host store: a row that finds no page fails alone...OK
+12/24 batcher.test.batcher: time slice: a swapped sequence waiting a slice swaps out the longest-running one; outputs unchanged...OK
+13/24 batcher.test.batcher: time slice: a new prompt is not starved while long sequences rotate through the pool...OK
+14/24 batcher.test.batcher: begin restores the longest checkpoint; checkpoints are taken mid-prompt; outputs unchanged...OK
+15/24 batcher.test.batcher: every prompt segment is admitted (checkpoint points split a prompt; tight pool)...OK
+16/24 batcher.test.batcher: pending cache keeps tokens and permits decode; cancel leave stop drain...OK
+17/24 batcher.test.batcher: leave and reuse during an I/O poll releases old pages before new begin...OK
+18/24 batcher.test.batcher: stop aborts a packed chunk before draining pending cache I/O...OK
+19/24 batcher.test.batcher: source-only maintenance wakes while idle and drains on stop without request slots...OK
+20/24 batcher.test.batcher: reclaim-blocked decode keeps its step, waits for an epoch, and permits other rows...OK
+21/24 batcher.test.batcher: leave/reuse during unlocked maintenance releases old pages before begin...OK
+22/24 batcher.test.batcher: foreground I/O priority reaches maintenance, stop drains both owners...OK
+23/24 batcher.test.batcher: in-chunk source progress preserves read priority and unlocked leave/reuse or stop...-- Test timed out at 2026-09-28 21:13:11 UTC --
+================================================================================
+[41 / 42] 1 / 2 tests, 1 failed; Testing //tests:batcher_release_fast; 11s disk-cache, linux-sandbox
+[41 / 42] 1 / 2 tests, 1 failed; Testing //tests:batcher_release_fast; 15s disk-cache, linux-sandbox
+
+TIMEOUT: //tests:batcher_release_fast (Summary)
+      /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/batcher_release_fast/test.log
+INFO: From Testing //tests:batcher_release_fast:
+==================== Test output for //tests:batcher_release_fast:
+1/24 batcher.test.batcher: concurrent generations get exactly their solo logits, with joins, leaves and holds...OK
+2/24 batcher.test.batcher: shortest remaining prompt goes first between chunks; fifo keeps arrival order...OK
+3/24 batcher.test.batcher: a generation canceled mid-chunk aborts its chunk; the slot is reset and reused...OK
+4/24 batcher.test.batcher: a slow client does not hold the others (gather expires)...OK
+5/24 batcher.test.batcher: a canceled waiter withdraws; a backend error fails only its batch; stop...OK
+6/24 batcher.test.batcher: a canceled generation's prompt is never read after its submit returns...OK
+7/24 batcher.test.batcher: a row that cannot run fails alone; the other rows of its batch run...OK
+8/24 batcher.test.batcher: pending prompts pack into one chunk; each gets its solo logits; a canceled member does not stop the others...FAIL (TestUnexpectedResult)
+9/24 batcher.test.batcher: shared memory pool: prompts wait for memory, a large prompt is not starved, memory comes back...OK
+10/24 batcher.test.batcher: prompt admission grows page by page; the youngest sequence swaps out and back, outputs unchanged...OK
+11/24 batcher.test.batcher: prompt admission without a host store: a row that finds no page fails alone...OK
+12/24 batcher.test.batcher: time slice: a swapped sequence waiting a slice swaps out the longest-running one; outputs unchanged...OK
+13/24 batcher.test.batcher: time slice: a new prompt is not starved while long sequences rotate through the pool...OK
+14/24 batcher.test.batcher: begin restores the longest checkpoint; checkpoints are taken mid-prompt; outputs unchanged...OK
+15/24 batcher.test.batcher: every prompt segment is admitted (checkpoint points split a prompt; tight pool)...OK
+16/24 batcher.test.batcher: pending cache keeps tokens and permits decode; cancel leave stop drain...OK
+17/24 batcher.test.batcher: leave and reuse during an I/O poll releases old pages before new begin...OK
+18/24 batcher.test.batcher: stop aborts a packed chunk before draining pending cache I/O...OK
+19/24 batcher.test.batcher: source-only maintenance wakes while idle and drains on stop without request slots...OK
+20/24 batcher.test.batcher: reclaim-blocked decode keeps its step, waits for an epoch, and permits other rows...OK
+21/24 batcher.test.batcher: leave/reuse during unlocked maintenance releases old pages before begin...OK
+22/24 batcher.test.batcher: foreground I/O priority reaches maintenance, stop drains both owners...OK
+23/24 batcher.test.batcher: in-chunk source progress preserves read priority and unlocked leave/reuse or stop...-- Test timed out at 2026-09-28 21:13:16 UTC --
+================================================================================
+INFO: Found 2 test targets...
+INFO: Elapsed time: 20.890s, Critical Path: 20.65s
+INFO: 9 processes: 33 action cache hit, 5 internal, 6 linux-sandbox.
+INFO: Build completed, 2 tests FAILED, 9 total actions
+//tests:batcher                                                         TIMEOUT in 15.0s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/batcher/test.log
+//tests:batcher_release_fast                                            TIMEOUT in 15.0s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/batcher_release_fast/test.log
+
+Executed 2 out of 2 tests: 2 fail locally.

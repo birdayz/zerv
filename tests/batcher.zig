@@ -95,6 +95,9 @@ const Fake = struct {
     maintenance_cancel_polls: u32 = 0,
     maintenance_block_grow: bool = false,
     maintenance_pause: bool = false,
+    maintenance_chunk_pause: bool = false,
+    maintenance_chunk_polls: u32 = 0,
+    maintenance_chunk_reads: u32 = 0,
     maintenance_in_poll: std.Io.Event = .unset,
     maintenance_resume: std.Io.Event = .unset,
 
@@ -112,7 +115,28 @@ const Fake = struct {
     io_ready: std.atomic.Value(bool) = .init(false),
     pub fn pollMaintenance(self: *Fake, stopping: bool, reads_pending: bool) !batcher.MaintenancePoll {
         if (!self.maintenance_live.load(.acquire)) return .{};
-        if (self.flight != null) return error.PackStillLive;
+        if (self.flight != null) {
+            self.violations += 1;
+            return error.PackStillLive;
+        }
+        return self.advanceMaintenance(stopping, reads_pending);
+    }
+    pub fn pollMaintenanceInChunk(self: *Fake, stopping: bool, reads_pending: bool) !batcher.MaintenancePoll {
+        if (self.flight == null or stopping) {
+            self.violations += 1;
+            return error.NoPack;
+        }
+        self.maintenance_chunk_polls += 1;
+        if (reads_pending) self.maintenance_chunk_reads += 1;
+        if (!self.maintenance_live.load(.acquire)) return .{};
+        if (self.maintenance_chunk_pause) {
+            self.maintenance_chunk_pause = false;
+            self.maintenance_in_poll.set(self.io);
+            self.maintenance_resume.waitUncancelable(self.io);
+        }
+        return self.advanceMaintenance(stopping, reads_pending);
+    }
+    fn advanceMaintenance(self: *Fake, stopping: bool, reads_pending: bool) !batcher.MaintenancePoll {
         self.maintenance_entered.store(true, .release);
         if (self.maintenance_pause) {
             self.maintenance_pause = false;
@@ -713,7 +737,7 @@ test "batcher: pending prompts pack into one chunk; each gets its solo logits; a
     // 1. Six generations with prompts of 2..12 tokens start together over 6 slots, packs of
     // up to 4: packed chunks happen, and every logits row is the solo one.
     {
-        var fake: Fake = .{ .io = io, .segments = 3, .unit_delay_ns = 200_000, .pack_cap = 4 };
+        var fake: Fake = .{ .io = io, .segments = 3, .unit_delay_ns = 200_000, .pack_cap = 4, .maintenance_live = .init(true) };
         var b = try B.init(io, &fake, .{ .slots = 6, .vocab = V, .stall = .{ .ns = 0 }, .order = .shortest, .pack = 4 });
         var task = try io.concurrent(B.run, .{&b});
         var prompts: [6][12]u32 = undefined;
@@ -736,12 +760,14 @@ test "batcher: pending prompts pack into one chunk; each gets its solo logits; a
         }
         try t.expect(fake.packs > 0);
         try t.expect(b.stats.packed_chunks > 0);
+        try t.expect(fake.maintenance_chunk_polls > 0);
+        try t.expectEqual(@as(u32, 3), fake.maintenance_cancel_polls);
         try t.expectEqual(@as(u32, 0), fake.violations);
     }
     // 2. Two prompts in one pack; one generation is canceled mid-chunk: the other completes
     // with its solo logits, the chunk is not aborted, and the canceled slot is reused.
     {
-        var fake: Fake = .{ .io = io, .segments = 8, .unit_delay_ns = 2_000_000, .pack_cap = 2 };
+        var fake: Fake = .{ .io = io, .segments = 8, .unit_delay_ns = 2_000_000, .pack_cap = 2, .maintenance_live = .init(true) };
         var b = try B.init(io, &fake, .{ .slots = 3, .vocab = V, .stall = .{ .ns = 0 }, .order = .shortest, .pack = 2 });
         var task = try io.concurrent(B.run, .{&b});
         const a = try b.join();
@@ -1059,8 +1085,10 @@ test "batcher: begin restores the longest checkpoint; checkpoints are taken mid-
     var results: [3]anyerror!void = undefined;
     var group: std.Io.Group = .init;
     defer group.cancel(io);
-    for (1..4) |i| try group.concurrent(io, cachedGeneration, .{ &b, &prompts[i], @as(usize, 5), @as(u32, 6), &results[i - 1], &restored });
+    var restored_each: [3]u32 = @splat(0);
+    for (1..4) |i| try group.concurrent(io, cachedGeneration, .{ &b, &prompts[i], @as(usize, 5), @as(u32, 6), &results[i - 1], &restored_each[i - 1] });
     try group.await(io);
+    for (restored_each) |count| restored += count;
     b.stop();
     task.await(io);
     for (results) |r| try r;
@@ -1307,4 +1335,158 @@ test "batcher: foreground I/O priority reaches maintenance, stop drains both own
     try t.expect(fake.io_cancel_polls >= 3 and fake.maintenance_cancel_polls >= 3);
     try t.expect(fake.io_live == null and !fake.maintenance_live.load(.acquire));
     b.leave(a);
+}
+
+test "batcher: in-chunk source progress preserves read priority and unlocked leave/reuse or stop" {
+    const io = t.io;
+    for ([_]bool{ false, true }) |stop_in_chunk| {
+        var fake: Fake = .{ .io = io, .io_kind = .begin, .segments = 4, .maintenance_live = .init(true), .maintenance_chunk_pause = true };
+        var b = try B.init(io, &fake, .{ .slots = 3, .vocab = V, .stall = .{ .ns = 0 } });
+        const reader = try b.join();
+        const worker = try b.join();
+        const old = try b.join();
+        var scheduler = try io.concurrent(B.run, .{&b});
+        try b.reset(worker);
+        var pending = try io.concurrent(pendingCacheOp, .{ &b, reader, @as([]const u32, &.{ 1, 2, 3 }), false });
+        while (!fake.io_entered.load(.acquire)) try io.sleep(.fromMicroseconds(100), .awake);
+        var prefill = try io.concurrent(shortPrefill, .{ &b, worker, @as([]const u32, &.{ 7, 8, 9 }) });
+        fake.maintenance_in_poll.waitUncancelable(io);
+        // This callback is unlocked with a live chunk AND a deferred foreground read.
+        b.leave(old);
+        const reused = try b.join();
+        var next = try io.concurrent(pendingCacheOp, .{ &b, reused, @as([]const u32, &.{ 4, 5, 6 }), false });
+        while (queued(&b, .begin) < 2) try io.sleep(.fromMicroseconds(100), .awake);
+        if (stop_in_chunk) b.stop();
+        fake.maintenance_resume.set(io);
+        if (stop_in_chunk) {
+            try t.expectError(error.Canceled, prefill.await(io));
+            try t.expectError(error.Canceled, next.await(io));
+        } else {
+            const got = try prefill.await(io);
+            var want: [V]f32 = undefined;
+            logitsFor(mix(mix(mix(7, 7), 8), 9), &want);
+            try t.expectEqualSlices(f32, &want, &got);
+            b.sampled(worker);
+            _ = try next.await(io);
+            b.stop();
+        }
+        scheduler.await(io);
+        try t.expectError(error.Canceled, pending.await(io));
+        try t.expectEqual(old, reused);
+        try t.expectEqual(@as(u32, 1), fake.release_calls[reused]);
+        if (!stop_in_chunk) try t.expectEqual(fake.release_calls[reused], fake.reset_release_seen[reused]);
+        try t.expect(fake.maintenance_chunk_polls > 0 and fake.maintenance_chunk_reads > 0);
+        try t.expectEqual(@as(u32, 3), fake.maintenance_cancel_polls);
+        try t.expectEqual(@as(u32, if (stop_in_chunk) 1 else 0), fake.aborts);
+        try t.expectEqual(@as(u32, 0), fake.violations);
+        b.leave(reader);
+        b.leave(worker);
+        b.leave(reused);
+    }
+}
+
+fn queuedStopOperation(b: *B, slot: u32, kind: u32) !void {
+    switch (kind) {
+        0 => try b.reset(slot),
+        1 => _ = try b.begin(slot, &.{ 1, 2, 3 }),
+        2 => try b.checkpoint(slot, &.{ 1, 2, 3 }),
+        3 => _ = try b.prefill(slot, &.{ 1, 2, 3 }),
+        4 => _ = try b.step(slot, 7),
+        else => unreachable,
+    }
+}
+
+test "batcher: stop completes queued operations even without a running backend owner" {
+    const io = t.io;
+    for (0..5) |kind| {
+        var fake: Fake = .{ .io = io };
+        var b = try B.init(io, &fake, .{ .slots = 2, .vocab = V });
+        const slot = try b.join();
+        var pending = try io.concurrent(queuedStopOperation, .{ &b, slot, @as(u32, @intCast(kind)) });
+        while (true) {
+            b.mutex.lockUncancelable(io);
+            const submitted = b.slot[slot].op != .none;
+            b.mutex.unlock(io);
+            if (submitted) break;
+            try io.sleep(.fromMicroseconds(100), .awake);
+        }
+        b.stop();
+        b.run();
+        try t.expectError(error.Canceled, pending.await(io));
+        try t.expectEqual(@as(u32, 0), fake.calls);
+        b.leave(slot);
+    }
+}
+
+/// Old backend interface: maintenance exists, but no opt-in in-chunk hook.
+const ChunkBoundaryBackend = struct {
+    f: *Fake,
+    pub fn pollMaintenance(self: @This(), stopping: bool, reads: bool) !batcher.MaintenancePoll {
+        return self.f.pollMaintenance(stopping, reads);
+    }
+    pub fn reset(self: @This(), slot: u32) !void {
+        return self.f.reset(slot);
+    }
+    pub fn begin(self: @This(), slot: u32, tokens: []const u32) !u32 {
+        return self.f.begin(slot, tokens);
+    }
+    pub fn checkpoint(self: @This(), slot: u32, tokens: []const u32) !void {
+        return self.f.checkpoint(slot, tokens);
+    }
+    pub fn packFits(self: @This(), lengths: []const usize) bool {
+        return self.f.packFits(lengths);
+    }
+    pub fn prefillUnit(self: @This(), items: []const batcher.Item) !batcher.Unit {
+        return self.f.prefillUnit(items);
+    }
+    pub fn abortChunk(self: @This()) void {
+        self.f.abortChunk();
+    }
+    pub fn admit(self: @This(), slot: u32, tokens: usize) bool {
+        return self.f.admit(slot, tokens);
+    }
+    pub fn release(self: @This(), slot: u32) void {
+        self.f.release(slot);
+    }
+    pub fn grow(self: @This(), slot: u32) !bool {
+        return self.f.grow(slot);
+    }
+    pub fn swapOut(self: @This(), slot: u32) !bool {
+        return self.f.swapOut(slot);
+    }
+    pub fn swapIn(self: @This(), slot: u32, spare: u32) !bool {
+        return self.f.swapIn(slot, spare);
+    }
+    pub fn checkRow(self: @This(), row: batcher.Row) !void {
+        return self.f.checkRow(row);
+    }
+    pub fn decodeBatch(self: @This(), rows: []const batcher.Row) ![]const f32 {
+        return self.f.decodeBatch(rows);
+    }
+};
+
+test "batcher: legacy maintenance remains deferred without explicit in-chunk opt-in" {
+    const io = t.io;
+    var fake: Fake = .{ .io = io, .segments = 4, .maintenance_live = .init(true) };
+    const Legacy = batcher.Batcher(ChunkBoundaryBackend);
+    var b = try Legacy.init(io, .{ .f = &fake }, .{ .slots = 2, .vocab = V });
+    var task = try io.concurrent(Legacy.run, .{&b});
+    var stopped = false;
+    defer if (!stopped) {
+        b.stop();
+        task.await(io);
+    };
+    const slot = try b.join();
+    try b.reset(slot);
+    const got = try b.prefill(slot, &.{ 7, 8, 9 });
+    var want: [V]f32 = undefined;
+    logitsFor(mix(mix(mix(7, 7), 8), 9), &want);
+    try t.expectEqualSlices(f32, &want, got);
+    b.leave(slot);
+    b.stop();
+    task.await(io);
+    stopped = true;
+    try t.expectEqual(@as(u32, 0), fake.violations);
+    try t.expectEqual(@as(u32, 0), fake.maintenance_chunk_polls);
+    try t.expectEqual(@as(u32, 3), fake.maintenance_cancel_polls);
 }

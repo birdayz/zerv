@@ -1533,7 +1533,9 @@ pub const Model = struct {
 
     fn archiveQuantum(self: *Model, c: *gpu.Commands, staging: *gpu.Buffer, staging_offset: u64, slot: u32, tokens: u32, map: []const u32, offset: u64, bytes: u64, importing: bool, snapshot: ?u32) Error!bool {
         const total = try self.archiveBytes(tokens);
-        if (slot >= self.state_layout.slots or self.chunk != null or self.pending_verify != 0) return error.InvalidState;
+        // Only immutable cache sources are independent of packed live state. Mutable
+        // exports and imports must still wait for the entire chunk to finish.
+        if (slot >= self.state_layout.slots or (self.chunk != null and snapshot == null) or self.pending_verify != 0) return error.InvalidState;
         if (map.len != (std.math.divCeil(u32, tokens, self.state_layout.page) catch unreachable)) return error.PagesMissing;
         if (bytes == 0 or offset > total or bytes > total - offset or (offset | bytes | staging_offset) & 3 != 0) return error.InvalidRange;
         if (staging_offset > staging.size or bytes > staging.size - staging_offset) return error.InvalidRange;

@@ -518,10 +518,15 @@ pub fn Batcher(comptime Backend: type) type {
 
         fn pollBackground(self: *Self, reads_pending: bool) MaintenancePoll {
             if (comptime !can_maintain) return .{};
-            if (self.pack != null) return .{ .pending = self.maintenance_pending };
+            const in_chunk = self.pack != null;
+            if (in_chunk and comptime !@hasDecl(BackendType, "pollMaintenanceInChunk")) return .{ .pending = self.maintenance_pending };
             const stopping = self.stopping;
             self.mutex.unlock(self.io);
-            const p = self.backend.pollMaintenance(stopping, reads_pending) catch MaintenancePoll{ .progressed = true, .reclaimed = true };
+            const result = if (in_chunk and comptime @hasDecl(BackendType, "pollMaintenanceInChunk"))
+                self.backend.pollMaintenanceInChunk(stopping, reads_pending)
+            else
+                self.backend.pollMaintenance(stopping, reads_pending);
+            const p = result catch MaintenancePoll{ .progressed = true, .reclaimed = true };
             self.mutex.lockUncancelable(self.io);
             self.maintenance_pending = p.pending;
             if (p.reclaimed) self.admit_epoch += 1;
@@ -565,8 +570,18 @@ pub fn Batcher(comptime Backend: type) type {
                     continue;
                 }
                 if (self.stopping) {
+                    // Queued operations have no backend borrow, but their waiters still
+                    // need completion. Running I/O is canceled only after its owner drains.
+                    for (self.slot[0..self.options.slots]) |*s| {
+                        if (s.op == .none or s.running) continue;
+                        s.op = .none;
+                        s.tokens = &.{};
+                        s.err = error.Canceled;
+                        self.complete(s);
+                    }
+                    const drained = !io_progress.pending and self.to_release == 0;
                     self.mutex.unlock(self.io);
-                    if (!io_progress.pending) return;
+                    if (drained) return;
                     if (!io_progress.progressed) std.Io.sleep(self.io, .fromMicroseconds(100), .awake) catch {};
                     continue;
                 }

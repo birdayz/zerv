@@ -1,0 +1,30 @@
+exec ${PAGER:-/usr/bin/less} "$0" || exit 1
+Executing tests from //tests:batcher
+-----------------------------------------------------------------------------
+1/23 batcher.test.batcher: concurrent generations get exactly their solo logits, with joins, leaves and holds...OK
+2/23 batcher.test.batcher: shortest remaining prompt goes first between chunks; fifo keeps arrival order...OK
+3/23 batcher.test.batcher: a generation canceled mid-chunk aborts its chunk; the slot is reset and reused...OK
+4/23 batcher.test.batcher: a slow client does not hold the others (gather expires)...OK
+5/23 batcher.test.batcher: a canceled waiter withdraws; a backend error fails only its batch; stop...OK
+6/23 batcher.test.batcher: a canceled generation's prompt is never read after its submit returns...OK
+7/23 batcher.test.batcher: a row that cannot run fails alone; the other rows of its batch run...OK
+8/23 batcher.test.batcher: pending prompts pack into one chunk; each gets its solo logits; a canceled member does not stop the others...OK
+9/23 batcher.test.batcher: shared memory pool: prompts wait for memory, a large prompt is not starved, memory comes back...OK
+10/23 batcher.test.batcher: prompt admission grows page by page; the youngest sequence swaps out and back, outputs unchanged...OK
+11/23 batcher.test.batcher: prompt admission without a host store: a row that finds no page fails alone...OK
+12/23 batcher.test.batcher: time slice: a swapped sequence waiting a slice swaps out the longest-running one; outputs unchanged...OK
+13/23 batcher.test.batcher: time slice: a new prompt is not starved while long sequences rotate through the pool...OK
+14/23 batcher.test.batcher: begin restores the longest checkpoint; checkpoints are taken mid-prompt; outputs unchanged...expected 3, found 2
+FAIL (TestExpectedEqual)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7651/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:118:17: 0x123c7d4 in expectEqualInner__anon_43420 (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7651/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:83:5: 0x1272125 in expectEqual (batcher.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/7651/execroot/_main/tests/batcher.zig:1095:5: 0x12721ab in test.batcher: begin restores the longest checkpoint; checkpoints are taken mid-prompt; outputs unchanged (batcher.zig)
+15/23 batcher.test.batcher: every prompt segment is admitted (checkpoint points split a prompt; tight pool)...OK
+16/23 batcher.test.batcher: pending cache keeps tokens and permits decode; cancel leave stop drain...OK
+17/23 batcher.test.batcher: leave and reuse during an I/O poll releases old pages before new begin...OK
+18/23 batcher.test.batcher: stop aborts a packed chunk before draining pending cache I/O...OK
+19/23 batcher.test.batcher: source-only maintenance wakes while idle and drains on stop without request slots...OK
+20/23 batcher.test.batcher: reclaim-blocked decode keeps its step, waits for an epoch, and permits other rows...OK
+21/23 batcher.test.batcher: leave/reuse during unlocked maintenance releases old pages before begin...OK
+22/23 batcher.test.batcher: foreground I/O priority reaches maintenance, stop drains both owners...OK
+23/23 batcher.test.batcher: in-chunk source progress preserves read priority and unlocked leave/reuse or stop...-- Test timed out at 2026-09-28 21:08:58 UTC --

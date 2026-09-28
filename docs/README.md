@@ -373,3 +373,11 @@ finish independent tests and benchmark gates before advancing.
      token streams, no disk speedup. RDNA3 fusion failures retained, supported
      nofusion follow-up passes. [D audit](design/tiering-preparation-audit.md)
      is active research, not code; the full plan/performance goal remains open.
+112. [Archive progress between prefill units](bench/2026-09-28-tiering-progress.md)
+     (D.0a evaluation closed, negative serving result): immutable-source-only hook,
+     unchanged 1 MiB windows/read priority. Packed vocabulary/source bytes exact at
+     257/80k; independent model 337/337, CPU 82/82, device gates pass. Adversarial
+     shutdown test exposed/fixed uncompleted queued waiters. Matched component ~0.55%
+     faster; 96 native HTTP responses/counts exact but zero disk restores, increased
+     wasted writes, host+disk slower than host-only and tuned references. No serving
+     win, proactive demotion or prefetch claim. D.0b window sizing is next.

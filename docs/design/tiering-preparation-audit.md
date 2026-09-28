@@ -2,7 +2,8 @@
 
 2026-09-28, research/design only. Begun during C.3 verification; C.3's evaluation
 gates are now closed with negative performance findings. D's pre-code research is
-active; no D code is started.
+active. Subsequent D.0a cadence code and verification are specified in
+[tiering-progress.md](../specs/tiering-progress.md); D.1/D.2 remain unimplemented.
 References: [paper review](../research/2026-09-28-kv-tier-papers.md),
 [ordered plan](async-tiering.md), [C source contract](../specs/cache-source-leases.md).
 
@@ -207,3 +208,57 @@ GPU bytes and model 257/80k state/vocabulary with interleaved request hits, plus
 repeated loaded serving. A declaration that the operation is asynchronous is not
 an overlap measurement. D.2 queued-demand protection/prefetch is separate, still
 unresolved as outlined above; no D implementation readiness/completion is claimed.
+
+## D.0a readiness decision (2026-09-28, before code)
+
+At `0b252be`, reviewed `Batcher.pollBackground/pollIo/run`,
+`ModelBackend.pollMaintenance`, `Model.archiveSourceSubmit/archiveQuantum`,
+`Model.prefillPackedSegment`, and the archive model checker. Source-only capture
+never touches packed live state or selects a slot. Both scheduler and model currently
+reject it throughout a chunk; changing only one guard cannot make progress.
+The source's existing four ordering barriers and whole-buffer mapped checks remain
+necessary, including for invalid partial tails. Ordinary maintenance can discard or
+select new objects, and foreground restore can publish/select a slot, so neither
+is safe to enable wholesale. Decision: a separate opt-in in-chunk hook, restricted
+to advancing an already leased source, plus a snapshot-only model exemption.
+No new mathematics/layout/precision is introduced. The complete narrowed contract,
+existing independent anchors and new executable interleaving gates are in
+[the D.0a spec](../specs/tiering-progress.md). Keep tickets at 1 MiB to isolate cadence;
+window tuning is not part of this first change. D.1/D.2 questions above do not block
+this strictly read-only source operation and remain unresolved for their own code.
+
+## D.1 follow-up source review during D.0a serving measurement (no D.1 code)
+
+Re-read `Pool.demotePlan/demoteCommit/demoteAbort/checkCheckpoint`, radix
+`segment/rename/makeRoom/acquireSource/releaseSource`, and model
+`copyPages/flushRun/attachPrefix` at `0b252be` (unchanged by D.0a).
+
+- Host reservations use `checkpoint_owner`, the same tag as committed cache pages;
+  there is no reservation generation in the current pool. Cache IDs do not expose
+  reserved destinations, so ordinary callers cannot release them, but a future
+  delayed finish must retain its exact move list/transaction serial and validate
+  old IDs, host ownership, GPU pins and logical indices before any commit. Existing
+  `demoteCommit` is unchecked because its caller currently waits synchronously.
+- `reclaimable` counts unmapped GPU pages, not exclusively pinned pages. It is only
+  a candidate hint; `demotePlan` additionally requires `pins == 1`. Do not equate the
+  hint with either reservable moves or actual freed pages.
+- `rename` scans every live list for matching IDs at the same logical indices, not
+  merely immediate children. Selected own-segment refcount == one (its own lease)
+  must be proven sufficient for every renamed alias by the independent tree oracle,
+  including insertion/deduplication during the pending transaction. Do not assert
+  that only the directly selected node changes.
+- `flushRun`/`extendRun` currently hard-wire `self.swap_commands`. A separate
+  preparation owner cannot reuse these helpers unchanged. Pass the explicit command
+  owner to a small copy-recording helper, with no altered synchronous semantics, or
+  use a separate bounded recorder. Never reset foreground swap commands in flight.
+- `attachPrefix` shares full pages but copies a partial page before append. With no
+  source slot owner at planning, later GPU hits can therefore retain source pages
+  without writing their valid bytes; commit must preserve their slot masks. The
+  copied/freed distinction is observable, not merely defensive bookkeeping.
+- Proactive host preparation should not accidentally require disk to be enabled:
+  current `pollMaintenance` returns immediately without a disk owner. Its future
+  optional lane needs an explicit host-only lifetime/configuration too. Archive and
+  demotion remain serialized initially because of whole-buffer CPU mapping guards.
+
+These findings refine D.1's pre-code work only. No new native D.1 API, fixture,
+implementation or performance result is claimed.

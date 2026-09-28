@@ -11,7 +11,9 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(init.arena.allocator());
     if (args.len != 3 and args.len != 5 and args.len != 6) return error.Usage;
     const disk_mode = args.len >= 5;
-    const pressure_mode = args.len == 6 and std.mem.eql(u8, args[5], "pressure");
+    const prefill_deferred = args.len == 6 and std.mem.eql(u8, args[5], "prefill-chunk");
+    const prefill_mode = prefill_deferred or (args.len == 6 and std.mem.eql(u8, args[5], "prefill"));
+    const pressure_mode = prefill_mode or (args.len == 6 and std.mem.eql(u8, args[5], "pressure"));
     const source_mode = pressure_mode or (args.len == 6 and std.mem.eql(u8, args[5], "source"));
     if (args.len == 6 and !source_mode) return error.Usage;
     const n = try std.fmt.parseInt(u32, args[2], 10);
@@ -54,6 +56,20 @@ pub fn main(init: std.process.Init) !void {
         for (other_tokens, 0..) |token, i| @memcpy(other_logits[i * model.config.vocab ..][0..model.config.vocab], try m.step(token));
         try backend.reset(1);
         try m.select(0);
+    }
+    var pack_tokens: [2][128]u32 = undefined;
+    const pack_gold = try a.alloc(f32, 2 * model.config.vocab);
+    defer a.free(pack_gold);
+    var prefill_source_quanta: u64 = 0;
+    if (prefill_mode) {
+        for (&pack_tokens, 0..) |*prompt, slot| {
+            for (prompt, 0..) |*token, i| token.* = @intCast(31 + slot * 1000 + i * 7);
+            try backend.reset(@intCast(slot));
+            try m.ensurePages(@intCast(slot), prompt.len);
+            @memcpy(pack_gold[slot * model.config.vocab ..][0..model.config.vocab], try m.prefill(prompt));
+        }
+        try backend.reset(1);
+        try backend.reset(0);
     }
     try m.ensurePages(0, n + 4);
     const start = std.Io.Clock.awake.now(init.io);
@@ -129,6 +145,34 @@ pub fn main(init: std.process.Init) !void {
         for (other_tokens, 0..) |token, i| {
             const got = try m.step(token);
             if (!std.mem.eql(u8, std.mem.sliceAsBytes(got), std.mem.sliceAsBytes(other_logits[i * model.config.vocab ..][0..model.config.vocab]))) return error.WrongIndependentLogits;
+        }
+        if (prefill_mode) {
+            for (0..2) |slot| {
+                try backend.reset(@intCast(slot));
+                try m.ensurePages(@intCast(slot), pack_tokens[slot].len);
+            }
+            const items = [_]model.PackItem{ .{ .slot = 0, .tokens = &pack_tokens[0] }, .{ .slot = 1, .tokens = &pack_tokens[1] } };
+            var unit = try m.prefillPackedSegment(&items);
+            var units: u32 = 1;
+            const before_gpu = d.source_gpu_quanta;
+            while (!unit.done) {
+                // Mutable capture AND restore must still be rejected, even when source
+                // capture is allowed. Rejection must happen before touching the command.
+                try std.testing.expectError(error.InvalidState, m.archiveSubmit(&c, &imported, 0, 0, n, view.pages, 0, 4, false));
+                try std.testing.expectError(error.InvalidState, m.archiveSubmit(&c, &imported, 0, 0, n, view.pages, 0, 4, true));
+                const before = d.source_gpu_quanta + d.source_cpu_quanta;
+                const read_pending = units % 3 == 0;
+                if (!prefill_deferred) _ = try backend.pollMaintenanceInChunk(false, read_pending);
+                if (read_pending) try std.testing.expectEqual(before, d.source_gpu_quanta + d.source_cpu_quanta);
+                unit = try m.prefillPackedSegment(&.{});
+                units += 1;
+            }
+            try std.testing.expectEqual(@as(u32, model.prefill_segments), units);
+            if (!std.mem.eql(u8, std.mem.sliceAsBytes(pack_gold), std.mem.sliceAsBytes(unit.logits.?))) return error.WrongPackedLogits;
+            prefill_source_quanta = d.source_gpu_quanta - before_gpu;
+            try std.testing.expect(if (prefill_deferred) prefill_source_quanta == 0 else prefill_source_quanta > 0);
+            try backend.reset(1);
+            try backend.reset(0);
         }
         if (pressure_mode) {
             while ((try backend.pollMaintenance(false, false)).pending) try std.Io.sleep(init.io, .fromMicroseconds(100), .awake);
@@ -263,7 +307,7 @@ pub fn main(init: std.process.Init) !void {
         try std.testing.expectEqual(null, d.catalog.lookup(prompt));
     }
     const stats = if (backend.disk_archive) |d| d.catalog.stats else zerv.session.archive.Stats{};
-    std.debug.print("{{\"prefix\":{d},\"state_bytes\":{d},\"exact_state\":true,\"exact_vocab_rows\":4,\"elapsed_ns\":{d},\"capture_ns\":{d},\"restore_ns\":{d},\"disk_write_ns\":{d},\"disk\":{},\"independent_rows\":{d},\"device_starts\":{d},\"device_pending_polls\":{d},\"max_poll_ns\":{d},\"source\":{},\"source_cpu_quanta\":{d},\"source_gpu_quanta\":{d},\"pressure\":{}}}\n", .{ n, bytes, start.durationTo(std.Io.Clock.awake.now(init.io)).nanoseconds, capture_ns, restore_ns, disk_write_ns, disk_mode, if (disk_mode) @as(u32, 2) else 0, stats.device_starts, stats.device_pending_polls, max_poll_ns, source_mode, if (backend.disk_archive) |d| d.source_cpu_quanta else 0, if (backend.disk_archive) |d| d.source_gpu_quanta else 0, pressure_mode });
+    std.debug.print("{{\"prefix\":{d},\"state_bytes\":{d},\"exact_state\":true,\"exact_vocab_rows\":4,\"elapsed_ns\":{d},\"capture_ns\":{d},\"restore_ns\":{d},\"disk_write_ns\":{d},\"disk\":{},\"independent_rows\":{d},\"device_starts\":{d},\"device_pending_polls\":{d},\"max_poll_ns\":{d},\"source\":{},\"source_cpu_quanta\":{d},\"source_gpu_quanta\":{d},\"pressure\":{},\"prefill_source_quanta\":{d},\"exact_packed_rows\":{d}}}\n", .{ n, bytes, start.durationTo(std.Io.Clock.awake.now(init.io)).nanoseconds, capture_ns, restore_ns, disk_write_ns, disk_mode, if (disk_mode) @as(u32, 2) else 0, stats.device_starts, stats.device_pending_polls, max_poll_ns, source_mode, if (backend.disk_archive) |d| d.source_cpu_quanta else 0, if (backend.disk_archive) |d| d.source_gpu_quanta else 0, pressure_mode, prefill_source_quanta, if (prefill_mode) @as(u32, 2) else 0 });
 }
 
 fn drain(b: *zerv.serve.ModelBackend, io: std.Io, slot: u32, cancel: bool) !u32 {

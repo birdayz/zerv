@@ -13,6 +13,16 @@ sys.path.insert(0, str(ROOT / "tools"))
 import zerv_build as build
 
 
+def planned_cases(tokens, cadence):
+    return [(n, mode) for i, n in enumerate(tokens)
+            for mode in ((["unit", "chunk"] if i % 2 == 0 else ["chunk", "unit"]) if cadence == "both" else [cadence])]
+
+
+def validate_prefill(row, cadence):
+    if row["exact_packed_rows"] != 2 or (row["prefill_source_quanta"] > 0) != (cadence == "unit"):
+        raise RuntimeError("packed prefill cadence/rows not exercised")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model", type=Path, default=ROOT / "models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf")
@@ -21,9 +31,13 @@ def main():
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--source", action="store_true", help="leased mixed cache source, canonical tails and live source reuse")
     mode.add_argument("--pressure", action="store_true", help="production pressure selection/poll/discard over the mixed-source gate")
+    p.add_argument("--prefill", action="store_true", help="pressure capture between packed prefill units; exact solo rows")
+    p.add_argument("--prefill-cadence", choices=["unit", "chunk", "both"], default="unit", help="matched diagnostic counterfactual; both alternates order")
     p.add_argument("--tokens", type=int, nargs="+", default=[257, 80000])
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()
+    if a.prefill_cadence != "unit" and not a.prefill: p.error("--prefill-cadence requires --prefill")
+    if a.prefill: a.pressure = True
     if a.pressure: a.source = True
     if a.scratch_dir is not None and not a.scratch_dir.is_dir(): p.error("scratch directory does not exist")
     if a.source and (not a.scratch_dir or min(a.tokens) <= 128): p.error("--source needs disk and prefixes >128 tokens")
@@ -39,10 +53,11 @@ def main():
         sources = [*sorted((ROOT / "src").rglob("*.zig")), ROOT / "bench/archive_model_check.zig", Path(__file__).resolve()]
         m["sources"] = {str(f.relative_to(ROOT)): build.sha(f) for f in sources}
         results = []
-        for index, tokens in enumerate(a.tokens):
+        for index, (tokens, cadence) in enumerate(planned_cases(a.tokens, a.prefill_cadence)):
             cmd = [str(binary), str(a.model.resolve()), str(tokens)]
             if a.scratch_dir: cmd += [str(a.scratch_dir.resolve()), str(a.direct_alignment)]
-            if a.source: cmd += ["pressure" if a.pressure else "source"]
+            if a.prefill: cmd += ["prefill-chunk" if cadence == "chunk" else "prefill"]
+            elif a.source: cmd += ["pressure" if a.pressure else "source"]
             m["commands"].append(cmd)
             log_path = a.output / f"case-{index}-{tokens}.log"
             with log_path.open("w") as log:
@@ -51,6 +66,9 @@ def main():
             if len(rows) != 1 or not rows[0]["exact_state"] or rows[0]["exact_vocab_rows"] != 4 or rows[0]["disk"] != bool(a.scratch_dir): raise RuntimeError("missing exactness result")
             if a.source and (not rows[0]["source"] or not rows[0]["source_cpu_quanta"] or not rows[0]["source_gpu_quanta"]): raise RuntimeError("mixed source path not exercised")
             if a.pressure and not rows[0]["pressure"]: raise RuntimeError("pressure owner not exercised")
+            if a.prefill:
+                validate_prefill(rows[0], cadence)
+                rows[0]["prefill_cadence"] = cadence
             results += rows
         m.update(status="passed", results=results)
     except BaseException as e:

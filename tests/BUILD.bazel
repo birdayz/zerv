@@ -506,6 +506,15 @@ py_test(
 )
 
 py_test(
+    name = "test_archive_model_harness",
+    srcs = ["test_archive_model_harness.py"],
+    data = [
+        "//bench:run_archive_model.py",
+        "//tools:zerv_build.py",
+    ],
+)
+
+py_test(
     name = "test_serving_harness",
     srcs = ["test_serving_harness.py"],
     data = [

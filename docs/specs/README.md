@@ -70,3 +70,6 @@ before coding it. Do not invent untested commands in docs and label them working
   job. CPU fixture/negative, device/model and component gates pass; no serving claim.
 - [Pressure-driven archive admission](tiering-pressure.md): C.3 pre-code contract;
   independent policy oracle and integration remain pending.
+- [Bounded archive progress during prefill](tiering-progress.md): D.0a pre-code
+  contract; immutable-source-only unit-boundary callback, unchanged transfer window,
+  independent ownership/byte anchors and packed-model interleaving gates.

@@ -291,8 +291,9 @@ pub const ModelBackend = struct {
         return .{ .done = p.done, .progressed = p.progressed, .position = p.position };
     }
 
-    /// One optional ownership/selection quantum, independent of request-slot lifetimes.
-    pub fn pollMaintenance(self: *ModelBackend, stopping: bool, reads_pending: bool) !batcher.MaintenancePoll {
+    /// Only an already-owned immutable source may progress between packed prefill units.
+    /// No slot selection, cache admission, discard or publication in this lane.
+    pub fn pollMaintenanceInChunk(self: *ModelBackend, stopping: bool, reads_pending: bool) !batcher.MaintenancePoll {
         const d = self.disk_archive orelse return .{};
         if (d.source) |held| {
             const h = held.view.lease.handle;
@@ -308,6 +309,13 @@ pub const ModelBackend = struct {
             }
             return .{ .pending = true, .progressed = p.progressed };
         }
+        return .{};
+    }
+
+    /// One optional ownership/selection quantum, independent of request-slot lifetimes.
+    pub fn pollMaintenance(self: *ModelBackend, stopping: bool, reads_pending: bool) !batcher.MaintenancePoll {
+        const d = self.disk_archive orelse return .{};
+        if (d.source != null) return self.pollMaintenanceInChunk(stopping, reads_pending);
         if (stopping or self.pressure_reclaim or reads_pending) return .{};
         const c = self.cache orelse return .{};
         const capacity = try c.sourceCapacity();
