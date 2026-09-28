@@ -30,6 +30,10 @@ const Fake = struct {
     hist: [slots][ctx_max]u32 = undefined,
     pos: [slots]u32 = @splat(0),
     snaps: [64]u64 = undefined,
+    /// Host store for demoted checkpoint pages (0 pages: none).
+    host_n: u32 = 0,
+    host_used: [pool]bool = @splat(false),
+    host_content: [pool]u64 = undefined,
     violations: u32 = 0,
 
     fn free(self: *const Fake, q: usize) bool {
@@ -78,7 +82,52 @@ const Fake = struct {
     fn device(self: *Fake) kvcache.Device {
         return .{ .ctx = self, .vtable = &vt };
     }
-    const vt: kvcache.Device.VTable = .{ .pageTokens = pageTokens, .save = save, .load = load, .pin = pin, .unpin = unpin, .attach = attach, .rebind = rebind };
+    const vt: kvcache.Device.VTable = .{ .pageTokens = pageTokens, .save = save, .load = load, .pin = pin, .unpin = unpin, .attach = attach, .rebind = rebind, .demote = demote, .promote = promote, .reclaimable = reclaimable };
+    fn reclaimable(ctx: *anyopaque, list: []const u32) u32 {
+        const self = of(ctx);
+        var n: u32 = 0;
+        for (list) |q| {
+            if (q & kvcache.Device.host_flag != 0) continue;
+            n += @intFromBool(self.mask[q] == 0);
+        }
+        return n;
+    }
+    const HF = kvcache.Device.host_flag;
+    fn demote(ctx: *anyopaque, list: []u32) anyerror!u32 {
+        const self = of(ctx);
+        var moved: u32 = 0;
+        for (list) |*q| {
+            if (q.* & HF != 0 or self.pins[q.*] != 1 or self.mask[q.*] != 0) continue;
+            const h = for (0..self.host_n) |h| {
+                if (!self.host_used[h]) break h;
+            } else break;
+            self.host_used[h] = true;
+            self.host_content[h] = self.content[q.*];
+            self.content[q.*] = 0xdead;
+            self.pins[q.*] = 0;
+            q.* = @as(u32, @intCast(h)) | HF;
+            moved += 1;
+        }
+        return moved;
+    }
+    fn promote(ctx: *anyopaque, list: []u32) anyerror!bool {
+        const self = of(ctx);
+        var need: u32 = 0;
+        for (list) |q| need += @intFromBool(q & HF != 0);
+        if (self.freeCount() < need) return false;
+        for (list, 0..) |*q, k| {
+            if (q.* & HF == 0) continue;
+            const h = q.* & ~HF;
+            var f: u32 = 0;
+            while (!self.free(f)) f += 1;
+            self.pins[f] = 1;
+            self.content[f] = self.host_content[h];
+            self.logical[f] = @intCast(k);
+            self.host_used[h] = false;
+            q.* = f;
+        }
+        return true;
+    }
     fn of(ctx: *anyopaque) *Fake {
         return @ptrCast(@alignCast(ctx));
     }
@@ -108,6 +157,11 @@ const Fake = struct {
     fn unpin(ctx: *anyopaque, pages: []const u32) anyerror!void {
         const self = of(ctx);
         for (pages) |q| {
+            if (q & kvcache.Device.host_flag != 0) {
+                if (!self.host_used[q & ~kvcache.Device.host_flag]) return error.InvalidState;
+                self.host_used[q & ~kvcache.Device.host_flag] = false;
+                continue;
+            }
             if (self.pins[q] == 0) return error.InvalidState;
             self.pins[q] -= 1;
         }
@@ -122,7 +176,10 @@ const Fake = struct {
             if (q == pool) return error.PoolExhausted;
             fresh = q;
         }
-        for (full) |q| self.map(slot, q);
+        for (full) |q| {
+            if (q & kvcache.Device.host_flag != 0) self.violations += 1; // attached a host page
+            self.map(slot, q);
+        }
         if (fresh) |q| {
             self.content[q] = self.content[partial.?];
             self.map(slot, q);
@@ -201,7 +258,7 @@ fn workload(kind: kvcache.Kind) !void {
     try t.expectEqual(@as(u64, restored), st.restores);
     // Pressure evicts everything; then every page is free.
     for (0..slots) |s| fake.release(@intCast(s));
-    while (c.evict(fake.device())) {}
+    while (c.evict(fake.device()) or c.evictHost(fake.device())) {}
     try t.expectEqual(@as(u32, pool), fake.freeCount());
 }
 
@@ -258,4 +315,60 @@ test "kvcache radix: tree invariants under random inserts, restores and eviction
         try t.expect(r.checkTree());
     }
     try t.expectEqual(@as(u32, 0), fake.violations);
+}
+
+test "kvcache radix tiering: pressure demotes leaves to host; a later hit promotes them back, exact" {
+    // A small pool: 3 conversations of ~40 tokens (10 pages each) exceed 24 free pages once
+    // their checkpoints pin them; the host store takes the demoted pages.
+    var fake: Fake = .{ .host_n = 64 };
+    // Occupy most of the pool (other users): 256 - 24 pages held by slot 3.
+    for (0..pool - 24) |q| fake.mask[q] = 1 << 3;
+    const c = try kvcache.create(t.allocator, .radix, 6, ctx_max, ctx_max / P + 1, B);
+    defer c.deinit(t.allocator);
+    var buf: [ctx_max]u32 = undefined;
+    for (0..3) |conv| {
+        // Evict (demote) until the request's pages fit, as the backend's admission does.
+        const pr = conversation(&buf, 30, @intCast(conv), 1);
+        while (fake.freeCount() < (pr.len + P - 1) / P + 1) if (!c.evict(fake.device())) break;
+        _ = try request(c, &fake, 0, pr);
+        fake.release(0);
+    }
+    // Pressure: three evictions demote the three conversations' own (leaf) pages.
+    for (0..3) |_| try t.expect(c.evict(fake.device()));
+    const st = c.stats();
+    try t.expect(st.demotions == 3 and st.demoted_pages > 0 and st.pressure_drops == 0);
+    // Conversation 0 again: its checkpoint was demoted; restoring it promotes, exactly.
+    const start = try request(c, &fake, 0, conversation(&buf, 30, 0, 1));
+    try t.expect(start > 0);
+    try t.expect(c.stats().promotions > 0);
+    try t.expectEqual(@as(u32, 0), fake.violations);
+    fake.release(0);
+    while (c.evict(fake.device()) or c.evictHost(fake.device())) {}
+    for (fake.host_used) |u| try t.expect(!u);
+}
+
+test "kvcache radix tiering: an internal node's segment (a long document) demotes; its child restores it" {
+    var fake: Fake = .{ .host_n = 64 };
+    const c = try kvcache.create(t.allocator, .radix, 6, ctx_max, ctx_max / P + 1, B);
+    defer c.deinit(t.allocator);
+    var buf: [ctx_max]u32 = undefined;
+    // One conversation, two checkpoints: [B doc...] (the document, 8 pages) and the turn start.
+    const pr = conversation(&buf, 30, 0, 1);
+    _ = try request(c, &fake, 0, pr);
+    fake.release(0);
+    const free_before = fake.freeCount();
+    // Pressure: the least recently used segments go to the host until nothing is left in
+    // the pool; the document's 7 full pages move although its node has a child.
+    while (fake.freeCount() < pool) if (!c.evict(fake.device())) break;
+    const st = c.stats();
+    try t.expect(st.demotions >= 2 and st.pressure_drops == 0);
+    try t.expect(fake.freeCount() >= free_before + 7);
+    // The next turn restores the child: the whole path is promoted, exactly.
+    const start = try request(c, &fake, 0, conversation(&buf, 30, 0, 1));
+    try t.expect(start > 30 and c.stats().promotions == 1);
+    try t.expectEqual(@as(u32, 0), fake.violations);
+    fake.release(0);
+    while (c.evict(fake.device()) or c.evictHost(fake.device())) {}
+    try t.expectEqual(@as(u32, pool), fake.freeCount());
+    for (fake.host_used) |u| try t.expect(!u);
 }

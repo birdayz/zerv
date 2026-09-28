@@ -58,6 +58,10 @@ const Sys = struct {
     delay_ns: u64 = 0,
     swaps: u32 = 0,
     restores: u32 = 0,
+    demoted: u32 = 0,
+    promoted: u32 = 0,
+    deep_swaps: u32 = 0,
+    radix: bool = false,
 
     fn table(self: *const Sys, slot: u32, k: u32) ?u32 {
         const b = @as(u64, 1) << @intCast(slot);
@@ -86,13 +90,29 @@ const Sys = struct {
         }
         for (out, 0..) |*x, i| x.* = @floatFromInt((mixh(h, i) >> 40) % 1000);
     }
+    /// All or nothing, like `Model.ensurePages` (a failed admission holds no new page).
+    /// After every cache call: radix segment ownership holds (each page a node does not own
+    /// is an ancestor's at the same index) and every pool page's pins are exactly the live
+    /// segments naming it (no orphaned or missing pin).
+    fn checkCache(self: *Sys) void {
+        const c = self.cache orelse return;
+        if (!self.radix) return;
+        const r: *kvcache.Radix = @ptrCast(@alignCast(c.ctx));
+        if (r.ownViolation() != null) self.violations += 1;
+        for (0..self.pool.pages) |q| {
+            if (r.segmentPins(@intCast(q)) != self.pool.pins[q]) self.violations += 1;
+        }
+    }
     fn mapFree(self: *Sys, slot: u32, want: u32) bool {
+        if (self.pool.mapped[slot] >= want) return true;
+        while (self.pool.freeCount() < want - self.pool.mapped[slot]) {
+            if (!self.makeRoom(null)) return false;
+        }
         while (self.pool.mapped[slot] < want) {
             var buf: [1]u32 = undefined;
             const list = self.pool.freeList(&buf);
             if (list.len == 0) {
-                const c = self.cache orelse return false;
-                if (!c.evict(self.device())) return false;
+                if (!self.makeRoom(null)) return false;
                 continue;
             }
             self.pool.checkMap(slot, list) catch {
@@ -102,6 +122,36 @@ const Sys = struct {
             self.pool.commitMap(slot, list);
         }
         return true;
+    }
+
+    /// Like `ModelBackend.makeRoom`: a checkpoint goes first; then a swapped sequence other
+    /// than `except` gives up its resident pages (a deep swap-out).
+    fn makeRoom(self: *Sys, except: ?u32) bool {
+        if (self.cache) |c| if (c.evict(self.device())) {
+            self.checkCache();
+            return true;
+        };
+        for (0..S) |i| {
+            const slot: u32 = @intCast(i);
+            if (except != null and except.? == slot or !self.pool.holdsResident(slot)) continue;
+            var buf: [L]pages.Move = undefined;
+            const moves: []const pages.Move = while (true) {
+                break self.pool.swapSharedPlan(slot, &buf) catch |e| {
+                    if (e == error.SwapFull) if (self.cache) |c| if (c.evictHost(self.device())) {
+                        self.checkCache();
+                        continue;
+                    };
+                    if (e != error.SwapFull) self.violations += 1;
+                    break &.{};
+                };
+            };
+            if (moves.len == 0) continue;
+            for (moves) |m| @memcpy(self.host[m.to * P ..][0..P], self.dev[m.from * P ..][0..P]);
+            self.pool.swapSharedCommit(slot, moves);
+            self.deep_swaps += 1;
+            return true;
+        }
+        return false;
     }
 
     // ---- batcher backend
@@ -114,6 +164,7 @@ const Sys = struct {
         @memcpy(self.hist[slot][0..prompt.len], prompt);
         const c = self.cache orelse return 0;
         const start = try c.restore(self.device(), slot, prompt);
+        self.checkCache();
         self.restores += @intFromBool(start > 0);
         return start;
     }
@@ -121,6 +172,7 @@ const Sys = struct {
         const c = self.cache orelse return;
         if (self.pos[slot] != prefix.len) self.violations += 1;
         try c.checkpoint(self.device(), slot, prefix);
+        self.checkCache();
     }
     pub fn packFits(_: *Sys, remaining: []const usize) bool {
         return remaining.len <= 2;
@@ -168,10 +220,19 @@ const Sys = struct {
         return self.mapFree(slot, self.pos[slot] / P + 1);
     }
     pub fn swapOut(self: *Sys, slot: u32) !bool {
-        _ = self.pool.swapOutPlan(slot) catch |e| switch (e) {
-            error.SwapFull => return false,
-            else => return e,
-        };
+        while (true) {
+            _ = self.pool.swapOutPlan(slot) catch |e| switch (e) {
+                error.SwapFull => {
+                    if (self.cache) |c| if (c.evictHost(self.device())) {
+                        self.checkCache();
+                        continue;
+                    };
+                    return false;
+                },
+                else => return e,
+            };
+            break;
+        }
         for (0..self.pool.pages) |q| if (self.pool.exclusive(@intCast(q), slot)) {
             const h = self.pool.link[q];
             @memcpy(self.host[h * P ..][0..P], self.dev[q * P ..][0..P]);
@@ -183,7 +244,9 @@ const Sys = struct {
     }
     pub fn swapIn(self: *Sys, slot: u32, spare: u32) !bool {
         var words: [L]u32 = undefined;
-        if (!try self.pool.swapInPlan(slot, spare, &words)) return false;
+        while (!try self.pool.swapInPlan(slot, spare, &words)) {
+            if (!self.makeRoom(slot)) return false;
+        }
         for (0..self.pool.host_pages) |h| if (self.pool.host_owner[h] == slot) {
             @memcpy(self.dev[self.pool.link[h] * P ..][0..P], self.host[h * P ..][0..P]);
         };
@@ -207,7 +270,31 @@ const Sys = struct {
     fn device(self: *Sys) kvcache.Device {
         return .{ .ctx = self, .vtable = &dev_vt };
     }
-    const dev_vt: kvcache.Device.VTable = .{ .pageTokens = dPage, .save = dSave, .load = dLoad, .pin = dPin, .unpin = dUnpin, .attach = dAttach, .rebind = dRebind };
+    const dev_vt: kvcache.Device.VTable = .{ .pageTokens = dPage, .save = dSave, .load = dLoad, .pin = dPin, .unpin = dUnpin, .attach = dAttach, .rebind = dRebind, .demote = dDemote, .promote = dPromote, .reclaimable = dReclaimable };
+    fn dReclaimable(ctx: *anyopaque, list: []const u32) u32 {
+        return of(ctx).pool.reclaimable(list);
+    }
+    fn dDemote(ctx: *anyopaque, list: []u32) anyerror!u32 {
+        const self = of(ctx);
+        var buf: [L]pages.Move = undefined;
+        const moves = self.pool.demotePlan(list, &buf);
+        for (moves) |m| {
+            @memcpy(self.host[m.to * P ..][0..P], self.dev[m.from * P ..][0..P]);
+            @memset(self.dev[m.from * P ..][0..P], 0xdead); // freed: may be overwritten
+        }
+        self.pool.demoteCommit(list, moves);
+        self.demoted += @intCast(moves.len);
+        return @intCast(moves.len);
+    }
+    fn dPromote(ctx: *anyopaque, list: []u32) anyerror!bool {
+        const self = of(ctx);
+        var buf: [L]pages.Move = undefined;
+        const moves = self.pool.promotePlan(list, &buf) orelse return false;
+        for (moves) |m| @memcpy(self.dev[m.to * P ..][0..P], self.host[m.from * P ..][0..P]);
+        self.pool.promoteCommit(list, moves);
+        self.promoted += @intCast(moves.len);
+        return true;
+    }
     fn of(ctx: *anyopaque) *Sys {
         return @ptrCast(@alignCast(ctx));
     }
@@ -227,7 +314,7 @@ const Sys = struct {
         return of(ctx).pool.pin(slot, (tokens + P - 1) / P, out);
     }
     fn dUnpin(ctx: *anyopaque, list: []const u32) anyerror!void {
-        return of(ctx).pool.unpin(list);
+        return of(ctx).pool.releaseCheckpoint(list);
     }
     fn dAttach(ctx: *anyopaque, slot: u32, full: []const u32, partial: ?u32) anyerror!void {
         const self = of(ctx);
@@ -312,11 +399,17 @@ fn makePrompt(buf: []u32, sys: usize, conv: u32, turn: u32) []const u32 {
     return buf[0 .. n + 1];
 }
 
-const Outcome = struct { restores: u32, swaps: u32 };
+const Outcome = struct { restores: u32, swaps: u32, demoted: u32 = 0, promoted: u32 = 0, deep_swaps: u32 = 0 };
 fn run(kind: ?kvcache.Kind, pool_pages: u32, slice_ms: ?i64, seed: u64) !Outcome {
     return runDelay(kind, pool_pages, slice_ms, seed, 0);
 }
 fn runDelay(kind: ?kvcache.Kind, pool_pages: u32, slice_ms: ?i64, seed: u64, delay_ns: u64) !Outcome {
+    return runShape(kind, pool_pages, slice_ms, seed, delay_ns, .{});
+}
+/// Workload shape: `distinct` conversations with `sys`-token system prompts and up to
+/// `turns` turns; `tier`: radix demotes to host (false: drops).
+const Shape = struct { distinct: u32 = 5, turns: u32 = 3, sys: usize = 9, tier: bool = true };
+fn runShape(kind: ?kvcache.Kind, pool_pages: u32, slice_ms: ?i64, seed: u64, delay_ns: u64, shape: Shape) !Outcome {
     const io = t.io;
     const pool = try t.allocator.create(pages.Pool);
     defer t.allocator.destroy(pool);
@@ -326,7 +419,7 @@ fn runDelay(kind: ?kvcache.Kind, pool_pages: u32, slice_ms: ?i64, seed: u64, del
     defer t.allocator.free(dev);
     const host = try t.allocator.alloc(u64, 400 * P);
     defer t.allocator.free(host);
-    var sys: Sys = .{ .io = io, .pool = pool, .cache = if (kind) |k| try kvcache.create(t.allocator, k, 6, L * P, L, B) else null, .dev = dev, .host = host, .delay_ns = delay_ns };
+    var sys: Sys = .{ .io = io, .pool = pool, .cache = if (kind) |k| try kvcache.createTiered(t.allocator, k, 6, L * P, L, B, shape.tier) else null, .dev = dev, .host = host, .delay_ns = delay_ns, .radix = kind != null and kind.? == .radix };
     defer if (sys.cache) |c| c.deinit(t.allocator);
     var b = try Bt.init(io, &sys, .{ .slots = S, .vocab = V, .stall = .{ .ns = 0 }, .order = .shortest, .pack = 2, .swap_slice = if (slice_ms) |ms| .fromMilliseconds(ms) else null });
     var task = try io.concurrent(Bt.run, .{&b});
@@ -337,7 +430,8 @@ fn runDelay(kind: ?kvcache.Kind, pool_pages: u32, slice_ms: ?i64, seed: u64, del
     var group: std.Io.Group = .init;
     defer group.cancel(io);
     for (0..16) |i| {
-        const p = makePrompt(&bufs[i], 9, r.intRangeLessThan(u32, 0, 5), r.intRangeLessThan(u32, 0, 3));
+        const conv = r.intRangeLessThan(u32, 0, shape.distinct);
+        const p = makePrompt(&bufs[i], shape.sys + conv % 7, conv, r.intRangeLessThan(u32, 0, shape.turns));
         try group.concurrent(io, gen, .{ &b, p, r.intRangeAtMost(u32, 8, 40), &results[i] });
         if (r.boolean()) try io.sleep(.fromMicroseconds(r.intRangeLessThan(u32, 0, 400)), .awake);
     }
@@ -347,10 +441,10 @@ fn runDelay(kind: ?kvcache.Kind, pool_pages: u32, slice_ms: ?i64, seed: u64, del
     for (results) |res| try res;
     try t.expectEqual(@as(u32, 0), sys.violations);
     try t.expect(pool.check());
-    if (sys.cache) |c| while (c.evict(sys.device())) {};
+    if (sys.cache) |c| while (c.evict(sys.device()) or c.evictHost(sys.device())) {};
     try t.expectEqual(pool_pages, pool.freeCount());
     try t.expectEqual(@as(u32, 400), pool.hostFree());
-    return .{ .restores = sys.restores, .swaps = sys.swaps };
+    return .{ .restores = sys.restores, .swaps = sys.swaps, .demoted = sys.demoted, .promoted = sys.promoted, .deep_swaps = sys.deep_swaps };
 }
 
 test "kv system: no cache, roomy pool" {
@@ -366,13 +460,39 @@ test "kv system: tight pool, swaps and time slice, every policy, several seeds" 
     for ([_]?kvcache.Kind{ null, .flat, .radix }) |k| {
         var swaps: u32 = 0;
         var restores: u32 = 0;
+        var demoted: u32 = 0;
+        var promoted: u32 = 0;
         for (0..4) |seed| {
             const r = try runDelay(k, 30, 1, 100 + seed, 100_000);
             swaps += r.swaps;
             restores += r.restores;
+            demoted += r.demoted;
+            promoted += r.promoted;
         }
+        std.debug.print("kv system {?}: swaps {d} restores {d} demoted {d} promoted {d}\n", .{ k, swaps, restores, demoted, promoted });
+        // Tiering ran (whether a demoted conversation returns depends on timing; promotion
+        // is tested deterministically in tests/kvcache.zig).
+        if (k == .radix) try t.expect(demoted > 0);
         // Every policy really ran under pressure: swaps, and restores with a cache.
         try t.expect(swaps > 0);
         if (k != null) try t.expect(restores > 0);
     }
+}
+test "kv system: radix without the host tier, tight pool" {
+    for (0..4) |seed| _ = try runShape(.radix, 30, 1, 200 + seed, 100_000, .{ .tier = false });
+}
+test "kv system: distinct long conversations fill the pool with checkpoints, every policy and tier" {
+    // Like bench/workloads/multiturn-distinct-v1.json: few checkpoints fit, all distinct;
+    // swapped sequences' shared pages and prompts between segments fill the pool (the
+    // 2026-09-28 tier-off hang: every sequence waited, nothing ran).
+    var deep: u32 = 0;
+    var swaps: u32 = 0;
+    for ([_]kvcache.Kind{ .flat, .radix }) |k| for ([_]bool{ true, false }) |tier| for (0..3) |seed| {
+        const r = try runShape(k, 40, 1, 300 + seed, 50_000, .{ .distinct = 16, .turns = 2, .sys = 40, .tier = tier });
+        deep += r.deep_swaps;
+        swaps += r.swaps;
+    };
+    std.debug.print("kv system distinct: swaps {d} deep swap-outs {d}\n", .{ swaps, deep });
+    try t.expect(swaps > 0);
+    try t.expect(deep > 0);
 }

@@ -74,6 +74,9 @@ pub const Store = struct {
     pub fn entryPages(self: *const Store, i: usize) []const u32 {
         return self.pages[i * self.max_pages ..][0..self.entries[i].npages];
     }
+    pub fn entryPagesMut(self: *Store, i: usize) []u32 {
+        return self.pages[i * self.max_pages ..][0..self.entries[i].npages];
+    }
 
     /// The live entry with the longest prefix of `prompt` that leaves at least one prompt
     /// token to process (its logits are needed), or null.

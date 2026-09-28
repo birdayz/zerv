@@ -27,7 +27,20 @@ pub const Device = struct {
         /// Replace `slot`'s logical pages 0..pages.len with byte-identical `pages`; the number
         /// of its old pages that became free.
         rebind: *const fn (ctx: *anyopaque, slot: u32, pages: []const u32) anyerror!u32,
+        /// Move a checkpoint's pages that only it holds to the host store (tiering,
+        /// docs/specs/concurrent.md "18d.5 design"); `pages` is rewritten (host pages carry
+        /// `host_flag`). Pages moved (0: none exclusive or no host room).
+        demote: *const fn (ctx: *anyopaque, pages: []u32) anyerror!u32,
+        /// Bring a checkpoint's host pages back into the pool (pinned); false: too few free
+        /// pages (nothing changed).
+        promote: *const fn (ctx: *anyopaque, pages: []u32) anyerror!bool,
+        /// Pool pages of a checkpoint list that no running sequence maps (releasing
+        /// checkpoints can free them): dropping a checkpoint whose pages running sequences
+        /// map frees nothing.
+        reclaimable: *const fn (ctx: *anyopaque, pages: []const u32) u32,
     };
+    /// A page id in a checkpoint's list that names a host-store page.
+    pub const host_flag: u32 = 1 << 31;
     pub fn pageTokens(d: Device) u32 {
         return d.vtable.pageTokens(d.ctx);
     }
@@ -49,6 +62,15 @@ pub const Device = struct {
     pub fn rebind(d: Device, slot: u32, pages: []const u32) !u32 {
         return d.vtable.rebind(d.ctx, slot, pages);
     }
+    pub fn demote(d: Device, pages: []u32) !u32 {
+        return d.vtable.demote(d.ctx, pages);
+    }
+    pub fn promote(d: Device, pages: []u32) !bool {
+        return d.vtable.promote(d.ctx, pages);
+    }
+    pub fn reclaimable(d: Device, pages: []const u32) u32 {
+        return d.vtable.reclaimable(d.ctx, pages);
+    }
 };
 
 pub const Stats = struct {
@@ -62,6 +84,14 @@ pub const Stats = struct {
     pressure_drops: u64 = 0,
     /// Pages freed by deduplication on insert (radix).
     dedup_pages: u64 = 0,
+    /// Tiering (radix): checkpoints demoted to host memory under pressure and the pages
+    /// moved; restores that promoted pages back first, and those pages.
+    demotions: u64 = 0,
+    demoted_pages: u64 = 0,
+    promotions: u64 = 0,
+    promoted_pages: u64 = 0,
+    /// Demoted checkpoints dropped to make host room for a sequence swap.
+    host_drops: u64 = 0,
 };
 
 /// A prefix-cache policy.
@@ -74,8 +104,11 @@ pub const Cache = struct {
         restore: *const fn (ctx: *anyopaque, dev: Device, slot: u32, prompt: []const u32) anyerror!u32,
         /// `slot` has processed exactly `prefix` (a prompt prefix): keep it if worthwhile.
         checkpoint: *const fn (ctx: *anyopaque, dev: Device, slot: u32, prefix: []const u32) anyerror!void,
-        /// Memory pressure: drop one checkpoint (never entry `keep`); false: nothing left.
+        /// Memory pressure: free pool pages by demoting or dropping one checkpoint; false:
+        /// nothing left that would free any.
         evict: *const fn (ctx: *anyopaque, dev: Device) bool,
+        /// Host-store pressure: drop one demoted checkpoint; false: none.
+        evictHost: *const fn (ctx: *anyopaque, dev: Device) bool,
         stats: *const fn (ctx: *anyopaque) Stats,
         deinit: *const fn (ctx: *anyopaque, allocator: std.mem.Allocator) void,
     };
@@ -87,6 +120,9 @@ pub const Cache = struct {
     }
     pub fn evict(c: Cache, dev: Device) bool {
         return c.vtable.evict(c.ctx, dev);
+    }
+    pub fn evictHost(c: Cache, dev: Device) bool {
+        return c.vtable.evictHost(c.ctx, dev);
     }
     pub fn stats(c: Cache) Stats {
         return c.vtable.stats(c.ctx);
@@ -102,9 +138,17 @@ pub const Kind = enum { flat, radix };
 /// sequences of at most `context` tokens and `max_pages` pages. Owned by the caller
 /// (`Cache.deinit` frees it).
 pub fn create(allocator: std.mem.Allocator, kind: Kind, snapshots: u32, context: u32, max_pages: u32, boundary: u32) !Cache {
+    return createTiered(allocator, kind, snapshots, context, max_pages, boundary, true);
+}
+/// `tier`: radix demotes leaves to host memory under pressure (false: drops them).
+pub fn createTiered(allocator: std.mem.Allocator, kind: Kind, snapshots: u32, context: u32, max_pages: u32, boundary: u32, tier: bool) !Cache {
     return switch (kind) {
         .flat => (try Flat.create(allocator, snapshots, context, max_pages, boundary)).cache(),
-        .radix => (try Radix.create(allocator, snapshots, context, max_pages, boundary)).cache(),
+        .radix => blk: {
+            const r = try Radix.create(allocator, snapshots, context, max_pages, boundary);
+            r.tier = tier;
+            break :blk r.cache();
+        },
     };
 }
 
@@ -156,7 +200,7 @@ pub const Flat = struct {
     pub fn cache(self: *Flat) Cache {
         return .{ .ctx = self, .vtable = &vtable };
     }
-    const vtable: Cache.VTable = .{ .restore = restore, .checkpoint = take, .evict = evict, .stats = stats, .deinit = deinit };
+    const vtable: Cache.VTable = .{ .restore = restore, .checkpoint = take, .evict = evict, .evictHost = evictHost, .stats = stats, .deinit = deinit };
 
     fn restore(ctx: *anyopaque, dev: Device, slot: u32, prompt: []const u32) anyerror!u32 {
         const self: *Flat = @ptrCast(@alignCast(ctx));
@@ -184,9 +228,23 @@ pub const Flat = struct {
         try fillEntry(&self.store, dev, slot, i, prefix, self.pin_buf);
         self.st.inserts += 1;
     }
+    fn evictHost(_: *anyopaque, _: Device) bool {
+        return false; // flat keeps nothing on the host
+    }
     fn evict(ctx: *anyopaque, dev: Device) bool {
         const self: *Flat = @ptrCast(@alignCast(ctx));
-        const i = self.store.victim(null) orelse return false;
+        // Leaf-first LRU among checkpoints whose release frees pool pages.
+        var i_opt: ?usize = null;
+        var i_parent = true;
+        for (self.store.entries, 0..) |e, i| {
+            if (e.len == 0 or dev.reclaimable(self.store.entryPages(i)) == 0) continue;
+            const parent = self.store.isParent(i);
+            if (i_opt == null or (i_parent and !parent) or (parent == i_parent and e.used < self.store.entries[i_opt.?].used)) {
+                i_opt = i;
+                i_parent = parent;
+            }
+        }
+        const i = i_opt orelse return false;
         dropEntry(&self.store, dev, i) catch return false;
         self.st.pressure_drops += 1;
         return true;
@@ -211,14 +269,25 @@ pub const Radix = struct {
     store: checkpoint.Store,
     parent: []?u16,
     children: []u16,
+    /// Segment ownership (docs/specs/concurrent.md, "18d.5 design"): node i holds a pin (or
+    /// the host page) only for its pages from index `own[i]` on; the leading pages equal to
+    /// its parent's are its ancestors'. Every node's list still names all its pages (for
+    /// attach); a page moved by a demotion or promotion is renamed in every list.
+    own: []u32,
+    seg_buf: []u32,
+    /// A promoted path's page ids before the promotion (`restore`).
+    ren_buf: []u32,
     pin_buf: []u32,
     st: Stats = .{},
+    /// Demote node segments to the host store under memory pressure (tiering) instead of
+    /// dropping.
+    tier: bool = true,
 
     pub fn create(allocator: std.mem.Allocator, snapshots: u32, context: u32, max_pages: u32, boundary: u32) !*Radix {
         if (snapshots > std.math.maxInt(u16)) return error.InvalidOptions;
         const self = try allocator.create(Radix);
         errdefer allocator.destroy(self);
-        self.* = .{ .store = try checkpoint.Store.init(allocator, snapshots, context, max_pages, boundary), .parent = undefined, .children = undefined, .pin_buf = undefined };
+        self.* = .{ .store = try checkpoint.Store.init(allocator, snapshots, context, max_pages, boundary), .parent = undefined, .children = undefined, .own = undefined, .seg_buf = undefined, .ren_buf = undefined, .pin_buf = undefined };
         errdefer self.store.deinit(allocator);
         self.parent = try allocator.alloc(?u16, snapshots);
         errdefer allocator.free(self.parent);
@@ -226,13 +295,20 @@ pub const Radix = struct {
         self.children = try allocator.alloc(u16, snapshots);
         errdefer allocator.free(self.children);
         @memset(self.children, 0);
+        self.own = try allocator.alloc(u32, snapshots);
+        errdefer allocator.free(self.own);
+        @memset(self.own, 0);
+        self.seg_buf = try allocator.alloc(u32, max_pages);
+        errdefer allocator.free(self.seg_buf);
+        self.ren_buf = try allocator.alloc(u32, max_pages);
+        errdefer allocator.free(self.ren_buf);
         self.pin_buf = try allocator.alloc(u32, max_pages);
         return self;
     }
     pub fn cache(self: *Radix) Cache {
         return .{ .ctx = self, .vtable = &vtable };
     }
-    const vtable: Cache.VTable = .{ .restore = restore, .checkpoint = take, .evict = evict, .stats = stats, .deinit = deinit };
+    const vtable: Cache.VTable = .{ .restore = restore, .checkpoint = take, .evict = evict, .evictHost = evictHost, .stats = stats, .deinit = deinit };
 
     fn live(self: *const Radix, i: usize) bool {
         return self.store.entries[i].len != 0;
@@ -278,33 +354,75 @@ pub const Radix = struct {
         return best;
     }
 
-    /// Remove node `i`: its children move to its parent.
+    /// Remove leaf `i`: its own segment's pins and host pages are released.
     fn remove(self: *Radix, dev: Device, i: usize) !void {
-        try dev.unpin(self.store.entryPages(i));
-        const up = self.parent[i];
-        for (self.parent, 0..) |*p, j| {
-            if (self.live(j) and p.* != null and p.*.? == i) {
-                p.* = up;
-                if (up) |u| self.children[u] += 1;
+        if (self.children[i] != 0) return error.InvalidState; // only leaves are removed
+        try dev.unpin(self.segment(i));
+        if (self.parent[i]) |u| self.children[u] -= 1;
+        self.parent[i] = null;
+        self.own[i] = 0;
+        self.store.drop(i);
+    }
+    /// Node `i`'s own pages (its segment of its list).
+    fn segment(self: *Radix, i: usize) []u32 {
+        const list = self.store.entryPagesMut(i);
+        return list[@min(self.own[i], list.len)..];
+    }
+    /// Leading pages of `i`'s list equal to `j`'s.
+    fn commonPages(self: *const Radix, i: usize, j: usize) u32 {
+        const a = self.store.entryPages(i);
+        const b = self.store.entryPages(j);
+        var n: u32 = 0;
+        while (n < a.len and n < b.len and a[n] == b[n]) n += 1;
+        return n;
+    }
+    /// After `list[first..]` of some node changed from `before`: rename the pages in every
+    /// other list (a page id names one page; ids at the same index are the same page).
+    fn rename(self: *Radix, from: usize, first: u32, before: []const u32) void {
+        const after = self.store.entryPages(from)[first..][0..before.len];
+        for (self.store.entries, 0..) |e, j| {
+            if (j == from or e.len == 0) continue;
+            const list = self.store.entryPagesMut(j);
+            for (before, after, 0..) |b, a, k| {
+                const idx = first + k;
+                if (idx < list.len and list[idx] == b) list[idx] = a;
             }
         }
-        if (up) |u| self.children[u] -= 1;
-        self.children[i] = 0;
-        self.parent[i] = null;
-        self.store.drop(i);
+    }
+    /// Using a node counts as using its ancestors.
+    fn touchPath(self: *Radix, i: usize) void {
+        self.store.touch(i);
+        const t = self.store.entries[i].used;
+        var at = self.parent[i];
+        while (at) |u| : (at = self.parent[u]) self.store.entries[u].used = t;
     }
 
     fn restore(ctx: *anyopaque, dev: Device, slot: u32, prompt: []const u32) anyerror!u32 {
         const self: *Radix = @ptrCast(@alignCast(ctx));
         self.st.lookups += 1;
         const i = self.deepest(prompt, true) orelse return 0;
-        while (!try restoreEntry(&self.store, dev, slot, i)) {
-            const v = self.leaf(i) orelse return 0;
-            try self.remove(dev, v);
-            self.st.pressure_drops += 1;
+        // A demoted checkpoint (or an ancestor's pages it shares, which are its own list's
+        // entries too) comes back first; room is made by demoting or dropping others.
+        if (self.anyHost(self.store.entryPages(i))) {
+            const list = self.store.entryPagesMut(i);
+            var promoted: u32 = 0;
+            for (list) |q| promoted += @intFromBool(q & Device.host_flag != 0);
+            // The ids before the promotion, for the renaming (not `seg_buf`: `makeRoom` uses
+            // it), taken again before every attempt.
+            const before = self.ren_buf[0..list.len];
+            while (true) {
+                @memcpy(before, list);
+                if (try dev.promote(list)) break;
+                if (!self.makeRoom(dev, i)) return 0;
+            }
+            self.rename(i, 0, before);
+            self.st.promotions += 1;
+            self.st.promoted_pages += promoted;
         }
-        // Using a node counts as using its ancestors (they stay parents anyway).
-        self.store.touch(i);
+        while (!try restoreEntry(&self.store, dev, slot, i)) {
+            if (!self.makeRoom(dev, i)) return 0;
+        }
+        self.touchPath(i);
         self.st.restores += 1;
         self.st.restored_tokens += self.store.entries[i].len;
         return self.store.entries[i].len;
@@ -326,8 +444,14 @@ pub const Radix = struct {
             }
         }
         if (best) |j| {
-            const n = best_common / page;
-            if (n > 0) self.st.dedup_pages += try dev.rebind(slot, self.store.entryPages(j)[0..n]);
+            // Only pool-resident pages (a demoted suffix stays on the host).
+            const list = self.store.entryPages(j);
+            var n = best_common / page;
+            for (list[0..@min(n, list.len)], 0..) |q, k| if (q & Device.host_flag != 0) {
+                n = k;
+                break;
+            };
+            if (n > 0) self.st.dedup_pages += try dev.rebind(slot, list[0..n]);
         }
         if (self.store.has(prefix)) return;
         // A slot: a free one, else the least recently used leaf.
@@ -346,23 +470,168 @@ pub const Radix = struct {
         if (up_found != null and up_found.? == i) up_found = null;
         self.parent[i] = if (up_found) |u| @intCast(u) else null;
         if (up_found) |u| self.children[u] += 1;
+        // Ownership: the leading pages equal to the parent's are the ancestors' (unpin ours).
+        self.own[i] = if (up_found) |u| self.commonPages(i, u) else 0;
+        if (self.own[i] > 0) try dev.unpin(self.store.entryPages(i)[0..self.own[i]]);
         for (self.parent, 0..) |*p, j| {
             if (j == i or !self.live(j) or !eqOpt(p.*, up_found)) continue;
             if (self.store.entries[j].len > prefix.len and std.mem.eql(u32, self.tokens(j)[0..prefix.len], prefix)) {
                 p.* = @intCast(i);
                 self.children[i] += 1;
                 if (up_found) |u| self.children[u] -= 1;
+                // The child's pages now also held by the new node are the new node's.
+                const new_own = self.commonPages(j, i);
+                if (new_own > self.own[j]) {
+                    try dev.unpin(self.store.entryPages(j)[self.own[j]..new_own]);
+                    self.own[j] = new_own;
+                }
             }
         }
+        self.touchPath(i);
         self.st.inserts += 1;
     }
 
+    /// Memory pressure: the least recently used node (any, internal ones too) whose own
+    /// segment still has pool pages nobody maps is demoted to host memory (kept, restored
+    /// later by a copy); when nothing can be demoted, a leaf is dropped.
     fn evict(ctx: *anyopaque, dev: Device) bool {
         const self: *Radix = @ptrCast(@alignCast(ctx));
-        const i = self.leaf(null) orelse return false;
+        return self.makeRoom(dev, null);
+    }
+    /// Free pool pages (demote first, drop as the fallback), never touching `keep` or its
+    /// ancestors (the path being restored).
+    fn makeRoom(self: *Radix, dev: Device, keep: ?usize) bool {
+        var tried: [256]bool = @splat(false);
+        var path: [256]bool = @splat(false);
+        if (keep) |k| {
+            var at: ?usize = k;
+            while (at) |u| {
+                if (u < tried.len) {
+                    tried[u] = true;
+                    path[u] = true;
+                }
+                at = if (self.parent[u]) |pu| pu else null;
+            }
+        }
+        while (self.tier) {
+            var best: ?usize = null;
+            for (self.store.entries, 0..) |e, i| {
+                if (e.len == 0 or i >= tried.len or tried[i] or !self.anyPool(self.segment(i))) continue;
+                if (best == null or e.used < self.store.entries[best.?].used) best = i;
+            }
+            const i = best orelse break;
+            tried[i] = true;
+            const seg = self.segment(i);
+            const before = self.seg_buf[0..seg.len];
+            @memcpy(before, seg);
+            const moved = dev.demote(seg) catch return false;
+            if (moved > 0) {
+                self.rename(i, self.own[i], before);
+                self.st.demotions += 1;
+                self.st.demoted_pages += moved;
+                return true;
+            }
+            // Reclaimable pages but none moved: the host store is full. Make host room by
+            // dropping the least recently used host-held leaf (off the kept path) and retry.
+            if (dev.reclaimable(seg) > 0) {
+                var victim: ?usize = null;
+                for (self.store.entries, 0..) |e, j| {
+                    if (e.len == 0 or self.children[j] != 0 or j == i or (j < path.len and path[j]) or !self.anyHost(self.segment(j))) continue;
+                    if (victim == null or e.used < self.store.entries[victim.?].used) victim = j;
+                }
+                if (victim) |v| {
+                    self.remove(dev, v) catch return false;
+                    self.st.host_drops += 1;
+                    tried[i] = false;
+                }
+            }
+        }
+        // Drop the least recently used leaf that still holds pool pages in its segment; only
+        // when none does, the least recently used leaf (its release may make an ancestor's
+        // pages demotable or free).
+        // Drop a leaf whose own segment holds pool pages no running sequence maps (the host
+        // store is full, or tiering is off). A fully demoted leaf frees no pool page (with
+        // segment ownership its ancestors' pages are theirs), and a leaf whose pages running
+        // sequences map frees nothing: neither is dropped here (the host tier is trimmed by
+        // host pressure, `evictHost`).
+        // Second choice: a leaf that frees nothing itself (an empty or demoted segment) but
+        // whose removal lets an ancestor with reclaimable pages become a leaf; with an empty
+        // segment it costs no pages at all.
+        var victim: ?usize = null;
+        var victim_frees = false;
+        for (self.store.entries, 0..) |e, i| {
+            if (e.len == 0 or self.children[i] != 0 or (keep != null and i == keep.?)) continue;
+            const seg = self.segment(i);
+            const frees = dev.reclaimable(seg) > 0;
+            if (!frees and (self.anyPool(seg) or !self.ancestorReclaimable(dev, i, if (keep) |k| k else null))) continue;
+            if (victim == null or (frees and !victim_frees) or (frees == victim_frees and e.used < self.store.entries[victim.?].used)) {
+                victim = i;
+                victim_frees = frees;
+            }
+        }
+        const i = victim orelse return false;
         self.remove(dev, i) catch return false;
         self.st.pressure_drops += 1;
         return true;
+    }
+    /// Host-store pressure (a sequence must swap out): drop the least recently used leaf that
+    /// holds host pages; second choice, a leaf whose ancestor holds some (its removal lets
+    /// that ancestor become a leaf). False: no node holds host pages.
+    fn evictHost(ctx: *anyopaque, dev: Device) bool {
+        const self: *Radix = @ptrCast(@alignCast(ctx));
+        var victim: ?usize = null;
+        var victim_own = false;
+        for (self.store.entries, 0..) |e, i| {
+            if (e.len == 0 or self.children[i] != 0) continue;
+            const own = self.anyHost(self.segment(i));
+            if (!own and !self.ancestorHost(i)) continue;
+            if (victim == null or (own and !victim_own) or (own == victim_own and e.used < self.store.entries[victim.?].used)) {
+                victim = i;
+                victim_own = own;
+            }
+        }
+        const i = victim orelse return false;
+        self.remove(dev, i) catch return false;
+        self.st.host_drops += 1;
+        return true;
+    }
+    /// Whether an ancestor of `i` (not on `keep`'s path) owns pool pages releasing would free.
+    fn ancestorReclaimable(self: *Radix, dev: Device, i: usize, keep: ?usize) bool {
+        var at = self.parent[i];
+        while (at) |u16_| {
+            const u: usize = u16_;
+            if (keep) |k| {
+                var on_path = false;
+                var q: ?usize = k;
+                while (q) |x| {
+                    if (x == u) on_path = true;
+                    q = if (self.parent[x]) |px| px else null;
+                }
+                if (on_path) return false;
+            }
+            if (dev.reclaimable(self.segment(u)) > 0) return true;
+            at = self.parent[u];
+        }
+        return false;
+    }
+    fn ancestorHost(self: *Radix, i: usize) bool {
+        var at = self.parent[i];
+        while (at) |u| : (at = self.parent[u]) {
+            if (self.anyHost(self.segment(u))) return true;
+        }
+        return false;
+    }
+    fn anyPool(_: *const Radix, list: []const u32) bool {
+        for (list) |q| if (q & Device.host_flag == 0) return true;
+        return false;
+    }
+    fn anyHost(_: *const Radix, list: []const u32) bool {
+        for (list) |q| if (q & Device.host_flag != 0) return true;
+        return false;
+    }
+    /// The least recently used leaf that is neither `i` nor one of its ancestors.
+    fn leafOffPath(self: *const Radix, i: usize) ?usize {
+        return self.leaf(i); // ancestors of i have a child (the path to i): never leaves
     }
     fn stats(ctx: *anyopaque) Stats {
         const self: *Radix = @ptrCast(@alignCast(ctx));
@@ -373,10 +642,41 @@ pub const Radix = struct {
         self.store.deinit(allocator);
         allocator.free(self.parent);
         allocator.free(self.children);
+        allocator.free(self.own);
+        allocator.free(self.seg_buf);
+        allocator.free(self.ren_buf);
         allocator.free(self.pin_buf);
         allocator.destroy(self);
     }
 
+    /// Pins the tree holds on pool page `q` (tests): live segments naming it.
+    pub fn segmentPins(self: *Radix, q: u32) u32 {
+        var n: u32 = 0;
+        for (self.store.entries, 0..) |e, i| {
+            if (e.len == 0) continue;
+            for (self.segment(i)) |x| n += @intFromBool(x == q);
+        }
+        return n;
+    }
+    /// Ownership invariant (tests): each page a node does not own (index below `own`) is
+    /// owned by an ancestor at the same index. Returns the first violating node.
+    pub fn ownViolation(self: *Radix) ?usize {
+        for (self.store.entries, 0..) |e, i| {
+            if (e.len == 0) continue;
+            const list = self.store.entryPages(i);
+            if (self.own[i] > list.len) return i;
+            for (list[0..self.own[i]], 0..) |q, k| {
+                var ok = false;
+                var at = self.parent[i];
+                while (at) |u| : (at = self.parent[u]) {
+                    const l = self.store.entryPages(u);
+                    if (k < l.len and l[k] == q and k >= self.own[u]) ok = true;
+                }
+                if (!ok) return i;
+            }
+        }
+        return null;
+    }
     /// Tree invariants (tests): every live node's parent is its deepest live proper prefix,
     /// and child counts match.
     pub fn checkTree(self: *const Radix) bool {

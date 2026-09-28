@@ -63,16 +63,19 @@ def turn(port, body, rec):
         return ""
 
 
-def conversation(port, w, conv, recs, engine, level, rnd):
-    messages = [{"role": "system", "content": w["system"]}]
+def conversation(port, w, conv, recs, engine, level, rnd, barrier=None):
+    messages = [{"role": "system", "content": conv.get("system", w["system"])}]
     for t, user in enumerate(conv["turns"]):
+        if barrier is not None and t > 0: barrier.wait()  # phased: every conversation finished turn t-1
         messages.append({"role": "user", "content": user})
         rec = dict(engine=engine, round=rnd, level=level, conversation=conv["name"], turn=t)
         body = dict(model="qwen3.8-27b", messages=messages, stream=True, stream_options={"include_usage": True},
                     max_tokens=w["max_tokens"], temperature=w["temperature"], seed=w["seed"], **w["options"])
         answer = turn(port, body, rec)
         recs.append(rec)
-        if "error" in rec: return
+        if "error" in rec:
+            if barrier is not None: barrier.abort()
+            return
         messages.append({"role": "assistant", "content": answer})
 
 
@@ -81,9 +84,10 @@ def pct(xs, q):
     return xs[min(len(xs) - 1, int(round(q * (len(xs) - 1))))] if xs else None
 
 
-def level_run(port, w, level, raw, engine, rnd):
+def level_run(port, w, level, raw, engine, rnd, phased=False):
     recs = []
-    threads = [threading.Thread(target=conversation, args=(port, w, w["conversations"][i], recs, engine, level, rnd)) for i in range(level)]
+    barrier = threading.Barrier(level) if phased else None
+    threads = [threading.Thread(target=conversation, args=(port, w, w["conversations"][i], recs, engine, level, rnd, barrier)) for i in range(level)]
     t0 = time.perf_counter()
     for t in threads: t.start()
     for t in threads: t.join()
@@ -113,6 +117,7 @@ def main():
     p.add_argument("--context-per-slot", type=int, default=16384)
     p.add_argument("--levels", default="1,4,8")
     p.add_argument("--rounds", type=int, default=1, help="start every engine this many times, order alternating per round")
+    p.add_argument("--phased", action="store_true", help="all conversations finish turn t before any sends turn t+1 (isolates the cache from queueing behind first turns)")
     p.add_argument("--port", type=int, default=18098)
     p.add_argument("--llama-server", type=pathlib.Path, help="another llama-server build to run (default: built in the graph)")
     p.add_argument("--zerv-binary", type=pathlib.Path, help="zerv binary (default: //src:zerv built with Bazel, --config=release)")
@@ -136,7 +141,7 @@ def main():
     manifest = dict(started_at=datetime.now(timezone.utc).isoformat(), argv=sys.argv, host=dict(zip(("sysname", "nodename", "release", "version", "machine"), os.uname())),
                     model_sha256=rs.sha(a.model), zerv_sha256=rs.sha(zb), llama_server=str(rs.llama_server()), llama_server_sha256=rs.sha(rs.llama_server()),
                     vllm_image=rs.VLLM_IMAGE, vllm_model=str(rs.VLLM_MODEL.relative_to(rs.ROOT)),
-                    workload={str(a.workload.resolve().relative_to(ROOT)): rs.sha(a.workload)}, levels=levels,
+                    workload={str(a.workload.resolve().relative_to(ROOT)): rs.sha(a.workload)}, levels=levels, phased=a.phased,
                     parallel=a.parallel, context_per_slot=a.context_per_slot, rounds=a.rounds, engines={})
     raw = (out / "raw.jsonl").open("w")
     names = a.engines.split(";")
@@ -159,7 +164,7 @@ def main():
             rs.wait_ready(a.port, proc, spec.get("ready_timeout", 600))
             manifest["engines"].setdefault(name, dict(cmd=cmd, env=spec["env"], vram_loaded=[]))["vram_loaded"].append(rs.vram_used())
             for level in levels:
-                s = level_run(a.port, w, level, raw, name, rnd)
+                s = level_run(a.port, w, level, raw, name, rnd, a.phased)
                 summary[name].append(s)
                 print(name, json.dumps({k: (round(v, 1) if isinstance(v, float) else v) for k, v in s.items() if k != "turns"}), flush=True)
                 for t in s["turns"]:

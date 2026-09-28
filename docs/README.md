@@ -305,3 +305,8 @@ finish independent tests and benchmark gates before advancing.
 98. [Prefill stall sweep](bench/2026-09-27-prefill-stall.md): steady gap p99 vs TTFT for `--prefill-stall-ms`
     0/25/50/100. Stall 0: 8-user p99 65 ms (vLLM 51–55), TTFT p50 ~0.9 s (vLLM 1.07 s), but a 4.9k prompt under load 11.6 s
     (vLLM 4.9 s). No setting beats vLLM everywhere; default stays 100 ms.
+99. [Tiered radix prefix cache](bench/2026-09-28-tiered-cache.md) (18d.5): `--prefix-cache-tier host`
+    keeps evicted prefixes in host memory. 16 distinct 8.8k-token conversations: turn-1 TTFT p50 3.3–3.5 s,
+    against 11.5–19.9 s with the tier off or the flat policy, and 26–30% less wall time. 192/192 outputs identical;
+    GPU prefix gate 462/462 bitwise. Includes the hunt for the memory-pressure hangs and a restore renaming
+    corruption: deep swap-out, slice wake, prompt victims, invariant checks.

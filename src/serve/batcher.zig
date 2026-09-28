@@ -363,7 +363,10 @@ pub fn Batcher(comptime Backend: type) type {
         /// admitted, or when it has not failed admission since the last release and no older
         /// prompt is waiting for memory.
         fn eligible(self: *const Self, s: *const Slot) bool {
-            if (s.op == .reset or s.op == .begin or s.op == .checkpoint or s.admitted) return true;
+            if (s.op == .reset or s.op == .begin or s.op == .checkpoint) return true;
+            // A prompt swapped out while it waited comes back through `swapIn` first.
+            if (s.swapped) return false;
+            if (s.admitted) return true;
             if (s.failed_epoch == self.admit_epoch) return false;
             if (self.swapped_slots > 0 and self.first_swapped_ns <= s.wait_ns) return false;
             return self.blocked == null or s.order <= self.blocked.?;
@@ -493,7 +496,7 @@ pub fn Batcher(comptime Backend: type) type {
                             if (first_swapped == null or s.swapped_ns < first_swapped.?) first_swapped = s.swapped_ns;
                             if (s.swap_epoch != self.admit_epoch and (oldest == null or s.swapped_ns < self.slot[oldest.?].swapped_ns)) oldest = i;
                         }
-                        if (s.op == .prefill and !s.admitted and !s.running and s.failed_epoch != std.math.maxInt(u64)) {
+                        if (s.op == .prefill and !s.admitted and !s.running and !s.swapped and s.failed_epoch != std.math.maxInt(u64)) {
                             if (first_prompt == null or s.wait_ns < first_prompt.?) first_prompt = s.wait_ns;
                         }
                         if (s.decoding and !s.swapped) spare += 1;
@@ -519,6 +522,18 @@ pub fn Batcher(comptime Backend: type) type {
                             if (!v.used or v.closing or v.swapped or v.running or !v.decoding or v.op != .step) continue;
                             if (t - v.resumed_ns < slice.nanoseconds) continue;
                             if (victim == null or v.resumed_ns < self.slot[victim.?].resumed_ns) victim = j;
+                        }
+                        if (victim == null) {
+                            // No decoding sequence to swap: a prompt that waits for memory
+                            // while holding some (a restored prefix or its earlier segments)
+                            // makes room, the most recent such waiter, never the longest one
+                            // (otherwise prompts holding pages could wait on each other
+                            // forever).
+                            for (self.slot[0..self.options.slots], 0..) |*v, j| {
+                                if (!v.used or v.closing or v.swapped or v.running or v.admitted or v.op != .prefill or v.base == 0) continue;
+                                if (v.wait_ns == since or t - v.resumed_ns < slice.nanoseconds) continue;
+                                if (victim == null or v.wait_ns > self.slot[victim.?].wait_ns) victim = j;
+                            }
                         }
                         const j = victim orelse {
                             self.slice_wait_ns = t + slice.nanoseconds; // try again later
@@ -626,7 +641,7 @@ pub fn Batcher(comptime Backend: type) type {
                 const batch_ready = if (wait_ns) |w| w == 0 else false;
                 if (!prefill_ready and !batch_ready) {
                     // A pending time slice wakes the scheduler too.
-                    if (self.swapped_slots > 0 and self.slice_wait_ns > 0) {
+                    if ((self.swapped_slots > 0 or self.blocked != null) and self.slice_wait_ns > 0) {
                         const left = @max(self.slice_wait_ns - self.now(), 0);
                         wait_ns = if (wait_ns) |w| @min(w, left) else left;
                     }

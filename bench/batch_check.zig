@@ -785,6 +785,8 @@ fn prefixCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artif
     var dedup_ok = true;
     var shared_swaps: u32 = 0;
     var shared_swap_ok = true;
+    var tiers: u32 = 0;
+    var tier_ok = true;
     const seq = try a.alloc(u32, 300 + max_prompt);
     defer a.free(seq);
     const ref_prefill = try a.alloc(f32, K * vocab);
@@ -873,8 +875,38 @@ fn prefixCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artif
             if (!any) break;
             try decodeLive(&m, out, &stats, &slot_of, &live, &steps, xs, ref);
         }
-        try m.unpinPages(entry);
+        // Tiering (18d.5): every slot released, the checkpoint alone pins its pages: demote
+        // them all to the host store, promote them back (onto other pool pages), and restore
+        // sequence 5 from them into a fresh slot: bitwise equal to its cold reference.
         for (0..K) |slot| try m.releasePages(@intCast(slot));
+        {
+            const free0 = m.freePages();
+            const host0 = m.hostFreePages();
+            const moved = try m.demotePages(entry);
+            if (moved != entry.len or m.freePages() != free0 + moved or m.hostFreePages() != host0 - moved) tier_ok = false;
+            // Scribble over the freed pool pages: the promoted copy must not depend on them.
+            try m.ensurePages(2, @intCast(entry.len * pt));
+            try m.releasePages(2);
+            if (!try m.promotePages(entry) or m.hostFreePages() != host0) tier_ok = false;
+            const slot: u32 = 6;
+            try m.select(slot);
+            try m.reset();
+            const nfull = plen / pt;
+            try m.attachPrefix(slot, entry[0..nfull], if (plen % pt != 0) entry[nfull] else null);
+            try m.loadSnapshot(0, plen);
+            try m.ensurePages(slot, lens[5] + T);
+            const full = Seqs.fill(seq, prompts, plen, 5);
+            try check(out, &stats, "tier-restored-prefill", 5, -1, try packedPrefill(&m, slot, full[plen..]), ref_prefill[5 * vocab ..][0..vocab]);
+            var tslot: [K]u32 = undefined;
+            tslot[5] = slot;
+            var tlive: [K]bool = @splat(false);
+            tlive[5] = true;
+            var tsteps: [K]u32 = @splat(0);
+            while (tsteps[5] < T) try decodeLive(&m, out, &stats, &tslot, &tlive, &tsteps, xs, ref);
+            try m.releasePages(slot);
+            tiers += 1;
+        }
+        try m.unpinPages(entry);
         // Deduplication (radix insert): sequences 0 and 1 prefill the common prefix cold in
         // slots 0 and 1; slot 1's full prefix pages are rebound to slot 0's (pinned), freeing
         // its copies; both continue and must stay bitwise equal to their references.
@@ -909,8 +941,8 @@ fn prefixCheck(a: std.mem.Allocator, device: *gpu.Device, container: *zerv.artif
         }
     }
     const all_free = m.freePages() == pool;
-    const passed = stats.failures == 0 and all_free and attached == 2 * (K - 1) and copied == K - 1 and dedups == 2 and dedup_ok and shared_swaps == 4 and shared_swap_ok;
-    try out.print("{{\"summary\":true,\"mode\":\"prefix\",\"pool_pages\":{d},\"compared\":{d},\"failures\":{d},\"attached\":{d},\"partial_copies\":{d},\"dedups\":{d},\"dedup_pages_ok\":{},\"shared_swaps\":{d},\"shared_swap_ok\":{},\"all_pages_returned\":{},\"passed\":{}}}\n", .{ pool, stats.compared, stats.failures, attached, copied, dedups, dedup_ok, shared_swaps, shared_swap_ok, all_free, passed });
+    const passed = stats.failures == 0 and all_free and attached == 2 * (K - 1) and copied == K - 1 and dedups == 2 and dedup_ok and shared_swaps == 4 and shared_swap_ok and tiers == 2 and tier_ok;
+    try out.print("{{\"summary\":true,\"mode\":\"prefix\",\"pool_pages\":{d},\"compared\":{d},\"failures\":{d},\"attached\":{d},\"partial_copies\":{d},\"dedups\":{d},\"dedup_pages_ok\":{},\"shared_swaps\":{d},\"shared_swap_ok\":{},\"tier_round_trips\":{d},\"tier_ok\":{},\"all_pages_returned\":{},\"passed\":{}}}\n", .{ pool, stats.compared, stats.failures, attached, copied, dedups, dedup_ok, shared_swaps, shared_swap_ok, tiers, tier_ok, all_free, passed });
     try out.flush();
     if (!passed) std.process.exit(1);
 }

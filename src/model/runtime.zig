@@ -172,6 +172,8 @@ pub const BatchRow = struct { slot: u32, token: u32 };
 /// KV pool pages at most (the host's page-owner table).
 pub const max_pool_pages = page_pool.max_pages;
 pub const PrefillAttention = enum { fp32, wmma };
+/// Pages one promotion may move at most (a whole sequence).
+const max_seq_moves = 4096;
 /// WMMA prefill attention (flash_w.comp): query rows per workgroup, subgroup size.
 pub const flash_w_rows = 16;
 pub const flash_w_subgroup = 32;
@@ -1568,6 +1570,23 @@ pub const Model = struct {
         self.pool.swapOutCommit(slot);
     }
 
+    /// Deep swap-out of swapped `slot` (docs/specs/concurrent.md, "18d.5 design"): its
+    /// resident pages (shared or pinned) are copied to host pages of its own and its holds
+    /// dropped. False: it held none. error.SwapFull: no host room.
+    pub fn swapShared(self: *Model, slot: u32) Error!bool {
+        var buf: [max_seq_moves]page_pool.Move = undefined;
+        const moves = try self.pool.swapSharedPlan(slot, &buf);
+        if (moves.len == 0) return false;
+        errdefer self.pool.swapSharedAbort(moves);
+        try self.copyPages(moves, .out);
+        self.pool.swapSharedCommit(slot, moves);
+        return true;
+    }
+    /// Whether swapped `slot` still holds pool pages.
+    pub fn holdsResident(self: *const Model, slot: u32) bool {
+        return self.pool.holdsResident(slot);
+    }
+
     /// Bring a swapped `slot` back: its host pages onto free pool pages (any), its resident
     /// pages at their place, the table rewritten, the state copied back. False (nothing
     /// changes) unless the pool has free pages for its host pages plus `spare`.
@@ -1611,9 +1630,56 @@ pub const Model = struct {
         return self.pool.pin(slot, std.math.divCeil(u32, tokens, self.state_layout.page) catch unreachable, out);
     }
 
-    /// Release pins taken by `pinPrefix`.
+    /// Release a checkpoint's pages (`pinPrefix` pins; demoted host pages, `page_pool.host_flag`).
     pub fn unpinPages(self: *Model, list: []const u32) Error!void {
-        try self.pool.unpin(list);
+        try self.pool.releaseCheckpoint(list);
+    }
+
+    /// Demote a checkpoint's pages to the host store (docs/specs/concurrent.md, "18d.5
+    /// design"): the pool pages only it holds are copied out and freed, `list` then names
+    /// host pages for them. Returns how many moved (0: none exclusive, or no host room).
+    pub fn demotePages(self: *Model, list: []u32) Error!u32 {
+        if (self.swap_pages == 0) return 0;
+        var buf: [256]page_pool.Move = undefined;
+        var moved: u32 = 0;
+        while (true) {
+            const moves = self.pool.demotePlan(list, &buf);
+            if (moves.len == 0) return moved;
+            errdefer self.pool.demoteAbort(moves);
+            try self.copyPages(moves, .out);
+            self.pool.demoteCommit(list, moves);
+            moved += @intCast(moves.len);
+            if (moves.len < buf.len) return moved;
+        }
+    }
+
+    /// Promote a checkpoint's host pages back into free pool pages (pinned); false (nothing
+    /// changes) when the pool has too few free pages.
+    pub fn promotePages(self: *Model, list: []u32) Error!bool {
+        var buf: [max_seq_moves]page_pool.Move = undefined;
+        const moves = self.pool.promotePlan(list, &buf) orelse return false;
+        if (moves.len == 0) return true;
+        errdefer self.pool.promoteAbort(moves);
+        try self.copyPages(moves, .in);
+        self.pool.promoteCommit(list, moves);
+        return true;
+    }
+
+    /// Copy `moves` between pool and host pages (runs merged), synchronously.
+    fn copyPages(self: *Model, moves: []const page_pool.Move, way: SwapWay) Error!void {
+        const c = &self.swap_commands;
+        try c.reset();
+        try c.begin();
+        try c.barrier(.compute, .transfer);
+        var pr: PageRun = .{};
+        for (moves) |m| switch (way) {
+            .out => try self.extendRun(&pr, m.from, m.to, .out),
+            .in => try self.extendRun(&pr, m.to, m.from, .in),
+        };
+        try self.flushRun(&pr, way);
+        try c.barrier(.transfer, if (way == .out) .host else .compute);
+        try c.end();
+        try c.run(self.options.timeout_ns);
     }
 
     /// Map a checkpoint's prefix into empty `slot`: the `full` pages shared read-only, the

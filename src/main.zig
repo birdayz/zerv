@@ -11,6 +11,7 @@ const usage =
     \\            [--prefill-attention fp32]  (fp32 | wmma: WMMA prompt attention with f16 Q and P; needs --prefill-precision f16, --kv-type f16, --parallel 1)
     \\            [--gemm-code native]  (f16 mode, Q4_0 prompt projections: native = our RDNA3 machine code for gemm_f16x, same values, ~12% lower TTFT; spirv = the compiled SPIR-V; native falls back to spirv on other drivers)
     \\            [--prefix-cache-slots 8, with --parallel N: 3N]  (recurrent-state snapshots, ~150 MiB each; 0 = no prefix cache)
+    \\            [--prefix-cache-tier host]  (radix: checkpoints evicted under memory pressure move to the host swap store and come back on a hit; off: dropped)
     \\            [--prefix-cache radix]  (--parallel > 1: the prefix-cache policy: flat = checkpoint list; radix = prefix tree with deduplication of pages on insert)
     \\            [--prefix-cache-memory device, with --parallel: host]  (device: snapshots in VRAM; host: in system RAM, no VRAM, ~10 ms TTFT per save)
     \\            [--matvec-accumulation fma]  (decode/verify dot products: fma one rounding per step; separate: the pre-2026-09-24 multiply+add)
@@ -65,6 +66,7 @@ pub fn main(init: std.process.Init) !void {
     var snapshot_slots_arg: ?u32 = null;
     var snapshot_memory_arg: ?zerv.gpu.Location = null;
     var prefix_cache_kind: zerv.session.kvcache.Kind = .radix;
+    var prefix_cache_tier = true;
     var embedding_memory: zerv.gpu.Location = .host;
     var reserve_mib: u64 = 1024;
     var kv_type: zerv.model.KvType = .f32;
@@ -110,6 +112,7 @@ pub fn main(init: std.process.Init) !void {
         else if (std.mem.eql(u8, arg, "--prefill-attention")) prefill_attention = std.meta.stringToEnum(zerv.model.PrefillAttention, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--prefill-precision")) precision = std.meta.stringToEnum(zerv.model.gemm.Precision, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--prefix-cache-slots")) snapshot_slots_arg = try std.fmt.parseInt(u32, value, 10) //
+        else if (std.mem.eql(u8, arg, "--prefix-cache-tier")) prefix_cache_tier = if (std.mem.eql(u8, value, "host")) true else if (std.mem.eql(u8, value, "off")) false else return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--prefix-cache")) prefix_cache_kind = std.meta.stringToEnum(zerv.session.kvcache.Kind, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--prefix-cache-memory")) snapshot_memory_arg = std.meta.stringToEnum(zerv.gpu.Location, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--vram-reserve-mib")) reserve_mib = std.math.cast(u32, try std.fmt.parseInt(u64, value, 10)) orelse return error.InvalidArguments //
@@ -258,7 +261,7 @@ pub fn main(init: std.process.Init) !void {
     var scheduler: ?std.Io.Future(void) = null;
     if (parallel > 1) {
         if (model.options.kv_share and model.snapshot_slots > 0) {
-            try model_backend.initCache(gpa, prefix_cache_kind, native.boundary);
+            try model_backend.initCache(gpa, prefix_cache_kind, native.boundary, prefix_cache_tier);
             model_backend_store = true;
             std.debug.print("zerv: prefix checkpoints: {d} ({s} memory, {s} policy)\n", .{ model.snapshot_slots, @tagName(snapshot_memory), @tagName(prefix_cache_kind) });
         }
@@ -275,7 +278,7 @@ pub fn main(init: std.process.Init) !void {
         std.debug.print("\n", .{});
         if (model_backend_store) {
             const cs = model_backend.cache.?.stats();
-            std.debug.print("zerv: prefix checkpoints: {d} taken, {d} of {d} lookups restored ({d} prompt tokens reused), {d} dropped for new ones, {d} for memory, {d} pages deduplicated\n", .{ cs.inserts, cs.restores, cs.lookups, cs.restored_tokens, cs.capacity_drops, cs.pressure_drops, cs.dedup_pages });
+            std.debug.print("zerv: prefix checkpoints: {d} taken, {d} of {d} lookups restored ({d} prompt tokens reused), {d} dropped for new ones, {d} for memory, {d} pages deduplicated, {d} demoted to host ({d} pages), {d} promoted ({d} pages), {d} dropped from the host\n", .{ cs.inserts, cs.restores, cs.lookups, cs.restored_tokens, cs.capacity_drops, cs.pressure_drops, cs.dedup_pages, cs.demotions, cs.demoted_pages, cs.promotions, cs.promoted_pages, cs.host_drops });
             model_backend.deinitCache(gpa);
         }
     };

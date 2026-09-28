@@ -635,6 +635,92 @@ conversations.
    off, per conversation and turn (`output_sha256`), at 1/4/8 conversations.
 4. **Benchmark:** run_multiturn against vLLM `vllm-apc` and llama-server `-kvu`.
 
+### 18d.5 design: tiered prefix cache (host tier; specified and implemented 2026-09-28)
+
+**Problem.** Under memory pressure the radix policy dropped leaf checkpoints. The next hit
+on that conversation re-prefilled it: seconds for a long document, against ~60 ms to copy
+~75 pages back over PCIe.
+
+**Design** (`--prefix-cache-tier host|off`, radix only; default host when a host swap store
+exists):
+- **Segment ownership.** Node i pins (or holds the host page of) only its pages from index
+  `own[i]` on; its leading pages equal to its parent's are its ancestors'. Every list still
+  names all its pages (for attach). A middle node inserted between a parent and a child
+  takes over the child's leading pages equal to its own. A page moved by a demotion or
+  promotion is renamed in every list (`rename`: a page id names one page).
+- **Demote** (`makeRoom`, used by `Cache.evict` and by a restore that needs room). The
+  least recently used node, internal nodes too, whose segment holds pool pages is demoted:
+  its segment's pages that no slot maps and only it pins are copied to the host store and
+  freed. A restore never demotes its own path. When the host store is full (reclaimable
+  pages but none moved), the least recently used leaf holding host pages (off the path) is
+  dropped and the demotion retried.
+- **Drop fallback** (tier off, or the host store cannot help): the least recently used leaf
+  whose segment has reclaimable pool pages; second choice, a leaf that frees nothing
+  itself (empty or demoted segment) but whose ancestor has reclaimable pages. A leaf whose
+  pages running sequences map is never dropped (it frees nothing).
+- **Host pressure** (`Cache.evictHost`, when a running sequence must swap out and the host
+  store is full): drop the least recently used leaf holding host pages; second choice, a
+  leaf whose ancestor holds some. Running sequences go before demoted checkpoints.
+- **Promote.** A restore that finds host pages anywhere in its checkpoint's list copies them
+  into free pool pages (pinned, logical index = list position), making room by `makeRoom`
+  off its path, then renames them in every list and attaches as before. The ids before the
+  promotion are taken into a buffer of their own before every attempt (`ren_buf`; see
+  "Progress and invariants").
+- **Mechanism:** `pages.Pool` `demotePlan/Commit/Abort`, `promotePlan/Commit/Abort`,
+  `releaseCheckpoint`, `reclaimable`; `Model.demotePages`, `promotePages` (merged copy runs
+  on the swap queue); `kvcache.Device` `demote`, `promote`, `reclaimable`.
+- **Deduplication** on insert rebinds only to pool-resident pages of the tree.
+- **Exactness:** the page bytes are copied unchanged, and a promoted page is only ever
+  read. A restore from promoted pages equals a cold prefill bitwise.
+
+**Progress and invariants under memory pressure** (found 2026-09-28: the benchmark with the
+tier off hung, and `tests/kv_system.zig` reproduced hangs and a corruption on CPU):
+- **Deep swap-out.** A swapped-out sequence kept its pages shared with checkpoints or other
+  sequences resident and held, so those checkpoints' pages were never reclaimable. A pool
+  of swapped sequences' shared pages then admitted nothing, and nothing ran. Now, when no
+  checkpoint can free a page, the backend (`ModelBackend.makeRoom`) copies a swapped
+  sequence's remaining resident pages to host pages of its own and drops its holds
+  (`Pool.swapSharedPlan/Commit/Abort`, `Model.swapShared`), never the sequence being
+  swapped in. It is lazy: the copy is paid only when the pool is actually stuck. Admission,
+  growth and swap-in all make room this way; swap-in did not try at all before.
+- **Time slice with nothing swapped.** A prompt blocked for memory while other prompts held
+  pages between their segments never woke the scheduler: the slice timer was armed only
+  when a sequence was swapped out. It is now armed whenever a prompt is blocked.
+- **Prompt victims.** When no decoding sequence can be swapped, the time slice swaps out a
+  waiting prompt that holds pages (a restored prefix or earlier segments): the most recent
+  such waiter, never the longest one, and only one that has run for a whole slice since it
+  last came in (otherwise a prompt swapped back in was swapped straight out again: a
+  livelock). A swapped prompt is not eligible for prefill until it is swapped in.
+- **Restore renaming.** The promotion's before-ids were kept in `seg_buf`, which `makeRoom`
+  overwrites when the promotion first fails for room. The renaming then used stale ids:
+  ownership broke, a pin was orphaned, and a page could be read with the wrong contents
+  (`WrongLogits` in about 1 of 100 seeded runs). Fixed by `ren_buf`, taken before every
+  attempt.
+- **Checked invariants** (`tests/kv_system.zig`, after every cache call on radix): each page
+  a node does not own is an ancestor's at the same index (`Radix.ownViolation`), and every
+  pool page's pins equal the live segments naming it (`Radix.segmentPins`).
+
+**Gates.**
+1. `tests/pages.zig`: random demote and promote (with aborts) among the other operations.
+   Every sequence's and every checkpoint's contents stay intact.
+2. `tests/kvcache.zig`: pressure demotes 3 leaves (no drops); a later hit promotes and
+   restores exactly; all host pages come back.
+3. `tests/kv_system.zig`: radix demotes under pressure in the full system, exact.
+   Negative control (promote without copying back) fails with `WrongLogits`.
+4. `zerv-batch-check … prefix`: demote all of a checkpoint's pages, overwrite the freed
+   pool pages, promote, restore into a fresh slot. 462/462 bitwise in 4 configurations.
+5. `tests/pages.zig`: deep swap-out in the random operations and a directed test (shared
+   and pinned pages released, reclaimable afterwards, everything back from host).
+6. `tests/kv_system.zig`, the benchmark's shape (16 distinct conversations, few checkpoints
+   fit), flat and radix, tier host and off, 3 seeds each: completes, exact, everything freed,
+   deep swap-outs happen. Negative controls, each one alone: no deep swap-out, no slice wake
+   with nothing swapped, no prompt victim, prompt victim ignoring the slice: every one hangs.
+   The original restore renaming: `ownViolation` fires within 15–150 seeds; fixed, 2,400
+   seeds pass with the invariant checks.
+7. **Benchmark:** 16 conversations with distinct ~8.8k-token documents, 2 turns
+   (`multiturn-distinct-v1`), radix tier host vs off vs flat
+   ([report](../bench/2026-09-28-tiered-cache.md)).
+
 ## Session and HTTP (host performance)
 
 - `session.Generation` becomes a per-request state machine: `feed(logits rows) → tokens, output

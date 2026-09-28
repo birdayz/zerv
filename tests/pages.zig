@@ -23,7 +23,7 @@ const Env = struct {
     /// Checkpoint entries: pinned pages (logical order) and their contents.
     entries: [8]struct { live: bool = false, n: u32 = 0, pages: [L]u32 = undefined, content: [L]u64 = undefined } = @splat(.{}),
     next_content: u64 = 1,
-    ops: [8]u32 = @splat(0),
+    ops: [11]u32 = @splat(0),
 
     fn tableOk(self: *const Env, slot: u32) bool {
         if (self.swapped[slot]) return true;
@@ -43,7 +43,11 @@ const Env = struct {
         for (0..S) |s| if (!self.tableOk(@intCast(s))) return false;
         for (self.entries) |e| {
             if (!e.live) continue;
-            for (e.pages[0..e.n], e.content[0..e.n]) |q, c| if (self.dev[q] != c or self.pool.pins[q] == 0) return false;
+            for (e.pages[0..e.n], e.content[0..e.n]) |q, c| {
+                if (q & pages.host_flag != 0) {
+                    if (self.host[q & ~pages.host_flag] != c) return false;
+                } else if (self.dev[q] != c or self.pool.pins[q] == 0) return false;
+            }
         }
         return true;
     }
@@ -83,14 +87,40 @@ const Env = struct {
     fn drop(self: *Env, i: usize) !void {
         const e = &self.entries[i];
         if (!e.live) return;
-        try self.pool.unpin(e.pages[0..e.n]);
+        try self.pool.releaseCheckpoint(e.pages[0..e.n]);
         e.live = false;
         self.ops[3] += 1;
     }
     /// Restore entry `i` into empty `slot`: the last page is treated as partial (copied).
+    fn demote(self: *Env, i: usize, abort: bool) !void {
+        const e = &self.entries[i];
+        if (!e.live) return;
+        var buf: [L]pages.Move = undefined;
+        const moves = self.pool.demotePlan(e.pages[0..e.n], &buf);
+        if (moves.len == 0) return;
+        if (abort) return self.pool.demoteAbort(moves);
+        for (moves) |m| {
+            self.host[m.to] = self.dev[m.from];
+            self.dev[m.from] = 0xdead;
+        }
+        self.pool.demoteCommit(e.pages[0..e.n], moves);
+        self.ops[8] += 1;
+    }
+    fn promote(self: *Env, i: usize, abort: bool) !void {
+        const e = &self.entries[i];
+        if (!e.live) return;
+        var buf: [L]pages.Move = undefined;
+        const moves = self.pool.promotePlan(e.pages[0..e.n], &buf) orelse return;
+        if (moves.len == 0) return;
+        if (abort) return self.pool.promoteAbort(moves);
+        for (moves) |m| self.dev[m.to] = self.host[m.from];
+        self.pool.promoteCommit(e.pages[0..e.n], moves);
+        self.ops[9] += 1;
+    }
     fn attach(self: *Env, slot: u32, i: usize, partial: bool) !void {
         const e = &self.entries[i];
         if (!e.live or self.len[slot] != 0 or self.swapped[slot]) return;
+        for (e.pages[0..e.n]) |q| if (q & pages.host_flag != 0) return; // promote first
         const full = e.pages[0 .. e.n - @intFromBool(partial)];
         const fresh = self.pool.attachPlan(slot, full, if (partial) e.pages[e.n - 1] else null) catch |err| switch (err) {
             error.PoolExhausted => return,
@@ -112,7 +142,7 @@ const Env = struct {
         const e = &self.entries[i];
         if (!e.live or self.swapped[slot]) return;
         var n: u32 = 0;
-        while (n < e.n and n < self.len[slot] and self.want[slot][n] == e.content[n] and self.pool.logical[e.pages[n]] == n) n += 1;
+        while (n < e.n and n < self.len[slot] and e.pages[n] & pages.host_flag == 0 and self.want[slot][n] == e.content[n] and self.pool.logical[e.pages[n]] == n) n += 1;
         if (n == 0) return;
         var old: [L]u32 = undefined;
         try self.pool.rebindPlan(slot, 0, e.pages[0..n], &old);
@@ -133,6 +163,28 @@ const Env = struct {
         self.pool.swapOutCommit(slot);
         self.swapped[slot] = true;
         self.ops[6] += 1;
+    }
+    /// Deep swap-out of a swapped slot: its resident (shared, pinned) pages to host too.
+    fn swapShared(self: *Env, slot: u32, abort: bool) !void {
+        if (!self.swapped[slot]) return;
+        var buf: [L]pages.Move = undefined;
+        const moves = self.pool.swapSharedPlan(slot, &buf) catch |err| switch (err) {
+            error.SwapFull => return,
+            else => return err,
+        };
+        if (moves.len == 0) {
+            try t.expect(!self.pool.holdsResident(slot));
+            return;
+        }
+        if (abort) return self.pool.swapSharedAbort(moves);
+        for (moves) |m| self.host[m.to] = self.dev[m.from];
+        self.pool.swapSharedCommit(slot, moves);
+        try t.expect(!self.pool.holdsResident(slot));
+        // Pages no one else holds are free now: they may be overwritten.
+        for (moves) |m| if (self.pool.isFree(m.from)) {
+            self.dev[m.from] = 0xdead;
+        };
+        self.ops[10] += 1;
     }
     fn swapIn(self: *Env, slot: u32, abort: bool) !void {
         if (!self.swapped[slot]) return;
@@ -160,7 +212,10 @@ test "pages: random attach, rebind, pin, swap and release keep every sequence's 
     for (0..20000) |_| {
         const slot = r.intRangeLessThan(u32, 0, S);
         const i = r.intRangeLessThan(usize, 0, env.entries.len);
-        switch (r.intRangeLessThan(u8, 0, 10)) {
+        switch (r.intRangeLessThan(u8, 0, 13)) {
+            12 => try env.swapShared(slot, r.intRangeLessThan(u8, 0, 5) == 0),
+            10 => try env.demote(i, r.intRangeLessThan(u8, 0, 5) == 0),
+            11 => try env.promote(i, r.intRangeLessThan(u8, 0, 5) == 0),
             0, 1 => try env.grow(slot, r.intRangeAtMost(u32, 1, 3)),
             2 => try env.release(slot),
             3 => try env.checkpoint(slot, r.intRangeAtMost(u32, 1, L)),
@@ -168,7 +223,8 @@ test "pages: random attach, rebind, pin, swap and release keep every sequence's 
             5 => try env.attach(slot, i, r.boolean()),
             6 => try env.rebind(slot, i),
             7 => try env.swapOut(slot, r.intRangeLessThan(u8, 0, 5) == 0),
-            else => try env.swapIn(slot, r.intRangeLessThan(u8, 0, 5) == 0),
+            8, 9 => try env.swapIn(slot, r.intRangeLessThan(u8, 0, 5) == 0),
+            else => unreachable,
         }
         try t.expect(env.allOk());
     }
@@ -205,4 +261,30 @@ test "pages: a swap moves only the slot's own pages; shared and pinned ones stay
     try t.expectError(error.InvalidState, pool.rebindPlan(1, 0, &.{other}, &old)); // wrong logical index
     const free_page = pool.freeList(old[0..1])[0];
     try t.expectError(error.InvalidState, pool.rebindPlan(1, 0, &.{free_page}, &old));
+}
+
+test "pages: a deep swap-out releases the shared and pinned pages a swapped slot kept" {
+    const pool = try t.allocator.create(pages.Pool);
+    defer t.allocator.destroy(pool);
+    try pool.init(N, S, L);
+    try pool.setHost(H);
+    var env: Env = .{ .pool = pool };
+    try env.grow(0, 4);
+    try env.checkpoint(0, 3); // pages 0..2 pinned
+    try env.attach(1, 0, true); // slot 1: 2 shared + 1 copied
+    try env.grow(1, 2);
+    try env.release(0); // the checkpoint alone pins pages 0..2 now, slot 1 maps two of them
+    try env.swapOut(1, false);
+    try t.expect(pool.holdsResident(1));
+    try t.expectEqual(@as(u32, 0), pool.reclaimable(env.entries[0].pages[0..2])); // slot 1 maps them
+    try env.swapShared(1, false);
+    try t.expectEqual(@as(u32, 5), pool.hostOf(1));
+    try t.expectEqual(@as(u32, 2), pool.reclaimable(env.entries[0].pages[0..2]));
+    try env.drop(0);
+    try t.expectEqual(@as(u32, N), pool.freeCount()); // nothing on the pool is held
+    try env.swapIn(1, false); // all five come back from host
+    try t.expect(env.allOk());
+    try env.release(1);
+    try t.expectEqual(@as(u32, N), pool.freeCount());
+    try t.expectEqual(@as(u32, H), pool.hostFree());
 }

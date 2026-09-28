@@ -273,10 +273,10 @@ pub const ModelBackend = struct {
     /// behind `session.kvcache.Cache`; this backend is its `Device`. Scheduler thread only.
     cache: ?session.kvcache.Cache = null,
 
-    pub fn initCache(self: *ModelBackend, allocator: std.mem.Allocator, kind: session.kvcache.Kind, boundary: u32) !void {
+    pub fn initCache(self: *ModelBackend, allocator: std.mem.Allocator, kind: session.kvcache.Kind, boundary: u32, tier: bool) !void {
         const m = self.m;
         if (!m.options.kv_share or m.snapshot_slots == 0) return error.InvalidOptions;
-        self.cache = try session.kvcache.create(allocator, kind, m.snapshot_slots, m.state_layout.context, m.state_layout.seq_pages, boundary);
+        self.cache = try session.kvcache.createTiered(allocator, kind, m.snapshot_slots, m.state_layout.context, m.state_layout.seq_pages, boundary, tier and m.swap_pages > 0);
     }
     pub fn deinitCache(self: *ModelBackend, allocator: std.mem.Allocator) void {
         if (self.cache) |c| c.deinit(allocator);
@@ -285,7 +285,7 @@ pub const ModelBackend = struct {
     pub fn device(self: *ModelBackend) session.kvcache.Device {
         return .{ .ctx = self, .vtable = &device_vtable };
     }
-    const device_vtable: session.kvcache.Device.VTable = .{ .pageTokens = devPageTokens, .save = devSave, .load = devLoad, .pin = devPin, .unpin = devUnpin, .attach = devAttach, .rebind = devRebind };
+    const device_vtable: session.kvcache.Device.VTable = .{ .pageTokens = devPageTokens, .save = devSave, .load = devLoad, .pin = devPin, .unpin = devUnpin, .attach = devAttach, .rebind = devRebind, .demote = devDemote, .promote = devPromote, .reclaimable = devReclaimable };
     fn backendOf(ctx: *anyopaque) *ModelBackend {
         return @ptrCast(@alignCast(ctx));
     }
@@ -317,6 +317,17 @@ pub const ModelBackend = struct {
             return self.check(e);
         };
     }
+    fn devReclaimable(ctx: *anyopaque, pages: []const u32) u32 {
+        return backendOf(ctx).m.pool.reclaimable(pages);
+    }
+    fn devDemote(ctx: *anyopaque, pages: []u32) anyerror!u32 {
+        const self = backendOf(ctx);
+        return self.m.demotePages(pages) catch |e| return self.check(e);
+    }
+    fn devPromote(ctx: *anyopaque, pages: []u32) anyerror!bool {
+        const self = backendOf(ctx);
+        return self.m.promotePages(pages) catch |e| return self.check(e);
+    }
     fn devRebind(ctx: *anyopaque, slot: u32, pages: []const u32) anyerror!u32 {
         const self = backendOf(ctx);
         return self.m.rebindPages(slot, pages) catch |e| return self.check(e);
@@ -336,10 +347,27 @@ pub const ModelBackend = struct {
         if (self.m.slotPosition(slot) != prefix.len) return error.InvalidToken;
         try c.checkpoint(self.device(), slot, prefix);
     }
-    /// Memory pressure: drop one cached checkpoint; false: none left.
-    fn dropOldest(self: *ModelBackend) bool {
-        const c = self.cache orelse return false;
-        return c.evict(self.device());
+    /// Memory pressure: demote or drop one cached checkpoint; when none frees a page, a
+    /// swapped sequence other than `except` gives up the pool pages it still holds (a deep
+    /// swap-out: they were shared or pinned, so checkpoints could not free them either).
+    /// False: nothing left to free.
+    fn makeRoom(self: *ModelBackend, except: ?u32) bool {
+        if (self.cache) |c| if (c.evict(self.device())) return true;
+        if (self.m.swap_pages == 0) return false;
+        for (0..self.m.state_layout.slots) |i| {
+            const slot: u32 = @intCast(i);
+            if (except != null and except.? == slot or !self.m.holdsResident(slot)) continue;
+            while (true) {
+                const moved = self.m.swapShared(slot) catch |e| {
+                    if (e == error.SwapFull) if (self.cache) |c| if (c.evictHost(self.device())) continue;
+                    if (e != error.SwapFull) self.noteFailure();
+                    break;
+                };
+                if (moved) return true;
+                break;
+            }
+        }
+        return false;
     }
     pub fn checkRow(self: *ModelBackend, row: batcher.Row) !void {
         try self.m.checkRow(.{ .slot = row.slot, .token = row.token });
@@ -367,7 +395,7 @@ pub const ModelBackend = struct {
             self.m.ensurePages(slot, want) catch |e| {
                 if (e != error.PoolExhausted) self.noteFailure();
                 // Unused checkpoints go before a prompt waits.
-                if (e == error.PoolExhausted and self.dropOldest()) continue;
+                if (e == error.PoolExhausted and self.makeRoom(null)) continue;
                 return false;
             };
             return true;
@@ -383,7 +411,7 @@ pub const ModelBackend = struct {
         while (true) {
             self.m.ensurePages(slot, self.m.slotPosition(slot) + 1) catch |e| {
                 // Unused checkpoints go before any sequence is swapped out.
-                if (e == error.PoolExhausted and self.dropOldest()) continue;
+                if (e == error.PoolExhausted and self.makeRoom(null)) continue;
                 if (e == error.PoolExhausted) return false;
                 return self.check(e);
             };
@@ -392,14 +420,25 @@ pub const ModelBackend = struct {
     }
     pub fn swapOut(self: *ModelBackend, slot: u32) !bool {
         if (self.m.swap_pages == 0) return false;
-        self.m.swapOut(slot) catch |e| {
-            if (e == error.SwapFull) return false;
-            return self.check(e);
-        };
-        return true;
+        while (true) {
+            self.m.swapOut(slot) catch |e| {
+                // A running sequence goes before demoted checkpoints in the host store.
+                if (e == error.SwapFull) {
+                    if (self.cache) |c| if (c.evictHost(self.device())) continue;
+                    return false;
+                }
+                return self.check(e);
+            };
+            return true;
+        }
     }
     pub fn swapIn(self: *ModelBackend, slot: u32, spare: u32) !bool {
-        return self.m.swapIn(slot, spare) catch |e| return self.check(e);
+        while (true) {
+            if (self.m.swapIn(slot, spare) catch |e| return self.check(e)) return true;
+            // Unused checkpoints go before a swapped sequence waits (otherwise they could hold
+            // the pool while every sequence is swapped out).
+            if (!self.makeRoom(slot)) return false;
+        }
     }
     /// Whether these prompts' next chunks fit one packed chunk (docs/specs/concurrent.md,
     /// "18d.1 design"): always for one; several need the model's packed commands.

@@ -1,0 +1,143 @@
+{
+ "started_at": "2026-09-28T05:59:31.875994+00:00",
+ "argv": [
+  "/home/USER/projects/zerv/bench/run_multiturn.py",
+  "--output",
+  "docs/bench/data/2026-09-28-tiered-cache/phased",
+  "--workload",
+  "bench/workloads/multiturn-distinct-v1.json",
+  "--zerv-binary",
+  "third_party/multiuser/zerv-tier7",
+  "--engines",
+  "zerv-f16@parallel=8,kv-type=f16,prefix-cache-slots=48,kv-swap-mib=16384,prefix-cache=radix,prefix-cache-tier=host;zerv-f16@parallel=8,kv-type=f16,prefix-cache-slots=48,kv-swap-mib=16384,prefix-cache=radix,prefix-cache-tier=off;zerv-f16@parallel=8,kv-type=f16,prefix-cache-slots=48,kv-swap-mib=16384,prefix-cache=flat",
+  "--context-per-slot",
+  "12288",
+  "--levels",
+  "16",
+  "--phased",
+  "--rounds",
+  "2",
+  "--reference",
+  "third_party/multiuser/tier-run2-leafonly/raw.jsonl"
+ ],
+ "host": {
+  "sysname": "Linux",
+  "nodename": "benchmark-host",
+  "release": "7.2.6-arch2-1",
+  "version": "#1 SMP PREEMPT_DYNAMIC Mon, 14 Sep 2026 22:41:30 +0000",
+  "machine": "x86_64"
+ },
+ "model_sha256": "ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d",
+ "zerv_sha256": "3308c16f897ffebc70b944de996471e7faa56ad1490be50ef1584c230331bcac",
+ "llama_server": "/home/USER/projects/zerv/bazel-out/k8-fastbuild/bin/bench/llama-server",
+ "llama_server_sha256": "f6a09ab1a41b0bd75c0268af3cff2618c34f1f547ecf0b1a2a1158b8a8fb4b40",
+ "vllm_image": "vllm/vllm-openai-rocm@sha256:2e7da1ad1c66836802072588adea75f9f4991da5f9545b4318e91d422c22ce6a",
+ "vllm_model": "models/RedHatAI/Qwen3.8-27B-INT4/c063053e004e9783631651df95cf55d0bbf88b32",
+ "workload": {
+  "bench/workloads/multiturn-distinct-v1.json": "58e617540a06108a30761267148785414d3fe39cecf100d1dac87652edb7341a"
+ },
+ "levels": [
+  16
+ ],
+ "phased": true,
+ "parallel": 8,
+ "context_per_slot": 12288,
+ "rounds": 2,
+ "engines": {
+  "zerv-f16@parallel=8,kv-type=f16,prefix-cache-slots=48,kv-swap-mib=16384,prefix-cache=radix,prefix-cache-tier=host": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/multiuser/zerv-tier7",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18098",
+    "--context",
+    "12288",
+    "--prefill-precision",
+    "f16",
+    "--spec-draft",
+    "0",
+    "--parallel",
+    "8",
+    "--kv-type",
+    "f16",
+    "--prefix-cache-slots",
+    "48",
+    "--kv-swap-mib",
+    "16384",
+    "--prefix-cache",
+    "radix",
+    "--prefix-cache-tier",
+    "host"
+   ],
+   "env": {},
+   "vram_loaded": [
+    24454721536,
+    24442040320
+   ]
+  },
+  "zerv-f16@parallel=8,kv-type=f16,prefix-cache-slots=48,kv-swap-mib=16384,prefix-cache=radix,prefix-cache-tier=off": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/multiuser/zerv-tier7",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18098",
+    "--context",
+    "12288",
+    "--prefill-precision",
+    "f16",
+    "--spec-draft",
+    "0",
+    "--parallel",
+    "8",
+    "--kv-type",
+    "f16",
+    "--prefix-cache-slots",
+    "48",
+    "--kv-swap-mib",
+    "16384",
+    "--prefix-cache",
+    "radix",
+    "--prefix-cache-tier",
+    "off"
+   ],
+   "env": {},
+   "vram_loaded": [
+    24450981888,
+    24441491456
+   ]
+  },
+  "zerv-f16@parallel=8,kv-type=f16,prefix-cache-slots=48,kv-swap-mib=16384,prefix-cache=flat": {
+   "cmd": [
+    "/home/USER/projects/zerv/third_party/multiuser/zerv-tier7",
+    "--model",
+    "/home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf",
+    "--port",
+    "18098",
+    "--context",
+    "12288",
+    "--prefill-precision",
+    "f16",
+    "--spec-draft",
+    "0",
+    "--parallel",
+    "8",
+    "--kv-type",
+    "f16",
+    "--prefix-cache-slots",
+    "48",
+    "--kv-swap-mib",
+    "16384",
+    "--prefix-cache",
+    "flat"
+   ],
+   "env": {},
+   "vram_loaded": [
+    24448278528,
+    24447197184
+   ]
+  }
+ },
+ "finished_at": "2026-09-28T06:21:04.864183+00:00"
+}

@@ -566,10 +566,9 @@ Proposed order (by impact on bruh use); the user chooses what comes next.
     works by hand. Consider exposing the context length from zerv (e.g. in `/v1/models`)
     and a bruh change to read it. The bruh change is in `~/projects/bruh`, outside this
     repo.
-- **Prefix cache host-RAM tier** (only if block 15's benchmark shows the need). Today
-  one conversation is cached: switching between sessions reuses only their shared
-  tools/system prefix. llama-server keeps older conversations in RAM (`--cache-ram`,
-  8 GiB by default).
+- ~~**Prefix cache host-RAM tier**~~: done as 18d.5 (2026-09-28), `--prefix-cache-tier host`
+  (default), radix policy; [report](docs/bench/2026-09-28-tiered-cache.md). Open: the
+  multi-turn comparison against llama-server `--cache-ram` and vLLM on this workload.
 - **Constrained decoding (grammar).** Needed for:
   - llama-server's in-call tool grammar (function and parameter names, schema-valid
     JSON values). Without it a malformed call is possible; it is handled and counted by
