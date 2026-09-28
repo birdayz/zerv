@@ -1,0 +1,68 @@
+INFO: Invocation ID: d0c83ccf-fc1a-4d2e-9e5a-7944b79eabc3
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (0 packages loaded, 1546 targets configured).
+[36 / 41] zig test //tests:serve; 1s disk-cache, linux-sandbox ... (2 actions running)
+FAIL: //tests:serve (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/serve/test.log)
+INFO: From Testing //tests:serve:
+==================== Test output for //tests:serve:
+1/12 serve.test.chat request parsing: fields, defaults, content parts and template controls...OK
+2/12 serve.test.chat request rejections are explicit OpenAI errors...OK
+3/12 serve.test.response encoding: completion, chunks, usage, errors and models...OK
+4/12 serve.test.HTTP server: real sockets, JSON and SSE framing, errors, keep-alive...OK
+5/12 serve.test.HTTP server: every streamed delta reaches the socket before generation continues...OK
+6/12 serve.test.HTTP server: real sockets, bounded queue answers 503 overloaded, queued requests complete...OK
+7/12 serve.test.HTTP server: client disconnect mid-stream cancels generation and frees the slot...OK
+8/12 serve.test.HTTP server: stop drains admitted requests, rejects new ones, closes idle connections...OK
+9/12 serve.test.HTTP server: drain deadline cancels a generation that is still running...OK
+10/12 serve.test.HTTP server: an unusable engine fails health checks and requests, and ends run...[default] (warn): engine unusable (GPU device lost?): failing all requests and shutting down
+[default] (warn): generation failed: DeviceLost
+[default] (warn): engine unusable (GPU device lost?): failing all requests and shutting down
+[default] (warn): generation failed: DeviceLost
+OK
+11/12 serve.test.listener: exclusive port, immediate rebind after connections close...OK
+12/12 serve.test.disk windows: explicit staging budgets, read reservation and rejected limits...expected 6, found 8
+FAIL (TestExpectedEqual)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8202/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:118:17: 0x1259be4 in expectEqualInner__anon_43005 (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8202/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:83:5: 0x125a1dd in expectEqual (serve.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8202/execroot/_main/tests/serve.zig:874:9: 0x125a236 in test.disk windows: explicit staging budgets, read reservation and rejected limits (serve.zig)
+11 passed; 0 skipped; 1 failed.
+================================================================================
+[37 / 41] 1 / 2 tests, 1 failed; zig test //tests:serve; 2s disk-cache, linux-sandbox
+[38 / 41] 1 / 2 tests, 1 failed; [Prepa] runfiles for //tests:serve
+FAIL: //tests:serve_release_fast (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/serve_release_fast/test.log)
+INFO: From Testing //tests:serve_release_fast:
+==================== Test output for //tests:serve_release_fast:
+1/12 serve.test.chat request parsing: fields, defaults, content parts and template controls...OK
+2/12 serve.test.chat request rejections are explicit OpenAI errors...OK
+3/12 serve.test.response encoding: completion, chunks, usage, errors and models...OK
+4/12 serve.test.HTTP server: real sockets, JSON and SSE framing, errors, keep-alive...OK
+5/12 serve.test.HTTP server: every streamed delta reaches the socket before generation continues...OK
+6/12 serve.test.HTTP server: real sockets, bounded queue answers 503 overloaded, queued requests complete...OK
+7/12 serve.test.HTTP server: client disconnect mid-stream cancels generation and frees the slot...OK
+8/12 serve.test.HTTP server: stop drains admitted requests, rejects new ones, closes idle connections...OK
+9/12 serve.test.HTTP server: drain deadline cancels a generation that is still running...OK
+10/12 serve.test.HTTP server: an unusable engine fails health checks and requests, and ends run...[default] (warn): engine unusable (GPU device lost?): failing all requests and shutting down
+[default] (warn): generation failed: DeviceLost
+[default] (warn): engine unusable (GPU device lost?): failing all requests and shutting down
+[default] (warn): generation failed: DeviceLost
+OK
+11/12 serve.test.listener: exclusive port, immediate rebind after connections close...OK
+12/12 serve.test.disk windows: explicit staging budgets, read reservation and rejected limits...expected 6, found 8
+FAIL (TestExpectedEqual)
+11 passed; 0 skipped; 1 failed.
+================================================================================
+INFO: Found 2 test targets...
+INFO: Elapsed time: 9.743s, Critical Path: 9.55s
+INFO: 9 processes: 33 action cache hit, 5 internal, 6 linux-sandbox.
+INFO: Build completed, 2 tests FAILED, 9 total actions
+//tests:serve                                                            FAILED in 0.5s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/serve/test.log
+//tests:serve_release_fast                                               FAILED in 0.3s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/serve_release_fast/test.log
+
+Executed 2 out of 2 tests: 2 fail locally.

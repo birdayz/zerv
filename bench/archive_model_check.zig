@@ -9,13 +9,15 @@ var max_poll_ns: i96 = 0;
 pub fn main(init: std.process.Init) !void {
     const a = init.gpa;
     const args = try init.minimal.args.toSlice(init.arena.allocator());
-    if (args.len != 3 and args.len != 5 and args.len != 6) return error.Usage;
+    if (args.len != 3 and args.len != 5 and args.len != 6 and args.len != 7) return error.Usage;
+    const chunk_mib = if (args.len == 7) try std.fmt.parseInt(u32, args[6], 10) else 1;
+    const window = try zerv.serve.disk.Window.init(chunk_mib, 8 << 20);
     const disk_mode = args.len >= 5;
-    const prefill_deferred = args.len == 6 and std.mem.eql(u8, args[5], "prefill-chunk");
-    const prefill_mode = prefill_deferred or (args.len == 6 and std.mem.eql(u8, args[5], "prefill"));
-    const pressure_mode = prefill_mode or (args.len == 6 and std.mem.eql(u8, args[5], "pressure"));
-    const source_mode = pressure_mode or (args.len == 6 and std.mem.eql(u8, args[5], "source"));
-    if (args.len == 6 and !source_mode) return error.Usage;
+    const prefill_deferred = args.len >= 6 and std.mem.eql(u8, args[5], "prefill-chunk");
+    const prefill_mode = prefill_deferred or (args.len >= 6 and std.mem.eql(u8, args[5], "prefill"));
+    const pressure_mode = prefill_mode or (args.len >= 6 and std.mem.eql(u8, args[5], "pressure"));
+    const source_mode = pressure_mode or (args.len >= 6 and std.mem.eql(u8, args[5], "source"));
+    if (args.len >= 6 and !source_mode and !std.mem.eql(u8, args[5], "disk")) return error.Usage;
     const n = try std.fmt.parseInt(u32, args[2], 10);
     if (n == 0 or n > 80000) return error.Usage;
     var file = try zerv.artifact.MappedFile.open(init.io, args[1], 64 << 30);
@@ -34,7 +36,12 @@ pub fn main(init: std.process.Init) !void {
     if (disk_mode) {
         try backend.initCache(a, .radix, 128, source_mode);
         const alignment = try std.fmt.parseInt(u32, args[4], 10);
-        try backend.initDisk(a, init.io, .{ .directory = args[3], .bytes = std.mem.alignForward(u64, try m.archiveBytes(n), quantum) * 2, .records = 4, .alignment = if (alignment == 0) null else .{ .memory = alignment, .offset = alignment } });
+        try backend.initDisk(a, init.io, .{ .directory = args[3], .bytes = std.mem.alignForward(u64, try m.archiveBytes(n), window.chunk_bytes) * 2, .records = 4, .chunk_mib = chunk_mib, .alignment = if (alignment == 0) null else .{ .memory = alignment, .offset = alignment } });
+    }
+    if (backend.disk_archive) |d| {
+        try std.testing.expectEqual(window.chunk_bytes, d.store.slot_bytes);
+        try std.testing.expectEqual(window.staging_bytes, d.memory.len);
+        try std.testing.expectEqual(@as(usize, 8), d.store.slots.len);
     }
     const mem = try a.alignedAlloc(u8, .fromByteUnits(65536), quantum);
     defer a.free(mem);
@@ -114,7 +121,7 @@ pub fn main(init: std.process.Init) !void {
         while (true) {
             _ = try d.pollSource(false);
             if (d.catalog.device_pending) |held| {
-                if (@as(u64, held.chunk) * quantum + quantum >= bytes) break;
+                if (@as(u64, held.chunk) * d.store.slot_bytes + d.store.slot_bytes >= bytes) break;
             }
             try std.Io.sleep(init.io, .fromMicroseconds(100), .awake);
         }
@@ -296,11 +303,12 @@ pub fn main(init: std.process.Init) !void {
         const record = d.catalog.lookup(prompt) orelse return error.MissingRecord;
         // Corrupt the LAST chunk: preceding chunks can already have uploaded state.
         const block = d.catalog.blocks[@as(usize, record) * d.catalog.max_chunks + d.catalog.entries[record].chunks - 1];
-        const disk_offset = @as(i64, block) * quantum;
-        if (std.os.linux.pread(d.store.fd, d.memory.ptr, quantum, disk_offset) != quantum) return error.CorruptReadFailed;
+        const chunk = d.store.slot_bytes;
+        const disk_offset = @as(i64, block) * @as(i64, @intCast(chunk));
+        if (std.os.linux.pread(d.store.fd, d.memory.ptr, chunk, disk_offset) != chunk) return error.CorruptReadFailed;
         d.memory[0] ^= 0x80;
-        const written = std.os.linux.pwrite(d.store.fd, d.memory.ptr, quantum, disk_offset);
-        if (written != quantum) return error.CorruptWriteFailed;
+        const written = std.os.linux.pwrite(d.store.fd, d.memory.ptr, chunk, disk_offset);
+        if (written != chunk) return error.CorruptWriteFailed;
         try std.testing.expectError(error.PendingIo, backend.begin(1, prompt));
         try std.testing.expectEqual(@as(u32, 0), try drain(&backend, init.io, 1, false));
         try std.testing.expectEqual(@as(u32, 0), m.mappedPages(1));

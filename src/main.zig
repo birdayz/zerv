@@ -13,6 +13,7 @@ const usage =
     \\            [--prefix-cache-slots 8, with --parallel N: 3N]  (recurrent-state snapshots, ~150 MiB each; 0 = no prefix cache)
     \\            [--prefix-cache-disk-dir DIR --prefix-cache-disk-mib N]  (opt-in immutable RAM-staged disk archive; shared KV, parallel > 1)
     \\            [--prefix-cache-disk-entries 64] [--prefix-cache-disk-alignment N]  (bounded metadata; optional explicit direct-I/O alignment in bytes)
+    \\            [--prefix-cache-disk-chunk-mib 1|2|4|8]  (default 1; eight staging tickets, two reserved for reads)
     \\            [--prefix-cache-disk-headroom-slots N] [--prefix-cache-disk-headroom-mib N]  (pressure-driven preservation; auto: 0/1 slots, up to 256 MiB host KV)
     \\            [--prefix-cache-tier host]  (radix: checkpoints evicted under memory pressure move to the host swap store and come back on a hit; off: dropped)
     \\            [--prefix-cache radix]  (--parallel > 1: the prefix-cache policy: flat = checkpoint list; radix = prefix tree with deduplication of pages on insert)
@@ -69,6 +70,7 @@ pub fn main(init: std.process.Init) !void {
     var disk_dir: ?[]const u8 = null;
     var disk_mib: u64 = 0;
     var disk_entries: u32 = 64;
+    var disk_chunk_mib: ?u32 = null;
     var disk_alignment: u32 = 0;
     var disk_headroom_slots: ?u32 = null;
     var disk_headroom_mib: ?u64 = null;
@@ -124,6 +126,7 @@ pub fn main(init: std.process.Init) !void {
         else if (std.mem.eql(u8, arg, "--prefix-cache-disk-mib")) disk_mib = try std.fmt.parseInt(u64, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-disk-entries")) disk_entries = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-disk-alignment")) disk_alignment = try std.fmt.parseInt(u32, value, 10) //
+        else if (std.mem.eql(u8, arg, "--prefix-cache-disk-chunk-mib")) disk_chunk_mib = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-disk-headroom-slots")) disk_headroom_slots = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-disk-headroom-mib")) disk_headroom_mib = try std.fmt.parseInt(u64, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-slots")) snapshot_slots_arg = try std.fmt.parseInt(u32, value, 10) //
@@ -169,8 +172,9 @@ pub fn main(init: std.process.Init) !void {
     }
     if ((disk_dir != null) != (disk_mib != 0) or disk_mib > (1 << 20) or disk_entries == 0 or disk_entries > 4096 or
         (disk_dir != null and (parallel < 2 or !kv_share or prefix_cache_kind != .radix)) or
-        (disk_dir == null and (disk_entries != 64 or disk_alignment != 0 or disk_headroom_slots != null or disk_headroom_mib != null)) or
+        (disk_dir == null and (disk_entries != 64 or disk_alignment != 0 or disk_headroom_slots != null or disk_headroom_mib != null or disk_chunk_mib != null)) or
         (disk_alignment != 0 and (!std.math.isPowerOfTwo(disk_alignment) or disk_alignment > (1 << 20)))) return error.InvalidArguments;
+    const disk_window = if (disk_dir != null) try zerv.serve.disk.Window.init(disk_chunk_mib orelse 1, disk_mib << 20) else null;
     // One sequence: 8 snapshots of its history. Several: 3 checkpoints per slot (a system
     // prompt plus recent turns per conversation; docs/specs/concurrent.md "18d.4 design").
     var snapshot_slots: u32 = snapshot_slots_arg orelse if (parallel > 1) @min(3 * parallel, zerv.session.prefix.max_slots) else 8;
@@ -233,7 +237,7 @@ pub fn main(init: std.process.Init) !void {
         return error.InvalidArguments;
     }
     const embed_host: u64 = if (embedding_memory == .host) (container.findTensor("token_embd.weight") orelse return error.MissingTensor).data.len + 65536 else 0;
-    var device = try zerv.gpu.Device.open(.{ .max_allocated_bytes = budget_gib * 1024 * 1024 * 1024 + snapshot_host + embed_host + swap_bytes + @as(u64, if (disk_dir != null) zerv.serve.disk.staging_bytes else 0), .host_import = disk_dir != null, .cooperative_matrix = zerv.model.gemm.deviceNeeds(precision).cooperative_matrix, .subgroup_size_control = zerv.model.gemm.deviceNeeds(precision).subgroup_size_control, .storage16 = kv_type == .f16, .pipeline_binaries = zerv.model.gemm.needsPipelineBinaries(precision, gemm_code) });
+    var device = try zerv.gpu.Device.open(.{ .max_allocated_bytes = budget_gib * 1024 * 1024 * 1024 + snapshot_host + embed_host + swap_bytes + @as(u64, if (disk_window) |w| w.staging_bytes else 0), .host_import = disk_dir != null, .cooperative_matrix = zerv.model.gemm.deviceNeeds(precision).cooperative_matrix, .subgroup_size_control = zerv.model.gemm.deviceNeeds(precision).subgroup_size_control, .storage16 = kv_type == .f16, .pipeline_binaries = zerv.model.gemm.needsPipelineBinaries(precision, gemm_code) });
     defer device.deinit() catch @panic("device resources still live");
     var context_text: [16]u8 = undefined;
     const context_name = if (context == zerv.model.context_max) "max" else std.fmt.bufPrint(&context_text, "{d}", .{context}) catch unreachable;
@@ -278,8 +282,9 @@ pub fn main(init: std.process.Init) !void {
     // --parallel N > 1: the batcher owns the model on its scheduler task.
     var model_backend: zerv.serve.ModelBackend = .{ .m = &model };
     defer model_backend.deinitDisk();
-    if (disk_dir) |directory| try model_backend.initDisk(gpa, init.io, .{ .directory = directory, .bytes = disk_mib << 20, .records = disk_entries, .alignment = if (disk_alignment == 0) null else .{ .memory = disk_alignment, .offset = disk_alignment }, .headroom_slots = disk_headroom_slots, .headroom_mib = disk_headroom_mib });
+    if (disk_dir) |directory| try model_backend.initDisk(gpa, init.io, .{ .directory = directory, .bytes = disk_mib << 20, .records = disk_entries, .alignment = if (disk_alignment == 0) null else .{ .memory = disk_alignment, .offset = disk_alignment }, .headroom_slots = disk_headroom_slots, .headroom_mib = disk_headroom_mib, .chunk_mib = disk_chunk_mib orelse 1 });
     if (model_backend.disk_archive) |d| std.debug.print("zerv: disk pressure headroom: {d} snapshot slots, {d} host KV pages; two staging tickets reserved for reads\n", .{ d.headroom_slots, d.headroom_pages });
+    if (disk_window) |w| std.debug.print("zerv: disk transfer window: {d} MiB per ticket, {d} MiB staging; six write tickets, two reserved for reads\n", .{ w.chunk_bytes >> 20, w.staging_bytes >> 20 });
     var batch = try zerv.serve.Batcher.init(io, &model_backend, .{ .slots = parallel, .vocab = zerv.model.config.vocab, .stall = stall, .order = prefill_order, .swap_slice = if (model.swap_pages > 0 and kv_swap_slice_ms > 0) std.Io.Duration.fromMilliseconds(@intCast(kv_swap_slice_ms)) else null, .pack = if (model.packable()) @max(1, @min(prefill_pack, model.pack_seqs)) else 1 });
     var scheduler: ?std.Io.Future(void) = null;
     if (parallel > 1) {

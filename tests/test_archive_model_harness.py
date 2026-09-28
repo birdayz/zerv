@@ -34,7 +34,7 @@ class CadenceTests(unittest.TestCase):
             runner.validate_prefill({}, "unit")
 
     def test_cadence_needs_prefill_and_prefill_needs_disk(self):
-        for flags in [["--prefill-cadence", "both"], ["--prefill-cadence", "chunk"], ["--prefill"]]:
+        for flags in [["--prefill-cadence", "both"], ["--prefill-cadence", "chunk"], ["--prefill"], ["--chunk-mib", "8"], ["--chunk-mib", "3"]]:
             with self.subTest(flags=flags), mock.patch.object(sys, "argv", ["run_archive_model", "--output", "unused-output", *flags]), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as raised:
                     runner.main()

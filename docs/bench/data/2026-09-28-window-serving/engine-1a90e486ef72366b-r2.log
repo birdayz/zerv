@@ -1,0 +1,36 @@
+zerv: loading /home/USER/projects/zerv/models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf on AMD Radeon RX 7900 XTX (RADV NAVI31) (context 12288, prefill chunk 512, prefill precision f16, KV f16, prefix cache slots 8 = 1197 MiB of host memory, speculative drafts 0, adaptive)
+zerv: gemm_f16x: native
+zerv: KV cache: 192 pages of 128 tokens (shared pool, prompts admitted, pages grown per step)
+zerv: swap store: 4096 MiB of host memory, 474 KV pages
+zerv: parallel: 2 sequences of up to 12288 tokens, batched decode, prefill order shortest, decode steps at least every 100 ms during prefill (16 segments per chunk)
+zerv: prefill packing: up to 2 prompts per chunk
+zerv: FFN input fused in 63 (decode) and 63 (verify) of 64 layers
+zerv: VRAM: needed 17104 MiB of 23690 MiB free
+zerv: disk pressure headroom: 1 snapshot slots, 32 host KV pages; two staging tickets reserved for reads
+zerv: disk transfer window: 1 MiB per ticket, 8 MiB staging; six write tickets, two reserved for reads
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: serving qwen3.8-27b at http://127.0.0.1:18098/v1/chat/completions
+info: prefix cache: reset, reused 0 of 16 prompt tokens
+info: decode time: 20.475 ms total, 19.811 ms in backend calls, 0.411 ms sampling, 0.253 ms other host work
+info: prefix cache: reset, reused 0 of 8258 prompt tokens
+info: decode time: 9300.497 ms total, 9293.006 ms in backend calls, 5.177 ms sampling, 2.314 ms other host work
+info: prefix cache: reset, reused 0 of 10107 prompt tokens
+info: decode time: 8813.363 ms total, 8768.898 ms in backend calls, 6.504 ms sampling, 37.961 ms other host work
+info: prefix cache: reset, reused 0 of 7725 prompt tokens
+info: decode time: 9647.247 ms total, 9636.160 ms in backend calls, 7.880 ms sampling, 3.207 ms other host work
+info: prefix cache: reset, reused 0 of 7771 prompt tokens
+info: decode time: 1317.744 ms total, 1312.640 ms in backend calls, 3.743 ms sampling, 1.362 ms other host work
+info: prefix cache: restore, reused 10100 of 10226 prompt tokens
+info: decode time: 6739.524 ms total, 6734.732 ms in backend calls, 3.166 ms sampling, 1.626 ms other host work
+info: prefix cache: reset, reused 0 of 8361 prompt tokens
+info: decode time: 902.684 ms total, 899.215 ms in backend calls, 2.732 ms sampling, 0.737 ms other host work
+info: prefix cache: restore, reused 7764 of 7849 prompt tokens
+info: decode time: 2760.870 ms total, 2755.856 ms in backend calls, 3.809 ms sampling, 1.205 ms other host work
+info: prefix cache: reset, reused 0 of 7874 prompt tokens
+info: decode time: 1753.458 ms total, 1747.249 ms in backend calls, 4.737 ms sampling, 1.471 ms other host work
+info: shutting down: draining 0 admitted request(s)
+zerv: stopped
+zerv: batcher: 473 batches (587 rows, 6 partial, 231 inside prefill chunks), 120 prefill chunks (0 packed, 1920 units, 0 aborted, 0 admission waits, 0 swaps out (0 by time slice), 0 in, 0.0 ms swapping, 0 rows failed for memory); GPU busy 97.5% (decode 18.0%, prefill 79.6%) over 55.4 s; batches by rows: 1:359 2:114
+zerv: disk prefix archive: 2 writes, 0 restores, 1166016512 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 1 cancellations
+zerv: disk source retention: total 25.037 s, maximum 15.012 s; 1113 CPU and 0 GPU quanta
+zerv: prefix checkpoints: 14 taken, 2 of 9 lookups restored (17864 prompt tokens reused), 5 dropped for new ones, 1 for memory, 0 pages deduplicated, 6 demoted to host (346 pages), 2 promoted (140 pages), 0 dropped from the host

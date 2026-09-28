@@ -33,9 +33,11 @@ def main():
     mode.add_argument("--pressure", action="store_true", help="production pressure selection/poll/discard over the mixed-source gate")
     p.add_argument("--prefill", action="store_true", help="pressure capture between packed prefill units; exact solo rows")
     p.add_argument("--prefill-cadence", choices=["unit", "chunk", "both"], default="unit", help="matched diagnostic counterfactual; both alternates order")
+    p.add_argument("--chunk-mib", type=int, choices=[1, 2, 4, 8], default=1)
     p.add_argument("--tokens", type=int, nargs="+", default=[257, 80000])
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()
+    if a.chunk_mib != 1 and not a.scratch_dir: p.error("--chunk-mib requires disk")
     if a.prefill_cadence != "unit" and not a.prefill: p.error("--prefill-cadence requires --prefill")
     if a.prefill: a.pressure = True
     if a.pressure: a.source = True
@@ -58,6 +60,8 @@ def main():
             if a.scratch_dir: cmd += [str(a.scratch_dir.resolve()), str(a.direct_alignment)]
             if a.prefill: cmd += ["prefill-chunk" if cadence == "chunk" else "prefill"]
             elif a.source: cmd += ["pressure" if a.pressure else "source"]
+            elif a.scratch_dir: cmd += ["disk"]
+            if a.scratch_dir: cmd += [str(a.chunk_mib)]
             m["commands"].append(cmd)
             log_path = a.output / f"case-{index}-{tokens}.log"
             with log_path.open("w") as log:
@@ -69,6 +73,7 @@ def main():
             if a.prefill:
                 validate_prefill(rows[0], cadence)
                 rows[0]["prefill_cadence"] = cadence
+            rows[0]["chunk_mib"] = a.chunk_mib
             results += rows
         m.update(status="passed", results=results)
     except BaseException as e:

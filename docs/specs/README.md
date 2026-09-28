@@ -73,3 +73,5 @@ before coding it. Do not invent untested commands in docs and label them working
 - [Bounded archive progress during prefill](tiering-progress.md): D.0a pre-code
   contract; immutable-source-only unit-boundary callback, unchanged transfer window,
   independent ownership/byte anchors and packed-model interleaving gates.
+- [Bounded archive transfer windows](tiering-window.md): D.0b pre-code limits,
+  independent POSIX/SHA256 fixture and explicit staging/read-reservation tradeoffs.

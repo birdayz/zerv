@@ -262,3 +262,34 @@ Re-read `Pool.demotePlan/demoteCommit/demoteAbort/checkCheckpoint`, radix
 
 These findings refine D.1's pre-code work only. No new native D.1 API, fixture,
 implementation or performance result is claimed.
+
+## D.1 critical alias case found during D.0b measurement (pre-code)
+
+`Radix.take` deduplicates against the longest **common token prefix**, even if
+neither checkpoint is an ancestor of the other. Two root nodes `S/A` and `S/B`
+can therefore own separate pins on the same leading full GPU pages without a
+materialized `S` checkpoint. These are not necessarily descendant aliases.
+
+An asynchronous demotion can plan `S/A` while pins==1, then a newly inserted
+`S/B` raises those pins to two. `S/A`'s path refs can still equal its sole lease.
+Calling current unchecked `demoteCommit` would incorrectly set pins to zero;
+`rename` would also rewrite the other root. **Generation/serial and path-ref
+validation alone are insufficient.** Before committing any move, require its GPU
+source still has exactly the one selected owning pin and the expected old ID and
+logical index. A changed pin count aborts the optional transaction after fence
+ack; preserve all cache IDs/pins and free only its reserved destinations.
+Full GPU hits that add only a slot mask remain valid and are not this race.
+
+This refines the required independent object-set oracle: include divergent roots
+with common full pages inserted after planning, leased and unleased siblings,
+and partial pages copied rather than shared. Initial pins==1 avoids pre-existing
+cross-root alias moves; finish-time pins==1 plus the selected-path lease/ref check
+must guard newly inserted aliases too. No D.1 code is started.
+
+D.1 error-path audit: `ModelBackend.noteFailure` currently permits exactly the
+pending archive command owner (`device.pending == int(d.commands.pending)`). A new
+preparation command must be counted explicitly while it owns a fence; otherwise an
+unrelated rejected request operation can falsely mark the whole device fatal.
+Count only actual acknowledged/owned command states, not an optimistic outstanding
+job count. Retain the existing invalid-slot-while-copy-pending model test and extend
+it to preparation. Unknown pending ownership and device loss must still fail stop.

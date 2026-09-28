@@ -863,3 +863,17 @@ test "listener: exclusive port, immediate rebind after connections close" {
     defer again.deinit(io);
     try t.expectEqual(port, again.socket.address.getPort());
 }
+
+test "disk windows: explicit staging budgets, read reservation and rejected limits" {
+    const disk = serve.disk;
+    for ([_]u32{ 1, 2, 4, 8 }) |mib| {
+        const w = try disk.Window.init(mib, 64 << 20);
+        try t.expectEqual(@as(usize, mib) * 1048576, w.chunk_bytes);
+        try t.expectEqual(@as(usize, mib) * 8388608, w.staging_bytes);
+        try t.expectEqual(@as(usize, 8), w.staging_bytes / w.chunk_bytes);
+        try t.expectEqual(@as(u32, 6), disk.write_tickets);
+        try t.expectError(error.InvalidOptions, disk.Window.init(mib, 0));
+        try t.expectError(error.InvalidOptions, disk.Window.init(mib, (64 << 20) - 1));
+    }
+    for ([_]u32{ 0, 3, 16, std.math.maxInt(u32) }) |mib| try t.expectError(error.InvalidOptions, disk.Window.init(mib, 64 << 20));
+}

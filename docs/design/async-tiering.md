@@ -138,8 +138,13 @@ passes correctness/component/serving evaluation gates, but establishes **no disk
 speedup**. The 80k restore regression is retained. Snapshot/page transfers remain
 synchronous; D.0a's source-only in-chunk progress passes verification/evaluation
 ([contract](../specs/tiering-progress.md), [negative serving report](../bench/2026-09-28-tiering-progress.md)).
-It retains the 1 MiB window; D.0b window sizing is the next research/specification
-step. D.1/D.2 remain pre-code research.
+D.0b now implements [bounded 1/2/4/8 MiB windows](../specs/tiering-window.md), retaining
+1 MiB as default. Independent POSIX/hash fixtures, CPU/device/numerical and every
+window's 257/80k exactness gates pass. [Serving evaluation](../bench/2026-09-28-tiering-window.md):
+120 native responses/counts exact; 8 MiB restores disk state each round and takes
+51.282 ± 1.534 s versus host-only 47.476 ± 0.229 s / tuned HIP 48.691 ± 0.985 s.
+Window sizing alone does not meet the target. D.1 ownership research/specification
+is active; D.1/D.2 remain unimplemented.
 
 C is complete as a functionality/verification increment, not as the performance goal. C.1 source leases are implemented with full ancestor protection and
 independent prefix-set oracle ([report](../bench/2026-09-28-cache-sources.md)).

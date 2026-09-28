@@ -389,3 +389,88 @@ test "archive optional issue gate yields to reads, reserves tickets and retains 
     try t.expectError(error.Canceled, a.advanceWith(fake.device(), 2, true, .{ .allow_start = false, .max_pending = 0 }));
     try t.expect(!a.containsReady(&.{3}));
 }
+
+const WindowDevice = struct {
+    pending: ?struct { offset: u64, bytes: []u8, importing: bool } = null,
+    ready: bool = true,
+    fn start(ctx: *anyopaque, _: u32, offset: u64, bytes: []u8, importing: bool) !void {
+        const self: *@This() = @ptrCast(@alignCast(ctx));
+        if (self.pending != null) return error.Busy;
+        self.pending = .{ .offset = offset, .bytes = bytes, .importing = importing };
+    }
+    fn poll(ctx: *anyopaque) !bool {
+        const self: *@This() = @ptrCast(@alignCast(ctx));
+        if (!self.ready) return false;
+        const p = self.pending orelse return error.InvalidState;
+        for (p.bytes, 0..) |*byte, i| {
+            const at = p.offset + i;
+            const want: u8 = @truncate(at * 73 + at / 257 + 19);
+            if (p.importing) {
+                if (byte.* != want) return error.WrongRestoredByte;
+            } else byte.* = want;
+        }
+        self.pending = null;
+        return true;
+    }
+    fn device(self: *@This()) archive.Device {
+        return .{ .ctx = self, .start = start, .poll = poll };
+    }
+};
+
+test "archive production windows match independent POSIX hashes, drain cancellation and reserve reads" {
+    const Oracle = struct { generator_sha256: []const u8, cases: []struct { chunk: usize, length: u32, hashes: [][]const u8 } };
+    const oracle = try std.json.parseFromSlice(Oracle, t.allocator, @embedFile("fixtures/archive/windows.json"), .{ .ignore_unknown_fields = true });
+    defer oracle.deinit();
+    try t.expectEqualStrings(oracle.value.generator_sha256, &hex(@embedFile("reference/generate_archive_windows.py")));
+    for (oracle.value.cases) |case| {
+        var tmp = t.tmpDir(.{});
+        defer tmp.cleanup();
+        const mem = try t.allocator.alignedAlloc(u8, .fromByteUnits(4096), 8 * case.chunk);
+        defer t.allocator.free(mem);
+        const independent = try t.allocator.alignedAlloc(u8, .fromByteUnits(4096), case.chunk);
+        defer t.allocator.free(independent);
+        const store = try storage.Store.create(t.allocator, .{ .dir_fd = tmp.dir.handle, .name = "windows", .file_bytes = 8 * case.chunk, .slot_bytes = case.chunk, .alignment = .{ .memory = 4096, .offset = 4096 } }, mem);
+        defer store.destroy() catch @panic("pending window disk");
+        var a = try archive.Archive.init(t.allocator, store, .{ .records = 2, .slots = 2, .context = 4, .max_bytes = case.length });
+        defer a.deinit() catch @panic("pending window archive");
+        var fake: WindowDevice = .{ .ready = false };
+        try t.expect(try a.startWrite(0, &.{1}, case.length));
+        _ = try a.advanceWith(fake.device(), 0, false, .{ .max_pending = 6 });
+        try t.expect(a.device_pending != null);
+        _ = try a.advanceWith(fake.device(), 0, true, .{ .allow_start = false, .max_pending = 6 });
+        try t.expect(a.active(0) and a.device_pending != null);
+        try t.expect(!a.containsReady(&.{1}));
+        fake.ready = true;
+        try t.expectError(error.Canceled, a.advanceWith(fake.device(), 0, true, .{ .allow_start = false, .max_pending = 6 }));
+        try t.expect(try a.startWrite(0, &.{1}, case.length));
+        for (0..10000) |_| {
+            const next = a.jobs[0].next;
+            const paused = try a.advanceWith(fake.device(), 0, false, .{ .allow_start = false, .max_pending = 6 });
+            if (paused.done) break;
+            try t.expectEqual(next, a.jobs[0].next);
+            const p = try a.advanceWith(fake.device(), 0, false, .{ .max_pending = 6 });
+            try t.expect(a.jobs[0].pending <= 6);
+            const r0 = try store.acquire();
+            const r1 = try store.acquire();
+            try store.release(r0);
+            try store.release(r1);
+            if (p.done) break;
+            try std.Io.sleep(t.io, .fromMicroseconds(100), .awake);
+        }
+        try t.expect(!a.active(0));
+        const record = a.lookup(&.{ 1, 2 }) orelse return error.MissingRecord;
+        for (case.hashes, 0..) |digest, i| {
+            const index = record * a.max_chunks + i;
+            try t.expectEqualStrings(digest, &std.fmt.bytesToHex(a.digests[index], .lower));
+            try t.expectEqual(case.chunk, linux.pread(store.fd, independent.ptr, case.chunk, @as(i64, a.blocks[index]) * @as(i64, @intCast(case.chunk))));
+            try t.expectEqualStrings(digest, &hex(independent));
+        }
+        try a.startRead(1, record);
+        for (0..10000) |_| {
+            const p = try a.advance(fake.device(), 1, false);
+            if (p.done) break;
+            try std.Io.sleep(t.io, .fromMicroseconds(100), .awake);
+        }
+        try t.expect(!a.active(1) and a.containsReady(&.{1}));
+    }
+}

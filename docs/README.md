@@ -381,3 +381,11 @@ finish independent tests and benchmark gates before advancing.
      faster; 96 native HTTP responses/counts exact but zero disk restores, increased
      wasted writes, host+disk slower than host-only and tuned references. No serving
      win, proactive demotion or prefetch claim. D.0b window sizing is next.
+113. [Bounded archive windows](bench/2026-09-28-tiering-window.md) (D.0b gates closed):
+     1/2/4/8 MiB tickets, 8/16/32/64 MiB staging, two reserved read tickets.
+     Independent POSIX/hash goldens, CPU 82/82, device gates and model oracle
+     337/337 pass; every size passes packed/257/80k byte/vocabulary, cancellation
+     and corruption gates. 120 native responses/counts exact; 8 MiB restores real
+     disk state every round but still loses to host-only and tuned references
+     (51.282 ± 1.534 s versus 47.476 ± 0.229 s / HIP 48.691 ± 0.985 s).
+     Default unchanged; D.1 ownership research/specification is next.

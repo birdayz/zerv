@@ -8,6 +8,15 @@ User explicitly requested full integration and a real 80k-token gate. Research: 
 [snapshot residency](../research/2026-09-28-snapshot-residency.md), plus the decisions
 below. No filesystem-specific policy in core. No restart persistence.
 
+## Current amendments
+
+The baseline below is historical. [Pressure-driven admission](tiering-pressure.md)
+supersedes checkpoint write-through/source-request pauses; [immutable-source progress](tiering-progress.md)
+permits existing source capture between prefill units. [Bounded windows](tiering-window.md)
+adds `--prefix-cache-disk-chunk-mib 1|2|4|8` (default 1), with eight staging tickets,
+six optional-write tickets and two reserved for reads. D.1 proactive GPU→RAM
+preparation and D.2 queued-demand prefetch are still separate, unimplemented work.
+
 ## Resolved integration design
 
 Use an immutable **write-through archive behind the existing hot radix cache**.

@@ -7,8 +7,19 @@ const storage = @import("storage");
 const archive = @import("session").archive;
 const kvcache = @import("session").kvcache;
 const linux = std.os.linux;
-pub const staging_bytes = 8 << 20;
-pub const Options = struct { directory: []const u8, bytes: u64, records: u32 = 64, alignment: ?storage.Alignment = null, headroom_slots: ?u32 = null, headroom_mib: ?u64 = null };
+pub const staging_tickets = 8;
+pub const write_tickets = staging_tickets - 2;
+pub const Window = struct {
+    chunk_bytes: usize,
+    staging_bytes: usize,
+    pub fn init(chunk_mib: u32, file_bytes: u64) !Window {
+        if (chunk_mib == 0 or chunk_mib > 8 or !std.math.isPowerOfTwo(chunk_mib)) return error.InvalidOptions;
+        const chunk: usize = @as(usize, chunk_mib) << 20;
+        if (file_bytes == 0 or file_bytes % chunk != 0) return error.InvalidOptions;
+        return .{ .chunk_bytes = chunk, .staging_bytes = staging_tickets * chunk };
+    }
+};
+pub const Options = struct { directory: []const u8, bytes: u64, records: u32 = 64, alignment: ?storage.Alignment = null, headroom_slots: ?u32 = null, headroom_mib: ?u64 = null, chunk_mib: u32 = 1 };
 pub const Disk = struct {
     allocator: std.mem.Allocator,
     io: std.Io,
@@ -36,6 +47,8 @@ pub const Disk = struct {
     source_max_hold_ns: i96 = 0,
 
     pub fn create(a: std.mem.Allocator, io: std.Io, m: *model.Model, o: Options) !*Disk {
+        const window = try Window.init(o.chunk_mib, o.bytes);
+        const staging_bytes = window.staging_bytes;
         if (m.options.mtp or !m.options.kv_share or m.state_layout.slots < 2 or o.bytes == 0 or o.bytes % (1 << 20) != 0) return error.InvalidOptions;
         if (m.snapshot_slots == 0) return error.InvalidOptions;
         const headroom_slots = o.headroom_slots orelse @as(u32, if (m.snapshot_slots >= 3) 1 else 0);
@@ -62,7 +75,7 @@ pub const Disk = struct {
         if (linux.errno(dir_rc) != .SUCCESS) return error.OpenDirectoryFailed;
         const fd: i32 = @intCast(dir_rc);
         defer _ = linux.close(fd);
-        const store = try storage.Store.create(a, .{ .dir_fd = fd, .name = "zerv-prefix-scratch", .file_bytes = o.bytes, .slot_bytes = 1 << 20, .alignment = o.alignment }, memory);
+        const store = try storage.Store.create(a, .{ .dir_fd = fd, .name = "zerv-prefix-scratch", .file_bytes = o.bytes, .slot_bytes = window.chunk_bytes, .alignment = o.alignment }, memory);
         errdefer store.destroy() catch @panic("new store busy");
         var catalog = try archive.Archive.init(a, store, .{ .records = o.records, .context = m.state_layout.context, .slots = m.state_layout.slots + 1, .max_bytes = max_bytes });
         errdefer catalog.deinit() catch @panic("new archive busy");
@@ -135,7 +148,7 @@ pub const Disk = struct {
     }
     pub fn pollSourceWith(self: *Disk, cancel: bool, allow_start: bool) !archive.Progress {
         if (self.source == null) return .{ .done = true, .progressed = false };
-        const p = self.pollWith(self.m.state_layout.slots, cancel, .{ .allow_start = allow_start, .max_pending = staging_bytes / (1 << 20) - 2 }) catch |err| {
+        const p = self.pollWith(self.m.state_layout.slots, cancel, .{ .allow_start = allow_start, .max_pending = write_tickets }) catch |err| {
             self.releaseSource(); // archive errors are returned only after both owners drain
             return err;
         };

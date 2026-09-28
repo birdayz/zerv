@@ -95,7 +95,7 @@ pending scheduler I/O (not the older standalone residency table):
 --parallel 2 --kv-pool shared --spec-draft 0 --kv-type f16 \
 --prefix-cache-disk-dir /operator/prepared/scratch \
 --prefix-cache-disk-mib 8192 --prefix-cache-disk-entries 64 \
---prefix-cache-disk-alignment 4096
+--prefix-cache-disk-alignment 4096 --prefix-cache-disk-chunk-mib 1
 ```
 
 Alignment above is an **operator assertion**, not portable filesystem detection;
@@ -103,19 +103,28 @@ omit it when the filesystem reports suitable DIO alignment. Directory and disk
 budget must be supplied together. No attributes/ioctls/mounts are changed. A new
 0600, exclusive scratch file is unlinked immediately and preallocated; capacity is
 bounded and returned at shutdown. The archive is not persistent across restarts.
-Eight MiB of anonymous imported staging is included in the allocation budget;
-metadata is separately bounded at 256 MiB. Record count, context and chunk-map
+`--prefix-cache-disk-chunk-mib 1|2|4|8` selects each transfer ticket's size
+(default 1). Eight tickets consume 8/16/32/64 MiB of anonymous imported staging,
+included once in the allocation budget, plus bounded mmap alignment slack. Two
+tickets are reserved for reads; optional writes use at most six. Disk MiB must be
+a multiple of the chosen chunk size. Larger chunks reduce operation count but
+increase RAM, per-record zero padding (up to chunk size minus one byte), and the
+work to drain on cancellation; they are not automatically faster. Explicit use
+without the disk tier is rejected. See [the window contract](../specs/tiering-window.md).
+Metadata is separately bounded at 256 MiB. Record count, context and chunk-map
 capacity determine metadata use. MTP and static/single-slot models are unsupported.
 
-Cold checkpoints write full state and logical KV images, duplicating shared
-prefix bytes on disk. Hot cache hits win ties. Longer disk hits allocate private
+Checkpoint creation itself does not write to disk. Under host-page or snapshot-slot
+pressure, cold leased sources write full state and logical KV images, duplicating
+shared prefix bytes on disk; existing ready backing is retained without rewriting.
+See [the pressure policy](../specs/tiering-pressure.md). Hot cache hits win ties. Longer disk hits allocate private
 pages; if there is insufficient space, inference starts cold instead. Read errors
 or failed integrity checks invalidate the record and reset the partial restore.
 I/O cancellation drains before a slot or staging memory can be reused. Unknown
 GPU DMA ownership is fail-stop, never silent fallback.
 
 This is a capacity/latency tradeoff, not a claim of raw NVMe bandwidth: SHA256,
-CPU bookkeeping and bounded synchronous GPU fences are in the path. Shutdown logs
+CPU bookkeeping and submit/poll GPU completion dependencies are in the path. Shutdown logs
 archive writes/restores, physical bytes, evictions, skips, failures and cancellations.
 See the [integration contract](../specs/disk-prefix-cache.md) and
 [measured tradeoffs](../bench/2026-09-28-disk-prefix-serving.md): disk improves reuse
