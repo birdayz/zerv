@@ -1,0 +1,97 @@
+INFO: Invocation ID: 6733c095-3e04-4505-8d59-d5607c9a5a94
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (0 packages loaded, 0 targets configured).
+FAIL: //tests:pages (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/pages/test.log)
+[3 / 8] 1 / 2 tests, 1 failed; zig test //tests:pages; 1s disk-cache, linux-sandbox ... (2 actions running)
+INFO: From Testing //tests:pages:
+==================== Test output for //tests:pages:
+1/6 pages.test.pages: random attach, rebind, pin, swap and release keep every sequence's content...OK
+2/6 pages.test.pages: a swap moves only the slot's own pages; shared and pinned ones stay held...OK
+3/6 pages.test.pages: a deep swap-out releases the shared and pinned pages a swapped slot kept...OK
+4/6 pages.test.checkpoint source maps validate mixed ancestry and preserve logical indices on suffix demotion...OK
+5/6 pages.test.preparation: independent named-owner oracle, hit after plan and late alias atomicity...slices differ. first difference occurs at index 7 (0x7)
+
+============ expected this output: =============  len: 8 (0x8)
+
+[0]: 1
+[1]: 0
+[2]: 1
+[3]: 0
+[4]: 0
+[5]: 1
+[6]: 0
+[7]: 1
+
+============= instead found this: ==============  len: 8 (0x8)
+
+[0]: 1
+[1]: 0
+[2]: 1
+[3]: 0
+[4]: 0
+[5]: 1
+[6]: 0
+[7]: 0
+
+================================================
+
+FAIL (TestExpectedEqual)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8229/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:379:5: 0x126ec6f in expectEqualSlices__anon_44978 (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8229/execroot/_main/tests/pages.zig:412:9: 0x1274229 in test.preparation: independent named-owner oracle, hit after plan and late alias atomicity (pages.zig)
+6/6 pages.test.preparation: stale incarnation, bounded options, source validation and destination ownership...OK
+5 passed; 0 skipped; 1 failed.
+================================================================================
+[4 / 8] 1 / 2 tests, 1 failed; zig test //tests:pages; 2s disk-cache, linux-sandbox
+[5 / 8] 1 / 2 tests, 1 failed; [Prepa] runfiles for //tests:pages
+FAIL: //tests:pages_release_fast (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/pages_release_fast/test.log)
+INFO: From Testing //tests:pages_release_fast:
+==================== Test output for //tests:pages_release_fast:
+1/6 pages.test.pages: random attach, rebind, pin, swap and release keep every sequence's content...OK
+2/6 pages.test.pages: a swap moves only the slot's own pages; shared and pinned ones stay held...OK
+3/6 pages.test.pages: a deep swap-out releases the shared and pinned pages a swapped slot kept...OK
+4/6 pages.test.checkpoint source maps validate mixed ancestry and preserve logical indices on suffix demotion...OK
+5/6 pages.test.preparation: independent named-owner oracle, hit after plan and late alias atomicity...slices differ. first difference occurs at index 7 (0x7)
+
+============ expected this output: =============  len: 8 (0x8)
+
+[0]: 1
+[1]: 0
+[2]: 1
+[3]: 0
+[4]: 0
+[5]: 1
+[6]: 0
+[7]: 1
+
+============= instead found this: ==============  len: 8 (0x8)
+
+[0]: 1
+[1]: 0
+[2]: 1
+[3]: 0
+[4]: 0
+[5]: 1
+[6]: 0
+[7]: 0
+
+================================================
+
+FAIL (TestExpectedEqual)
+6/6 pages.test.preparation: stale incarnation, bounded options, source validation and destination ownership...OK
+5 passed; 0 skipped; 1 failed.
+================================================================================
+INFO: Found 2 test targets...
+INFO: Elapsed time: 6.360s, Critical Path: 6.21s
+INFO: 9 processes: 5 internal, 6 linux-sandbox.
+INFO: Build completed, 2 tests FAILED, 9 total actions
+//tests:pages                                                            FAILED in 0.3s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/pages/test.log
+//tests:pages_release_fast                                               FAILED in 0.0s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/pages_release_fast/test.log
+
+Executed 2 out of 2 tests: 2 fail locally.

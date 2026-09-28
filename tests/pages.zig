@@ -320,3 +320,205 @@ test "checkpoint source maps validate mixed ancestry and preserve logical indice
     } else return error.MissingSwap;
     try t.expectError(error.PagesMissing, pool.checkCheckpoint(&.{host | pages.host_flag}));
 }
+
+const PreparationCase = struct {
+    input: struct { first: u32, window: u32, hit: u32, alias: i32, cancel: bool, busy: u32, reserve: u32, shared: u32, shift: u32 },
+    moves: []struct { index: u32, from_page: u32, to: u32 },
+    status: []const u8,
+    copied: u32,
+    freed: u32,
+    pages: []u32,
+    pins: []u8,
+    masks: []u64,
+    host_used: []bool,
+    host_logical: []u16,
+};
+
+test "preparation: independent named-owner oracle, hit after plan and late alias atomicity" {
+    const Oracle = struct { generator_sha256: []const u8, cases: []PreparationCase };
+    const oracle = try std.json.parseFromSlice(Oracle, t.allocator, @embedFile("fixtures/preparation.json"), .{ .ignore_unknown_fields = true });
+    defer oracle.deinit();
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(@embedFile("reference/generate_preparation_fixture.py"), &digest, .{});
+    try t.expectEqualStrings(oracle.value.generator_sha256, &std.fmt.bytesToHex(digest, .lower));
+    try t.expectEqual(@as(usize, 1362), oracle.value.cases.len);
+    const pool = try t.allocator.create(pages.Pool);
+    defer t.allocator.destroy(pool);
+    for (oracle.value.cases) |c| {
+        try pool.init(8, 2, 4);
+        try pool.setHost(8);
+        var list: [4]u32 = undefined;
+        for (&list, 0..) |*q, i| {
+            q.* = (@as(u32, @intCast(i)) * 3 + c.input.shift) % 8;
+            pool.logical[q.*] = @intCast(i);
+            pool.pins[q.*] = 1 + @as(u8, @intFromBool(c.input.shared & (@as(u32, 1) << @intCast(i)) != 0));
+        }
+        for (0..c.input.busy) |h| {
+            pool.host_owner[h] = 0xfe; // unrelated committed checkpoint
+            pool.host_logical[h] = @intCast(h % 4);
+        }
+        const generation = try pool.prepare(&list, c.input.first, c.input.window, c.input.reserve);
+        try t.expectEqual(c.moves.len != 0, generation != null);
+        if (generation) |g| {
+            const moves = try pool.preparedMoves(g);
+            try t.expectEqual(c.moves.len, moves.len);
+            for (c.moves, moves) |want, got| {
+                try t.expectEqual(want.index, got.index);
+                try t.expectEqual(want.from_page, got.from);
+                try t.expectEqual(want.to, got.to);
+                try t.expectError(error.InvalidState, pool.releaseCheckpoint(&.{got.to | pages.host_flag}));
+                try t.expectError(error.PagesMissing, pool.checkCheckpoint(&.{got.to | pages.host_flag}));
+            }
+            try t.expectEqual(8 - c.input.busy - @as(u32, @intCast(moves.len)), pool.hostFree());
+            try t.expectError(error.PendingPreparation, pool.commitPreparation(g, &list));
+            try t.expectError(error.PendingPreparation, pool.abortPreparation(g));
+            try t.expectError(error.InvalidState, pool.setHost(8));
+            try t.expectError(error.InvalidState, pool.prepare(&list, 0, 1, 0));
+        }
+        if (c.input.hit != 0) {
+            const full = if (c.input.hit == 2) @as(usize, 3) else 4;
+            const fresh = try pool.attachPlan(0, list[0..full], if (full == 3) list[3] else null);
+            pool.commitMap(0, list[0..full]);
+            if (fresh) |q| pool.commitMap(0, &.{q});
+        }
+        if (c.input.alias >= 0) pool.pins[list[@intCast(c.input.alias)]] += 1;
+        if (generation) |g| {
+            try pool.ackPreparation(g);
+            if (std.mem.eql(u8, c.status, "commit")) {
+                const result = try pool.commitPreparation(g, &list);
+                try t.expectEqual(c.copied, result.copied);
+                try t.expectEqual(c.freed, result.freed);
+            } else {
+                if (std.mem.eql(u8, c.status, "conflict")) {
+                    const before_list = list;
+                    const before_pins = pool.pins[0..8].*;
+                    const before_masks = pool.mask[0..8].*;
+                    const before_host = pool.host_owner[0..8].*;
+                    const before_logical = pool.host_logical[0..8].*;
+                    try t.expectError(error.InvalidState, pool.commitPreparation(g, &list));
+                    try t.expectEqualSlices(u32, &before_list, &list);
+                    try t.expectEqualSlices(u8, &before_pins, pool.pins[0..8]);
+                    try t.expectEqualSlices(u64, &before_masks, pool.mask[0..8]);
+                    try t.expectEqualSlices(u8, &before_host, pool.host_owner[0..8]);
+                    try t.expectEqualSlices(u16, &before_logical, pool.host_logical[0..8]);
+                }
+                try pool.abortPreparation(g);
+            }
+            try t.expectError(error.InvalidState, pool.ackPreparation(g));
+            try t.expectError(error.InvalidState, pool.abortPreparation(g));
+        }
+        try t.expectEqualSlices(u32, c.pages, &list);
+        try t.expectEqualSlices(u8, c.pins, pool.pins[0..8]);
+        try t.expectEqualSlices(u64, c.masks, pool.mask[0..8]);
+        try t.expectEqualSlices(u16, c.host_logical, pool.host_logical[0..8]);
+        for (c.host_used, 0..) |used, h| try t.expectEqual(@as(u8, if (used) 0xfe else 0xff), pool.host_owner[h]);
+        try pool.checkCheckpoint(&list);
+        try t.expect(pool.check());
+    }
+}
+
+test "preparation: stale incarnation, bounded options, source validation and destination ownership" {
+    const pool = try t.allocator.create(pages.Pool);
+    defer t.allocator.destroy(pool);
+    try pool.init(8, 2, 4);
+    try pool.setHost(8);
+    var list = [_]u32{ 0, 1, 2, 3 };
+    for (list, 0..) |q, i| {
+        pool.pins[q] = 1;
+        pool.logical[q] = @intCast(i);
+    }
+    for ([_]u32{ 0, 3, 5, std.math.maxInt(u32) }) |window| try t.expectError(error.InvalidToken, pool.prepare(&list, 0, window, 0));
+    try t.expectError(error.InvalidToken, pool.prepare(&list, 5, 1, 0));
+    try t.expectError(error.InvalidToken, pool.prepare(&list, 0, 1, 9));
+    try t.expectError(error.InvalidToken, pool.prepare(&.{}, 0, 1, 0));
+    try t.expectError(error.PagesMissing, pool.prepare(&.{8}, 0, 1, 0));
+    try t.expectEqual(@as(?u64, null), try pool.prepare(&list, 0, 4, 8));
+    try t.expectEqual(@as(u32, 8), pool.hostFree());
+    const old = (try pool.prepare(&list, 0, 4, 0)).?;
+    try pool.ackPreparation(old);
+    try t.expectError(error.InvalidState, pool.ackPreparation(old));
+    try pool.abortPreparation(old);
+    const current = (try pool.prepare(&list, 0, 4, 0)).?;
+    try t.expect(current > old);
+    try t.expectError(error.InvalidState, pool.preparedMoves(old));
+    try t.expectError(error.InvalidState, pool.ackPreparation(old));
+    try t.expectError(error.InvalidState, pool.abortPreparation(old));
+    try t.expectError(error.InvalidState, pool.commitPreparation(old, &list));
+    try t.expectEqual(@as(u32, 4), pool.hostFree());
+    try pool.ackPreparation(current);
+    try t.expectError(error.InvalidState, pool.commitPreparation(current, list[0..3]));
+    list[3] = 4;
+    try t.expectError(error.InvalidState, pool.commitPreparation(current, &list));
+    list[3] = 3;
+    pool.logical[3] = 2;
+    try t.expectError(error.InvalidState, pool.commitPreparation(current, &list));
+    pool.logical[3] = 3;
+    const moves = try pool.preparedMoves(current);
+    const last_host = moves[moves.len - 1].to;
+    const owner = pool.host_owner[last_host];
+    pool.host_owner[last_host] = 0xfe;
+    try t.expectError(error.InvalidState, pool.commitPreparation(current, &list));
+    try t.expectError(error.InvalidState, pool.abortPreparation(current));
+    try t.expectEqual(@as(u32, 4), pool.hostFree());
+    try t.expectEqualSlices(u32, &.{ 0, 1, 2, 3 }, &list);
+    try t.expectEqualSlices(u8, &.{ 1, 1, 1, 1 }, pool.pins[0..4]);
+    pool.host_owner[last_host] = owner;
+    try pool.abortPreparation(current);
+    const half = (try pool.prepare(&list, 0, 2, 0)).?;
+    try pool.ackPreparation(half);
+    try t.expectEqual(pages.PreparedResult{ .copied = 2, .freed = 2 }, try pool.commitPreparation(half, &list));
+    const rest = (try pool.prepare(&list, 0, 4, 0)).?;
+    try t.expectEqual(@as(u32, 2), (try pool.preparedMoves(rest))[0].index);
+    try pool.ackPreparation(rest);
+    try pool.abortPreparation(rest);
+    pool.preparation.generation = std.math.maxInt(u64);
+    try t.expectError(error.PreparationExhausted, pool.prepare(&list, 0, 4, 0));
+    try t.expectEqual(@as(u32, 6), pool.hostFree());
+    try pool.checkCheckpoint(&list);
+}
+
+test "preparation: skip live pages, hit then leave, and disjoint demotion reservations" {
+    const pool = try t.allocator.create(pages.Pool);
+    defer t.allocator.destroy(pool);
+    try pool.init(8, 2, 4);
+    try pool.setHost(8);
+    var list = [_]u32{ 0, 1, 2, 3 };
+    for (list, 0..) |q, i| {
+        pool.pins[q] = 1;
+        pool.logical[q] = @intCast(i);
+    }
+    pool.commitMap(0, list[0..2]);
+    const g = (try pool.prepare(&list, 0, 4, 1)).?;
+    const plan = try pool.preparedMoves(g);
+    try t.expectEqual(@as(usize, 2), plan.len);
+    try t.expectEqual(@as(u32, 2), plan[0].index);
+    try t.expectEqual(@as(u32, 3), plan[1].index);
+    // Another cache's ordinary demotion must not reuse the reserved host pages.
+    var other = [_]u32{ 4, 5 };
+    for (other, 0..) |q, i| {
+        pool.pins[q] = 1;
+        pool.logical[q] = @intCast(i);
+    }
+    var buf: [2]pages.Move = undefined;
+    const disjoint = pool.demotePlan(&other, &buf);
+    try t.expectEqual(@as(usize, 2), disjoint.len);
+    for (disjoint) |m| for (plan) |p| try t.expect(m.to != p.to);
+    pool.demoteCommit(&other, disjoint);
+    try t.expectEqual(@as(u32, 4), pool.hostFree());
+    try t.expectEqual(@as(?u32, null), try pool.attachPlan(1, &list, null));
+    pool.commitMap(1, &list);
+    try pool.release(1); // leaving before completion makes these pages reclaimable again
+    try pool.ackPreparation(g);
+    try t.expectEqual(pages.PreparedResult{ .copied = 2, .freed = 2 }, try pool.commitPreparation(g, &list));
+    try t.expectEqual(@as(u64, 1), pool.mask[0]);
+    try t.expectEqual(@as(u64, 1), pool.mask[1]);
+    try t.expectEqual(@as(u32, 2), pool.mapped[0]);
+    try pool.checkCheckpoint(&list);
+    try pool.checkCheckpoint(&other);
+    try t.expect(pool.check());
+    try pool.release(0);
+    try pool.releaseCheckpoint(&list);
+    try pool.releaseCheckpoint(&other);
+    try t.expectEqual(@as(u32, 8), pool.freeCount());
+    try t.expectEqual(@as(u32, 8), pool.hostFree());
+}

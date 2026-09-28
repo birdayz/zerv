@@ -1,0 +1,47 @@
+INFO: Invocation ID: 4c8649d1-c688-48c2-a070-910f807bae16
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (0 packages loaded, 0 targets configured).
+[3 / 8] zig test //tests:pages; 1s disk-cache, linux-sandbox ... (2 actions running)
+FAIL: //tests:pages (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/pages/test.log)
+INFO: From Testing //tests:pages:
+==================== Test output for //tests:pages:
+1/6 pages.test.pages: random attach, rebind, pin, swap and release keep every sequence's content...OK
+2/6 pages.test.pages: a swap moves only the slot's own pages; shared and pinned ones stay held...OK
+3/6 pages.test.pages: a deep swap-out releases the shared and pinned pages a swapped slot kept...OK
+4/6 pages.test.checkpoint source maps validate mixed ancestry and preserve logical indices on suffix demotion...OK
+5/6 pages.test.preparation: independent named-owner oracle, hit after plan and late alias atomicity...expected error.InvalidState, found .{ .copied = 1, .freed = 1 }
+FAIL (TestExpectedError)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8236/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:65:9: 0x12570fb in expectError__anon_43178 (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8236/execroot/_main/tests/pages.zig:398:21: 0x1273468 in test.preparation: independent named-owner oracle, hit after plan and late alias atomicity (pages.zig)
+6/6 pages.test.preparation: stale incarnation, bounded options, source validation and destination ownership...OK
+5 passed; 0 skipped; 1 failed.
+================================================================================
+[4 / 8] 1 / 2 tests, 1 failed; zig test //tests:pages; 2s disk-cache, linux-sandbox
+[5 / 8] 1 / 2 tests, 1 failed; [Prepa] runfiles for //tests:pages
+FAIL: //tests:pages_release_fast (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/pages_release_fast/test.log)
+INFO: From Testing //tests:pages_release_fast:
+==================== Test output for //tests:pages_release_fast:
+1/6 pages.test.pages: random attach, rebind, pin, swap and release keep every sequence's content...OK
+2/6 pages.test.pages: a swap moves only the slot's own pages; shared and pinned ones stay held...OK
+3/6 pages.test.pages: a deep swap-out releases the shared and pinned pages a swapped slot kept...OK
+4/6 pages.test.checkpoint source maps validate mixed ancestry and preserve logical indices on suffix demotion...OK
+5/6 pages.test.preparation: independent named-owner oracle, hit after plan and late alias atomicity...expected error.InvalidState, found .{ .copied = 1, .freed = 1 }
+FAIL (TestExpectedError)
+6/6 pages.test.preparation: stale incarnation, bounded options, source validation and destination ownership...OK
+5 passed; 0 skipped; 1 failed.
+================================================================================
+INFO: Found 2 test targets...
+INFO: Elapsed time: 6.660s, Critical Path: 6.52s
+INFO: 9 processes: 5 internal, 6 linux-sandbox.
+INFO: Build completed, 2 tests FAILED, 9 total actions
+//tests:pages                                                            FAILED in 0.3s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/pages/test.log
+//tests:pages_release_fast                                               FAILED in 0.0s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/pages_release_fast/test.log
+
+Executed 2 out of 2 tests: 2 fail locally.

@@ -16,6 +16,8 @@ const no_owner: u8 = 0xff;
 /// Owner of host pages holding demoted checkpoint pages (docs/specs/concurrent.md, "18d.5
 /// design": the tiered prefix cache); the checkpoint's page list names them.
 const checkpoint_owner: u8 = 0xfe;
+/// Not a published checkpoint: only the qualified preparation owner may release it.
+const preparation_owner: u8 = 0xfd;
 /// In a checkpoint's page list, a host page id (the page lives in the host store).
 pub const host_flag: u32 = 1 << 31;
 /// One page moved between the pool and the host store: `list[index]` goes from `from` to
@@ -23,6 +25,9 @@ pub const host_flag: u32 = 1 << 31;
 pub const Move = struct { index: u32, from: u32, to: u32 };
 
 pub const Error = error{ InvalidSlot, SlotSwapped, InvalidToken, PageInUse, InvalidState, PagesMissing, PoolExhausted, SwapFull, NoSwap };
+
+pub const PreparationError = Error || error{ PendingPreparation, PreparationExhausted };
+pub const PreparedResult = struct { copied: u32, freed: u32 };
 
 pub const Pool = struct {
     pages: u32,
@@ -41,6 +46,14 @@ pub const Pool = struct {
     mapped: [max_slots]u32 = @splat(0),
     /// Logical pages of a swapped-out slot (0: not swapped).
     swapped: [max_slots]u32 = @splat(0),
+    /// One bounded owner; move indices are absolute positions in the full checkpoint.
+    preparation: struct {
+        generation: u64 = 0,
+        count: u32 = 0,
+        acknowledged: bool = false,
+        list_len: usize = 0,
+        moves: [4]Move = undefined,
+    } = .{},
 
     /// In place (the struct is large).
     pub fn init(self: *Pool, pages: u32, slots: u32, seq_pages: u32) Error!void {
@@ -48,6 +61,7 @@ pub const Pool = struct {
         self.* = .{ .pages = pages, .slots = slots, .seq_pages = seq_pages };
     }
     pub fn setHost(self: *Pool, host_pages: u32) Error!void {
+        if (self.preparation.count != 0) return error.InvalidState;
         if (host_pages > max_pages) return error.InvalidToken;
         self.host_pages = host_pages;
     }
@@ -358,6 +372,81 @@ pub const Pool = struct {
             self.pins[m.from] = 0;
             list[m.index] = m.to | host_flag;
         }
+    }
+
+    /// Reserve a bounded own-segment demotion. Caller retains a qualified immutable cache
+    /// source until finish/abort (docs/specs/tiering-preparation.md). No device work here.
+    pub fn prepare(self: *Pool, list: []const u32, first: u32, window: u32, host_headroom: u32) PreparationError!?u64 {
+        if (self.preparation.count != 0) return error.InvalidState;
+        if (first > list.len or window == 0 or window > 4 or !std.math.isPowerOfTwo(window) or host_headroom > self.host_pages) return error.InvalidToken;
+        try self.checkCheckpoint(list);
+        const free = self.hostFree();
+        const limit = @min(window, free - @min(free, host_headroom));
+        var moves: [4]Move = undefined;
+        var n: u32 = 0;
+        var h: u32 = 0;
+        for (list[first..], first..) |q, i| {
+            if (n == limit) break;
+            if (q & host_flag != 0 or self.pins[q] != 1 or self.mask[q] != 0) continue;
+            while (self.host_owner[h] != no_owner) h += 1;
+            moves[n] = .{ .index = @intCast(i), .from = q, .to = h };
+            n += 1;
+            h += 1;
+        }
+        if (n == 0) return null;
+        if (self.preparation.generation == std.math.maxInt(u64)) return error.PreparationExhausted;
+        self.preparation.generation += 1;
+        self.preparation.count = n;
+        self.preparation.acknowledged = false;
+        self.preparation.list_len = list.len;
+        @memcpy(self.preparation.moves[0..n], moves[0..n]);
+        for (moves[0..n]) |m| self.host_owner[m.to] = preparation_owner;
+        return self.preparation.generation;
+    }
+    /// Borrowed until commit/abort; stale incarnations never name a new owner's moves.
+    pub fn preparedMoves(self: *const Pool, generation: u64) PreparationError![]const Move {
+        if (self.preparation.count == 0 or self.preparation.generation != generation) return error.InvalidState;
+        return self.preparation.moves[0..self.preparation.count];
+    }
+    /// External owner proves that no device access remains. Submission alone is not ack.
+    pub fn ackPreparation(self: *Pool, generation: u64) PreparationError!void {
+        _ = try self.preparedMoves(generation);
+        if (self.preparation.acknowledged) return error.InvalidState;
+        self.preparation.acknowledged = true;
+    }
+    fn drainedPreparation(self: *const Pool, generation: u64) PreparationError![]const Move {
+        const moves = try self.preparedMoves(generation);
+        if (!self.preparation.acknowledged) return error.PendingPreparation;
+        for (moves) |m| if (m.to >= self.host_pages or self.host_owner[m.to] != preparation_owner) return error.InvalidState;
+        return moves;
+    }
+    /// All validation precedes all mutation. A late independent cache alias aborts the
+    /// optional transaction; a live GPU hit is valid, retaining its mask and physical page.
+    pub fn commitPreparation(self: *Pool, generation: u64, list: []u32) PreparationError!PreparedResult {
+        const moves = try self.drainedPreparation(generation);
+        if (list.len != self.preparation.list_len) return error.InvalidState;
+        for (moves) |m| {
+            if (m.index >= list.len or list[m.index] != m.from or m.from >= self.pages or
+                self.pins[m.from] != 1 or self.logical[m.from] != m.index) return error.InvalidState;
+        }
+        var result: PreparedResult = .{ .copied = @intCast(moves.len), .freed = 0 };
+        for (moves) |m| {
+            result.freed += @intFromBool(self.mask[m.from] == 0);
+            self.host_logical[m.to] = self.logical[m.from];
+            self.host_owner[m.to] = checkpoint_owner;
+            self.pins[m.from] = 0;
+            list[m.index] = m.to | host_flag;
+        }
+        self.preparation.count = 0;
+        self.preparation.acknowledged = false;
+        return result;
+    }
+    /// Only our drained reservations are released; cache IDs/pins and live masks survive.
+    pub fn abortPreparation(self: *Pool, generation: u64) PreparationError!void {
+        const moves = try self.drainedPreparation(generation);
+        for (moves) |m| self.host_owner[m.to] = no_owner;
+        self.preparation.count = 0;
+        self.preparation.acknowledged = false;
     }
 
     /// Promotion plan: a free pool page (taken: pinned) for every host page of `list`. False

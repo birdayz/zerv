@@ -389,3 +389,9 @@ finish independent tests and benchmark gates before advancing.
      disk state every round but still loses to host-only and tuned references
      (51.282 ± 1.534 s versus 47.476 ± 0.229 s / HIP 48.691 ± 0.985 s).
      Default unchanged; D.1 ownership research/specification is next.
+114. [Preparation ownership](bench/2026-09-28-preparation-ownership.md) (D.1.1 component
+     gates closed): bounded generation-qualified page-pool reservations, ack before
+     release, atomic late-alias validation, live GPU masks preserved, copied versus
+     freed accounting. Independent 1,362-case oracle, CPU 82/82, both page modes ×20,
+     two negative controls and two metadata runs pass. No GPU adapter or serving
+     speedup yet; D.1.2 cache/GPU integration research/specification is active.

@@ -75,3 +75,6 @@ before coding it. Do not invent untested commands in docs and label them working
   independent ownership/byte anchors and packed-model interleaving gates.
 - [Bounded archive transfer windows](tiering-window.md): D.0b pre-code limits,
   independent POSIX/SHA256 fixture and explicit staging/read-reservation tradeoffs.
+- [Proactive preparation ownership](tiering-preparation.md): D.1.1 bounded pure
+  page-pool transaction implemented/verified; D.1.2 joint cache/GPU adapter still
+  requires its pre-code ownership oracle and scheduling contract.

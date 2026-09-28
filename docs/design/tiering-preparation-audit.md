@@ -293,3 +293,22 @@ unrelated rejected request operation can falsely mark the whole device fatal.
 Count only actual acknowledged/owned command states, not an optimistic outstanding
 job count. Retain the existing invalid-slot-while-copy-pending model test and extend
 it to preparation. Unknown pending ownership and device loss must still fail stop.
+
+## D.1.1 resolved accounting prerequisite
+
+At `df0e1b4`, the pre-code [contract](../specs/tiering-preparation.md) and independent
+named-owner fixture (1,362 cases) precede the pure page-pool transaction. It is now
+implemented/verified ([report](../bench/2026-09-28-preparation-ownership.md)). One
+pool-owned nonwrapping generation and at most four moves; distinct unpublished
+host reservation tag; explicit external-drain acknowledgment; validate every move
+before mutation, including pins still exactly one. GPU masks survive, copied and
+freed counts differ correctly, and absolute logical suffix indices are retained.
+A stale owner cannot release a later reservation even when host IDs are reused.
+
+This deliberately does not submit DMA or acquire cache sources. The upcoming
+D.1.2 adapter must own **both** the pool transaction generation and the radix
+handle/lease serial. Neither identifier substitutes for the other. It must retain
+the exact cache source until GPU acknowledgment and atomic cache-owned finish;
+only then may it call the pool commit and rename affected lists without yielding.
+No release-then-commit gap, no acknowledgment of a merely submitted copy, and no
+use of this prerequisite as evidence that the asynchronous serving path exists.

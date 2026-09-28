@@ -143,8 +143,10 @@ D.0b now implements [bounded 1/2/4/8 MiB windows](../specs/tiering-window.md), r
 window's 257/80k exactness gates pass. [Serving evaluation](../bench/2026-09-28-tiering-window.md):
 120 native responses/counts exact; 8 MiB restores disk state each round and takes
 51.282 ± 1.534 s versus host-only 47.476 ± 0.229 s / tuned HIP 48.691 ± 0.985 s.
-Window sizing alone does not meet the target. D.1 ownership research/specification
-is active; D.1/D.2 remain unimplemented.
+Window sizing alone does not meet the target. D.1.1's [pure preparation ownership](../bench/2026-09-28-preparation-ownership.md)
+now passes its independent 1,362-case oracle, CPU/repeated/negative gates and two
+metadata benchmark runs. D.1.2 cache/GPU integration research/specification is active;
+asynchronous preparation and D.2 prefetch remain unimplemented.
 
 C is complete as a functionality/verification increment, not as the performance goal. C.1 source leases are implemented with full ancestor protection and
 independent prefix-set oracle ([report](../bench/2026-09-28-cache-sources.md)).
@@ -166,7 +168,8 @@ D.0a passes CPU/device, packed 257/80k byte/vocabulary and independent model gat
 96 native HTTP responses/counts remain exact. Zero disk restores in immediate reuse,
 increased wasted writes, host+disk 54.639 ± 0.708 s versus Vulkan 50.035 ± 0.395 s
 and HIP 50.329 ± 2.774 s. The matched component gain is only ~0.55%. Its new adversarial stop/reuse trace also fixed
-uncompleted queued waiters at shutdown. D.1/D.2 remain unimplemented. The overall
+uncompleted queued waiters at shutdown. D.1.1 supplies pure reservation accounting,
+not a GPU adapter; D.1.2/D.2 remain unimplemented. The overall
 plan is **not complete**.
 The user's active session goal also requires rigorously verified faster-or-on-par
 serving against tuned compatible competitors; A/B/C.1 component gates do not close
