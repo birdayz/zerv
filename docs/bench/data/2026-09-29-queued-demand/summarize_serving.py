@@ -13,9 +13,14 @@ rows = [json.loads(line) for line in (root / 'raw.jsonl').read_text().splitlines
 level = int(sys.argv[2]) if len(sys.argv) > 2 else 4
 summary = {name: [trial for trial in trials if trial['level'] == level] for name, trials in summary.items()}
 rows = [row for row in rows if row['level'] == level]
-expected = level * 2 * 3
+manifest = json.loads((root / 'manifest.json').read_text())
+workload_path, workload_hash = next(iter(manifest['workload'].items()))
+workload_bytes = pathlib.Path(workload_path).read_bytes()
+assert hashlib.sha256(workload_bytes).hexdigest() == workload_hash
+workload = json.loads(workload_bytes)
+expected = sum(len(c['turns']) for c in workload['conversations'][:level]) * 3
 native = [name for name in summary if name.startswith('zerv-')]
-baseline = next(name for name in native if 'prefix-cache-demand=' not in name)
+baseline = next((name for name in native if 'prefix-cache-demand=' not in name), native[0])
 def key(row):
     return row['round'], row['level'], row['conversation'], row['turn']
 def signature(row):
@@ -38,6 +43,9 @@ for name, trials in summary.items():
         'gap_p99_ms': [t['stream_gap_ms']['p99'] for t in trials],
     }.items():
         metrics[metric] = dict(mean=statistics.mean(values), sd=statistics.stdev(values), trials=values)
+    for turn in range(2, len(trials[0]['turns'])):
+        values = [t['turns'][turn]['ttft_p50_ms'] for t in trials]
+        metrics[f'turn_{turn + 1}_ttft_p50_ms'] = dict(mean=statistics.mean(values), sd=statistics.stdev(values), trials=values)
     logs = []
     for trial in trials:
         label = 'engine-' + hashlib.sha256(name.encode()).hexdigest()[:16] if '/' in name or '\\' in name or len(name.encode()) >= 200 else name

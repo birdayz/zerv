@@ -15,6 +15,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--capture', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--counterfactual', action='store_true')
     a = p.parse_args()
     a.output.mkdir(parents=True, exist_ok=False)
     m = dict(status='running', argv=sys.argv, commands=[])
@@ -29,14 +30,20 @@ def main():
         binary = build.binary('zerv-reuse-profile')
         model = ROOT / 'models/qwen3.8-27b/Qwen3.8-27B-Q4_0.gguf'
         m.update(build=build.provenance(), binary_sha256=build.sha(binary), model_sha256=build.sha(model), capture_sha256=build.sha(a.capture), fixture_sha256=build.sha(fixture), sources={f: build.sha(ROOT / f) for f in ['bench/reuse_profile.zig', 'bench/run_reuse_profile.py']})
-        command = [str(binary), str(model), str(fixture.resolve())]
+        command = [str(binary), str(model), str(fixture.resolve())] + (['counterfactual'] if a.counterfactual else [])
         m['commands'].append(command)
         with (a.output / 'native.log').open('w') as log:
             subprocess.run(command, cwd=ROOT, env=build.host_vulkan_env(), stdout=log, stderr=subprocess.STDOUT, check=True, timeout=600)
         rows = [json.loads(line) for line in (a.output / 'native.log').read_text().splitlines() if line.startswith('{')]
-        assert len(rows) == 5 and all(row['exact'] for row in rows)
-        assert all(row['times']['restored'] == 7764 and row['times']['checkpoint_tokens'] == 7809 for row in rows)
-        (a.output / 'summary.json').write_text(json.dumps({metric: dict(mean=statistics.mean(row['times'][metric] for row in rows), sd=statistics.stdev(row['times'][metric] for row in rows)) for metric in ['begin_ns', 'segment_ns', 'checkpoint_ns', 'final_ns']}, indent=2))
+        assert len(rows) == (15 if a.counterfactual else 5) and all(row['exact'] for row in rows)
+        assert all(row['times']['restored'] == 7764 and row['times']['checkpoint_tokens'] == (0 if row['mode'] == 'joined' else 7809) for row in rows)
+        summary = {}
+        for mode in sorted({row['mode'] for row in rows}):
+            selected = [row for row in rows if row['mode'] == mode]
+            assert len(selected) == 5
+            summary[mode] = {metric: dict(mean=statistics.mean(row['times'][metric] for row in selected), sd=statistics.stdev(row['times'][metric] for row in selected)) for metric in ['begin_ns', 'segment_ns', 'checkpoint_ns', 'final_ns']}
+            summary[mode].update(equal_baseline=all(row['equal_baseline'] for row in selected), argmax_equal=all(row['argmax_equal'] for row in selected), max_abs=max(row['max_abs'] for row in selected))
+        (a.output / 'summary.json').write_text(json.dumps(summary, indent=2))
         m['status'] = 'passed'
     except BaseException as e:
         m.update(status='failed', error=repr(e))

@@ -40,6 +40,7 @@ pub const Native = struct {
     admission: Admission = .reserve,
     /// `<|im_start|>`: where prefix checkpoints go (single-slot cache and shared pool).
     boundary: u32 = 0,
+    reuse_join: u32 = 0,
 
     /// Resolve and verify profile token ids against the loaded tokenizer.
     /// `allocator` owns `whitespace_ids` until `deinit`.
@@ -247,6 +248,7 @@ pub const Native = struct {
             sr.spec_policy = null;
             if (self.batch_backend) |mb| if (mb.cache != null or mb.disk_archive != null) {
                 sr.checkpoints = self.boundary;
+                sr.reuse_join = self.reuse_join;
             };
             const slot = try b.join();
             defer b.leave(slot);

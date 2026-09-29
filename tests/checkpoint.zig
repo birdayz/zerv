@@ -68,3 +68,13 @@ test "checkpoint store: the shared system prompt survives churn of per-conversat
     try t.expect(s.has(&sys));
     try t.expectEqual(@as(u32, 3), s.live());
 }
+
+test "short reuse checkpoint policy matches independent exhaustive boundary sets" {
+    const Oracle = struct { cases: []struct { tokens: []u32, start: u32, threshold: u32, expected: []u32 } };
+    const parsed = try std.json.parseFromSlice(Oracle, t.allocator, @embedFile("fixtures/reuse-join.json"), .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+    for (parsed.value.cases) |case| {
+        var points: [session.checkpoint.max_points]u32 = undefined;
+        try t.expectEqualSlices(u32, case.expected, session.checkpoint.reusePoints(case.tokens, case.start, B, case.threshold, &points));
+    }
+}

@@ -78,3 +78,4 @@ before coding it. Do not invent untested commands in docs and label them working
 - [Proactive preparation ownership](tiering-preparation.md): D.1.1 bounded pure
   page-pool transaction implemented/verified; D.1.2 joint cache/GPU adapter still
   requires its pre-code ownership oracle and scheduling contract.
+- [Bounded short-reuse checkpoint suppression](reuse-join.md): opt-in cache-hit suffix joining, unchanged default and explicit future-recomputation tradeoff; independent policy and numerical/serving gates.

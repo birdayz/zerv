@@ -1,0 +1,136 @@
+INFO: Invocation ID: 895c8738-ec55-4cdc-b070-a64eeae0f944
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+WARNING: Build option --compilation_mode has changed, discarding analysis cache (this can be expensive, see https://bazel.build/advanced/performance/iteration-speed).
+Analyzing: 4 targets (0 packages loaded, 0 targets configured)
+Analyzing: 4 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 4 targets (2 packages loaded, 2992 targets configured).
+[24 / 64] Testing //tests:kv_system (run 4 of 20); 0s linux-sandbox ... (24 actions running)
+[75 / 137] Testing //tests:kv_system (run 4 of 20); 2s linux-sandbox ... (24 actions running)
+[80 / 137] Testing //tests:batcher (run 16 of 20); 3s linux-sandbox ... (24 actions running)
+[97 / 137] 1 / 4 tests; Testing //tests:batcher (run 16 of 20); 4s linux-sandbox ... (24 actions running)
+[105 / 137] 1 / 4 tests; Testing //tests:batcher (run 16 of 20); 5s linux-sandbox ... (24 actions running)
+[129 / 137] 2 / 4 tests; Testing //tests:batcher (run 16 of 20); 6s linux-sandbox ... (8 actions running)
+[134 / 137] 2 / 4 tests; Testing //tests:batcher (run 16 of 20); 8s linux-sandbox ... (3 actions running)
+[134 / 137] 2 / 4 tests; Testing //tests:batcher (run 16 of 20); 17s linux-sandbox ... (3 actions running)
+[134 / 137] 2 / 4 tests; Testing //tests:batcher (run 16 of 20); 47s linux-sandbox ... (3 actions running)
+[134 / 137] 2 / 4 tests; Testing //tests:batcher (run 16 of 20); 107s linux-sandbox ... (3 actions running)
+[134 / 137] 2 / 4 tests; Testing //tests:batcher (run 16 of 20); 167s linux-sandbox ... (3 actions running)
+[134 / 137] 2 / 4 tests; Testing //tests:batcher (run 16 of 20); 227s linux-sandbox ... (3 actions running)
+[134 / 137] 2 / 4 tests; Testing //tests:batcher (run 16 of 20); 287s linux-sandbox ... (3 actions running)
+[134 / 137] 2 / 4 tests; Testing //tests:batcher (run 16 of 20); 300s disk-cache, linux-sandbox ... (3 actions running)
+INFO: From Testing //tests:batcher (run 16 of 20):
+==================== Test output for //tests:batcher (run 16 of 20):
+1/29 batcher.test.batcher: concurrent generations get exactly their solo logits, with joins, leaves and holds...OK
+2/29 batcher.test.batcher: shortest remaining prompt goes first between chunks; fifo keeps arrival order...OK
+3/29 batcher.test.batcher: a generation canceled mid-chunk aborts its chunk; the slot is reset and reused...OK
+4/29 batcher.test.batcher: a slow client does not hold the others (gather expires)...OK
+5/29 batcher.test.batcher: a canceled waiter withdraws; a backend error fails only its batch; stop...OK
+6/29 batcher.test.batcher: a canceled generation's prompt is never read after its submit returns...OK
+7/29 batcher.test.batcher: a row that cannot run fails alone; the other rows of its batch run...OK
+8/29 batcher.test.batcher: pending prompts pack into one chunk; each gets its solo logits; a canceled member does not stop the others...OK
+9/29 batcher.test.batcher: shared memory pool: prompts wait for memory, a large prompt is not starved, memory comes back...OK
+10/29 batcher.test.batcher: prompt admission grows page by page; the youngest sequence swaps out and back, outputs unchanged...OK
+11/29 batcher.test.batcher: prompt admission without a host store: a row that finds no page fails alone...OK
+12/29 batcher.test.batcher: time slice: a swapped sequence waiting a slice swaps out the longest-running one; outputs unchanged...OK
+13/29 batcher.test.batcher: time slice: a new prompt is not starved while long sequences rotate through the pool...OK
+14/29 batcher.test.batcher: begin restores the longest checkpoint; checkpoints are taken mid-prompt; outputs unchanged...OK
+15/29 batcher.test.batcher: every prompt segment is admitted (checkpoint points split a prompt; tight pool)...OK
+16/29 batcher.test.batcher: pending cache keeps tokens and permits decode; cancel leave stop drain...OK
+17/29 batcher.test.batcher: leave and reuse during an I/O poll releases old pages before new begin...OK
+18/29 batcher.test.batcher: stop aborts a packed chunk before draining pending cache I/O...OK
+19/29 batcher.test.batcher: source-only maintenance wakes while idle and drains on stop without request slots...OK
+20/29 batcher.test.batcher: reclaim-blocked decode keeps its step, waits for an epoch, and permits other rows...OK
+21/29 batcher.test.batcher: leave/reuse during unlocked maintenance releases old pages before begin...OK
+22/29 batcher.test.batcher: foreground I/O priority reaches maintenance, stop drains both owners...OK
+23/29 batcher.test.batcher: in-chunk source progress preserves read priority and unlocked leave/reuse or stop...OK
+24/29 batcher.test.batcher: stop completes queued operations even without a running backend owner...OK
+25/29 batcher.test.batcher: legacy maintenance remains deferred without explicit in-chunk opt-in...OK
+26/29 batcher.test.batcher: accumulate multiple victims for oldest swapped decoder...OK
+27/29 batcher.test.batcher: queued demand callback retains tokens across leave/reuse and stop...-- Test timed out at 2026-09-29 06:52:42 UTC --
+================================================================================
+
+TIMEOUT: //tests:batcher (Summary)
+      /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/batcher/run_16_of_20/test.log
+      /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/batcher/run_1_of_20/test.log
+INFO: From Testing //tests:batcher (run 1 of 20):
+==================== Test output for //tests:batcher (run 1 of 20):
+1/29 batcher.test.batcher: concurrent generations get exactly their solo logits, with joins, leaves and holds...OK
+2/29 batcher.test.batcher: shortest remaining prompt goes first between chunks; fifo keeps arrival order...OK
+3/29 batcher.test.batcher: a generation canceled mid-chunk aborts its chunk; the slot is reset and reused...OK
+4/29 batcher.test.batcher: a slow client does not hold the others (gather expires)...OK
+5/29 batcher.test.batcher: a canceled waiter withdraws; a backend error fails only its batch; stop...OK
+6/29 batcher.test.batcher: a canceled generation's prompt is never read after its submit returns...OK
+7/29 batcher.test.batcher: a row that cannot run fails alone; the other rows of its batch run...OK
+8/29 batcher.test.batcher: pending prompts pack into one chunk; each gets its solo logits; a canceled member does not stop the others...OK
+9/29 batcher.test.batcher: shared memory pool: prompts wait for memory, a large prompt is not starved, memory comes back...OK
+10/29 batcher.test.batcher: prompt admission grows page by page; the youngest sequence swaps out and back, outputs unchanged...OK
+11/29 batcher.test.batcher: prompt admission without a host store: a row that finds no page fails alone...OK
+12/29 batcher.test.batcher: time slice: a swapped sequence waiting a slice swaps out the longest-running one; outputs unchanged...OK
+13/29 batcher.test.batcher: time slice: a new prompt is not starved while long sequences rotate through the pool...OK
+14/29 batcher.test.batcher: begin restores the longest checkpoint; checkpoints are taken mid-prompt; outputs unchanged...OK
+15/29 batcher.test.batcher: every prompt segment is admitted (checkpoint points split a prompt; tight pool)...OK
+16/29 batcher.test.batcher: pending cache keeps tokens and permits decode; cancel leave stop drain...OK
+17/29 batcher.test.batcher: leave and reuse during an I/O poll releases old pages before new begin...OK
+18/29 batcher.test.batcher: stop aborts a packed chunk before draining pending cache I/O...OK
+19/29 batcher.test.batcher: source-only maintenance wakes while idle and drains on stop without request slots...OK
+20/29 batcher.test.batcher: reclaim-blocked decode keeps its step, waits for an epoch, and permits other rows...OK
+21/29 batcher.test.batcher: leave/reuse during unlocked maintenance releases old pages before begin...OK
+22/29 batcher.test.batcher: foreground I/O priority reaches maintenance, stop drains both owners...OK
+23/29 batcher.test.batcher: in-chunk source progress preserves read priority and unlocked leave/reuse or stop...OK
+24/29 batcher.test.batcher: stop completes queued operations even without a running backend owner...OK
+25/29 batcher.test.batcher: legacy maintenance remains deferred without explicit in-chunk opt-in...OK
+26/29 batcher.test.batcher: accumulate multiple victims for oldest swapped decoder...OK
+27/29 batcher.test.batcher: queued demand callback retains tokens across leave/reuse and stop...-- Test timed out at 2026-09-29 06:52:42 UTC --
+================================================================================
+[136 / 137] 3 / 4 tests, 1 failed; Testing //tests:batcher_release_fast (run 19 of 20); 295s linux-sandbox
+[136 / 137] 3 / 4 tests, 1 failed; Testing //tests:batcher_release_fast (run 19 of 20); 300s disk-cache, linux-sandbox
+
+TIMEOUT: //tests:batcher_release_fast (Summary)
+      /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/batcher_release_fast/run_19_of_20/test.log
+INFO: From Testing //tests:batcher_release_fast (run 19 of 20):
+==================== Test output for //tests:batcher_release_fast (run 19 of 20):
+1/29 batcher.test.batcher: concurrent generations get exactly their solo logits, with joins, leaves and holds...OK
+2/29 batcher.test.batcher: shortest remaining prompt goes first between chunks; fifo keeps arrival order...OK
+3/29 batcher.test.batcher: a generation canceled mid-chunk aborts its chunk; the slot is reset and reused...OK
+4/29 batcher.test.batcher: a slow client does not hold the others (gather expires)...OK
+5/29 batcher.test.batcher: a canceled waiter withdraws; a backend error fails only its batch; stop...OK
+6/29 batcher.test.batcher: a canceled generation's prompt is never read after its submit returns...OK
+7/29 batcher.test.batcher: a row that cannot run fails alone; the other rows of its batch run...OK
+8/29 batcher.test.batcher: pending prompts pack into one chunk; each gets its solo logits; a canceled member does not stop the others...OK
+9/29 batcher.test.batcher: shared memory pool: prompts wait for memory, a large prompt is not starved, memory comes back...OK
+10/29 batcher.test.batcher: prompt admission grows page by page; the youngest sequence swaps out and back, outputs unchanged...OK
+11/29 batcher.test.batcher: prompt admission without a host store: a row that finds no page fails alone...OK
+12/29 batcher.test.batcher: time slice: a swapped sequence waiting a slice swaps out the longest-running one; outputs unchanged...OK
+13/29 batcher.test.batcher: time slice: a new prompt is not starved while long sequences rotate through the pool...OK
+14/29 batcher.test.batcher: begin restores the longest checkpoint; checkpoints are taken mid-prompt; outputs unchanged...OK
+15/29 batcher.test.batcher: every prompt segment is admitted (checkpoint points split a prompt; tight pool)...OK
+16/29 batcher.test.batcher: pending cache keeps tokens and permits decode; cancel leave stop drain...OK
+17/29 batcher.test.batcher: leave and reuse during an I/O poll releases old pages before new begin...OK
+18/29 batcher.test.batcher: stop aborts a packed chunk before draining pending cache I/O...OK
+19/29 batcher.test.batcher: source-only maintenance wakes while idle and drains on stop without request slots...OK
+20/29 batcher.test.batcher: reclaim-blocked decode keeps its step, waits for an epoch, and permits other rows...OK
+21/29 batcher.test.batcher: leave/reuse during unlocked maintenance releases old pages before begin...OK
+22/29 batcher.test.batcher: foreground I/O priority reaches maintenance, stop drains both owners...OK
+23/29 batcher.test.batcher: in-chunk source progress preserves read priority and unlocked leave/reuse or stop...OK
+24/29 batcher.test.batcher: stop completes queued operations even without a running backend owner...OK
+25/29 batcher.test.batcher: legacy maintenance remains deferred without explicit in-chunk opt-in...OK
+26/29 batcher.test.batcher: accumulate multiple victims for oldest swapped decoder...OK
+27/29 batcher.test.batcher: queued demand callback retains tokens across leave/reuse and stop...-- Test timed out at 2026-09-29 06:52:48 UTC --
+================================================================================
+INFO: Found 4 test targets...
+INFO: Elapsed time: 306.414s, Critical Path: 300.12s
+INFO: 81 processes: 56 action cache hit, 1 internal, 160 linux-sandbox.
+INFO: Build completed, 2 tests FAILED, 81 total actions
+//tests:batcher                                                         TIMEOUT in 2 out of 20 in 300.0s
+  Stats over 20 runs: max = 300.0s, min = 0.9s, avg = 30.8s, dev = 89.7s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/batcher/run_16_of_20/test.log
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/batcher/run_1_of_20/test.log
+//tests:batcher_release_fast                                            TIMEOUT in 1 out of 20 in 300.0s
+  Stats over 20 runs: max = 300.0s, min = 0.9s, avg = 15.9s, dev = 65.2s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/batcher_release_fast/run_19_of_20/test.log
+
+Executed 4 out of 4 tests: 2 tests pass and 2 fail locally.
+There were tests whose specified size is too big. Use the --test_verbose_timeout_warnings command line option to see which ones these are.

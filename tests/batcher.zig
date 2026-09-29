@@ -87,6 +87,7 @@ const Fake = struct {
     resume_reset: std.Io.Event = .unset,
 
     demand_pause: bool = false,
+    demand_idle_pause: bool = false,
     demand_in_poll: std.Io.Event = .unset,
     demand_resume: std.Io.Event = .unset,
     demand_calls: u32 = 0,
@@ -119,6 +120,11 @@ const Fake = struct {
     io_entered: std.atomic.Value(bool) = .init(false),
     io_ready: std.atomic.Value(bool) = .init(false),
     pub fn pollDemand(self: *Fake, demand: ?batcher.Demand, _: bool, _: bool) !batcher.MaintenancePoll {
+        if (demand == null and self.demand_idle_pause) {
+            self.demand_idle_pause = false;
+            self.demand_in_poll.set(self.io);
+            self.demand_resume.waitUncancelable(self.io);
+        }
         if (demand) |q| {
             self.demand_calls += 1;
             var before: u64 = 0;
@@ -1553,9 +1559,12 @@ test "batcher: queued demand callback retains tokens across leave/reuse and stop
         var fake: Fake = .{ .io = io, .demand_pause = true };
         var b = try B.init(io, &fake, .{ .slots = 1, .vocab = V, .demand = true });
         const slot = try b.join();
-        var scheduler = try io.concurrent(B.run, .{&b});
         var tokens = [_]u32{ 1, 2, 3, 4 };
         var request = try io.concurrent(pendingCacheOp, .{ &b, slot, @as([]const u32, &tokens), false });
+        // Queue before the scheduler starts: a begin arriving after an empty demand
+        // poll can execute immediately without ever needing the optional hook.
+        while (queued(&b, .begin) != 1) try io.sleep(.fromMicroseconds(100), .awake);
+        var scheduler = try io.concurrent(B.run, .{&b});
         fake.demand_in_poll.waitUncancelable(io);
         if (stopping) b.stop() else {
             b.leave(slot);
@@ -1647,4 +1656,21 @@ test "batcher: arrival identity exhaustion rejects without consuming held logits
     try t.expectEqualSlices(f32, &want, next);
     b.sampled(slot);
     b.leave(slot);
+}
+
+test "batcher: begin arriving after an empty lookahead may run without demand callback" {
+    const io = t.io;
+    var fake: Fake = .{ .io = io, .demand_idle_pause = true };
+    var b = try B.init(io, &fake, .{ .slots = 1, .vocab = V, .demand = true });
+    const slot = try b.join();
+    var scheduler = try io.concurrent(B.run, .{&b});
+    fake.demand_in_poll.waitUncancelable(io); // empty lookahead selected before request exists
+    var request = try io.concurrent(pendingCacheOp, .{ &b, slot, @as([]const u32, &.{ 1, 2, 3 }), false });
+    while (queued(&b, .begin) != 1) try io.sleep(.fromMicroseconds(100), .awake);
+    fake.demand_resume.set(io);
+    try t.expectEqual(@as(u32, 0), try request.await(io));
+    b.leave(slot);
+    b.stop();
+    scheduler.await(io);
+    try t.expectEqual(@as(u32, 0), fake.demand_calls);
 }

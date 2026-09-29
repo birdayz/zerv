@@ -13,6 +13,7 @@ const usage =
     \\            [--prefix-cache-slots 8, with --parallel N: 3N]  (recurrent-state snapshots, ~150 MiB each; 0 = no prefix cache)
     \\            [--prefix-cache-disk-dir DIR --prefix-cache-disk-mib N]  (opt-in immutable RAM-staged disk archive; shared KV, parallel > 1)
     \\            [--prefix-cache-disk-entries 64] [--prefix-cache-disk-alignment N]  (bounded metadata; optional explicit direct-I/O alignment in bytes)
+    \\            [--prefix-cache-reuse-join 0..512]  (default 0; join short cache-hit suffixes without new checkpoints)
     \\            [--prefix-cache-demand off|protect|prefetch --prefix-cache-prefetch-chunks 1|2]  (default off; prefetch is disk-to-staging only)
     \\            [--prefix-cache-prepare-pages N --prefix-cache-prepare-window-pages 1|2|4 --prefix-cache-prepare-host-headroom-mib N]  (opt-in GPU to host preparation; default off)
     \\            [--prefix-cache-disk-chunk-mib 1|2|4|8]  (default 1; eight staging tickets, two reserved for reads)
@@ -75,6 +76,7 @@ pub fn main(init: std.process.Init) !void {
     var disk_chunk_mib: ?u32 = null;
     var demand_mode: zerv.serve.DemandMode = .off;
     var prefetch_chunks: ?u32 = null;
+    var reuse_join: u32 = 0;
     var prepare_pages: u32 = 0;
     var prepare_window: ?u32 = null;
     var prepare_headroom_mib: ?u64 = null;
@@ -133,6 +135,7 @@ pub fn main(init: std.process.Init) !void {
         else if (std.mem.eql(u8, arg, "--prefix-cache-disk-mib")) disk_mib = try std.fmt.parseInt(u64, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-disk-entries")) disk_entries = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-disk-alignment")) disk_alignment = try std.fmt.parseInt(u32, value, 10) //
+        else if (std.mem.eql(u8, arg, "--prefix-cache-reuse-join")) reuse_join = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-demand")) demand_mode = std.meta.stringToEnum(zerv.serve.DemandMode, value) orelse return error.InvalidArguments //
         else if (std.mem.eql(u8, arg, "--prefix-cache-prefetch-chunks")) prefetch_chunks = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-prepare-pages")) prepare_pages = try std.fmt.parseInt(u32, value, 10) //
@@ -187,6 +190,7 @@ pub fn main(init: std.process.Init) !void {
         (disk_dir == null and (disk_entries != 64 or disk_alignment != 0 or disk_headroom_slots != null or disk_headroom_mib != null or disk_chunk_mib != null)) or
         (disk_alignment != 0 and (!std.math.isPowerOfTwo(disk_alignment) or disk_alignment > (1 << 20)))) return error.InvalidArguments;
     if (demand_mode != .off and (parallel < 2 or !kv_share or prefix_cache_kind != .radix or snapshot_slots_arg == 0 or spec_draft != 0)) return error.InvalidArguments;
+    if (reuse_join > 512 or reuse_join > prefill_chunk or (reuse_join != 0 and (parallel < 2 or !kv_share or prefix_cache_kind != .radix or snapshot_slots_arg == 0 or spec_draft != 0))) return error.InvalidArguments;
     if (demand_mode == .prefetch and disk_dir == null) return error.InvalidArguments;
     if (prefetch_chunks) |w| if (demand_mode != .prefetch or (w != 1 and w != 2)) return error.InvalidArguments;
     if (prepare_pages == 0 and (prepare_window != null or prepare_headroom_mib != null)) return error.InvalidArguments;
@@ -296,6 +300,8 @@ pub fn main(init: std.process.Init) !void {
     if (spec_draft > 0 and spec_adaptive) native.spec_policy = .init();
     native.sampler_order = sampler_order;
     native.admission = kv_admission;
+    native.reuse_join = reuse_join;
+    if (reuse_join != 0) std.debug.print("zerv: short reuse: join suffixes up to {d} tokens, skipping new checkpoints; future reuse may recompute more\n", .{reuse_join});
     var model_backend_store = false;
     // --parallel N > 1: the batcher owns the model on its scheduler task.
     var model_backend: zerv.serve.ModelBackend = .{ .m = &model, .demand_mode = demand_mode, .prefetch_chunks = prefetch_chunks orelse 1 };

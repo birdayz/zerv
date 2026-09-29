@@ -4,6 +4,14 @@ Active block: **18d.7d · proactive preparation and demand prefetch (`src/serve`
 `POST /v1/chat/completions`, fully verified. Not achieved yet. No proxy, mock
 inference, or external engine in the production path.
 
+D.2 short-reuse follow-up: opt-in `--prefix-cache-reuse-join` implemented under its
+pre-code contract. Independent 1,528-case policy fixture, model337/337, CPU82/82,
+GPU/spill3/3, hostGPU2/2; callback test-order race fixed and both modes ×40 pass.
+Fixed-history C1 reuse TTFT416.6→222.8ms; 60native signatures exact. Three-turn
+90native signatures exact, but C1 turn3 regresses447→500ms and C4 wall mean
+47.283→49.059s (high variance). Default remains off. Quality-equivalent competitive
+acceptance is still open; [report](docs/bench/2026-09-29-reuse-join.md).
+
 ## Work controls
 
 - **Exactly one active building block, in one package.** Finish its verification
@@ -165,7 +173,7 @@ the bounded asynchronous disk-store increment, then cache/scheduler integration.
     Zero-idle disk has no restores; six-second-idle host+disk gate reads 669 MB and
     preserves all eight outputs. RDNA3 fusion crashes retained; supported nofusion
     configurations pass 48 turns. No policy speedup; [report](docs/bench/2026-09-28-tiering-pressure.md).
-- [ ] **18d.7d · proactive GPU→RAM preparation and demand prefetch (active D.1.2 cache/GPU preparation integration research/specification)**:
+- [ ] **18d.7d · proactive GPU→RAM preparation and demand prefetch (active D.2 competitive acceptance)**:
   - [x] D.0a: [source-only unit-boundary progress](docs/specs/tiering-progress.md),
     unchanged 1 MiB window. CPU 82/82, repeated interfaces, device/independent model
     and 257/80k packed-interleaving gates pass. Matched component gain ~0.55%; 96
@@ -183,15 +191,15 @@ the bounded asynchronous disk-store increment, then cache/scheduler integration.
     two negative controls and two metadata benchmark runs pass;
     [report](docs/bench/2026-09-28-preparation-ownership.md).
     No GPU submission or new serving flag yet.
-  - [ ] D.1.2 async GPU→RAM adapter/policy: qualified cache source, separate command
+  - [x] D.1.2 async GPU→RAM adapter/policy: qualified cache source, separate command
     owner, atomic radix rename, host-only support, pressure/headroom and priority.
-  - [ ] Qualified queued-demand protection/prefetch with explicit token/record lifetime;
+  - [x] Qualified queued-demand protection/prefetch with explicit token/record lifetime;
     read priority and bounded host/staging headroom.
   - [ ] Exact state/logits, adversarial interleavings, repeated loaded serving against
     tuned Vulkan and runnable RDNA3/HIP; full performance target remains open.
     [Native audit / proposed transaction](docs/design/tiering-preparation-audit.md).
-    D.0a cadence, D.0b windows and D.1.1 pure accounting exist; no integrated
-    D.1 GPU preparation, D.2 prefetch or hardware-overlap result yet.
+    D.1 integration and D.2 bounded prefetch are implemented and verified; isolated
+    hardware-overlap benefit and quality-equivalent competitive acceptance remain open.
 - [ ] **19 · image input: Qwen3.8-27B vision through `/v1/chat/completions`** (parked).
   - Why: bruh sends tool screenshots as `image_url` user content (PNG data URLs); zerv answers
     400 and the turn fails. llama-server serves them with `--mmproj`.

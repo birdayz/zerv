@@ -62,3 +62,17 @@ reseed cache for each repetition to prevent the target request becoming its own 
 Compare every repeated final vocabulary row bitwise with the warmup. This is a model/
 cache component diagnostic, excludes HTTP/tokenizer/scheduler waits, and cannot itself
 explain the entire competitor gap. Do not substitute it for serving performance.
+
+## Controlled suffix counterfactual (before code)
+
+Developer profile only, no production change: compare (A) current split+checkpoint,
+(B) identical split without saving the optional checkpoint, (C) joined52-token suffix
+without that checkpoint. Same restored prefix and tokens; reseed before every trial,
+one warmup and five trials with reversed order on alternating trials. A versusB must
+be bit-identical. C may change floating-point chunk/recurrent reduction order: report
+full-vocabulary max absolute error, argmax equality and bit equality versusA, reject
+nonfinite values, and require repeat determinism per mode. Do not deem any tolerance
+acceptable for production from this self-comparison; a new independent numerical gate
+would be required for a changed chunk policy. B/C deliberately retain less state for
+future requests, so the experiment is not a free serving optimization. Measure begin,
+prefill and save costs separately. No GPU shader/model changes in this experiment.

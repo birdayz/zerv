@@ -563,3 +563,51 @@ test "speculative verify-count policy: acceptance bins, cost scaling and choice"
     r.timeVerify(5, 32_000_000);
     try t.expectEqual(@as(u32, 3), r.choose(&.{ 0.99, 0.99, 0.99, 0.2 }));
 }
+
+const ReuseBackend = struct {
+    start: u32,
+    calls: u32 = 0,
+    saves: u32 = 0,
+    count: usize = 0,
+    seen: [32]u32 = undefined,
+    logits: [pieces.len]f32 = @splat(0),
+    pub fn context(_: *@This()) u32 {
+        return 64;
+    }
+    pub fn vocab(_: *@This()) usize {
+        return pieces.len;
+    }
+    pub fn reset(_: *@This()) !void {}
+    pub fn begin(self: *@This(), _: []const u32) !u32 {
+        return self.start;
+    }
+    pub fn checkpoint(self: *@This(), _: []const u32) !void {
+        self.saves += 1;
+    }
+    pub fn step(self: *@This(), _: u32) ![]const f32 {
+        self.logits[0] = 10;
+        return &self.logits;
+    }
+    pub fn prefill(self: *@This(), tokens: []const u32) ![]const f32 {
+        self.calls += 1;
+        @memcpy(self.seen[self.count..][0..tokens.len], tokens);
+        self.count += tokens.len;
+        return self.step(0);
+    }
+};
+test "generation short reuse joins exactly the suffix without new checkpoint side effects" {
+    const prompt = [_]u32{ 9, 1, 2, 9, 3, 9, 4 };
+    for ([_]u32{ 0, 3 }) |start| for ([_]u32{ 0, 3, 4 }) |limit| {
+        var b: ReuseBackend = .{ .start = start };
+        var sink: Sink = .{};
+        defer sink.deinit();
+        const Gen = session.Generation(*ReuseBackend, FakeTokenizer, *Sink);
+        const r = try Gen.run(t.io, t.allocator, &b, .{ .pieces = &pieces }, special, .{ .prompt = &prompt, .max_tokens = 1, .checkpoints = 9, .reuse_join = limit }, &sink);
+        try t.expectEqual(start, r.cached_tokens);
+        try t.expectEqualSlices(u32, prompt[start..], b.seen[0..b.count]);
+        const saves: u32 = if (start == 0) 2 else if (limit == 4) 0 else 1;
+        try t.expectEqual(saves, b.saves);
+        try t.expectEqual(saves + 1, b.calls);
+        try t.expectEqual(session.Finish.stop, r.finish);
+    };
+}

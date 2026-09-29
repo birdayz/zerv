@@ -1,0 +1,56 @@
+INFO: Invocation ID: 5445c984-80dd-428b-838f-fce73409b252
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (0 packages loaded, 1532 targets configured).
+[21 / 26] zig test //tests:session; 1s disk-cache, linux-sandbox ... (2 actions, 1 running)
+FAIL: //tests:session (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/session/test.log)
+INFO: From Testing //tests:session:
+==================== Test output for //tests:session:
+1/10 session.test.streaming UTF-8 matches Python errors='replace' for every chunking...OK
+2/10 session.test.stop strings: earliest match across chunks, holdback and release...OK
+3/10 session.test.generation: reasoning split, whitespace trimming, UTF-8 across tokens, EOS...OK
+4/10 session.test.generation: length limit, context cap, stop strings and sink cancellation...OK
+5/10 session.test.splitter: reasoning/content split follows the reference parser...OK
+6/10 session.test.splitter: every chunking of a stream gives the one-shot result...OK
+7/10 session.test.generation: stops on raw text, text-level delimiters, control tokens, dropped tails...OK
+8/10 session.test.generation: speculative decoding output equals non-speculative output...OK
+9/10 session.test.speculative verify-count policy: acceptance bins, cost scaling and choice...OK
+10/10 session.test.generation short reuse joins exactly the suffix without new checkpoint side effects...expected 0, found 1
+FAIL (TestExpectedEqual)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/10100/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:118:17: 0x1246f54 in expectEqualInner__anon_43877 (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/10100/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:83:5: 0x1249165 in expectEqual (session.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/10100/execroot/_main/tests/session.zig:609:9: 0x12491db in test.generation short reuse joins exactly the suffix without new checkpoint side effects (session.zig)
+9 passed; 0 skipped; 1 failed.
+================================================================================
+[23 / 27] 1 / 2 tests, 1 failed; zig test //tests:session; 2s disk-cache, linux-sandbox
+[24 / 27] 1 / 2 tests, 1 failed; [Prepa] runfiles for //tests:session
+FAIL: //tests:session_release_fast (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/session_release_fast/test.log)
+INFO: From Testing //tests:session_release_fast:
+==================== Test output for //tests:session_release_fast:
+1/10 session.test.streaming UTF-8 matches Python errors='replace' for every chunking...OK
+2/10 session.test.stop strings: earliest match across chunks, holdback and release...OK
+3/10 session.test.generation: reasoning split, whitespace trimming, UTF-8 across tokens, EOS...OK
+4/10 session.test.generation: length limit, context cap, stop strings and sink cancellation...OK
+5/10 session.test.splitter: reasoning/content split follows the reference parser...OK
+6/10 session.test.splitter: every chunking of a stream gives the one-shot result...OK
+7/10 session.test.generation: stops on raw text, text-level delimiters, control tokens, dropped tails...OK
+8/10 session.test.generation: speculative decoding output equals non-speculative output...OK
+9/10 session.test.speculative verify-count policy: acceptance bins, cost scaling and choice...OK
+10/10 session.test.generation short reuse joins exactly the suffix without new checkpoint side effects...expected 0, found 1
+FAIL (TestExpectedEqual)
+9 passed; 0 skipped; 1 failed.
+================================================================================
+INFO: Found 2 test targets...
+INFO: Elapsed time: 10.952s, Critical Path: 10.41s
+INFO: 9 processes: 19 action cache hit, 5 internal, 6 linux-sandbox.
+INFO: Build completed, 2 tests FAILED, 9 total actions
+//tests:session                                                          FAILED in 0.3s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/session/test.log
+//tests:session_release_fast                                             FAILED in 0.1s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/session_release_fast/test.log
+
+Executed 2 out of 2 tests: 2 fail locally.

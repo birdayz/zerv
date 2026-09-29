@@ -37,6 +37,13 @@ pub fn candidatePoints(prompt: []const u32, start: u32, boundary: u32, out: *[ma
     return out[0..n];
 }
 
+/// Optional short-hit policy: retain old checkpoints but do not split this suffix
+/// to save new ones. No effect on cold requests or the default threshold0.
+pub fn reusePoints(prompt: []const u32, start: u32, boundary: u32, join: u32, out: *[max_points]u32) []const u32 {
+    if (start > 0 and start < prompt.len and prompt.len - start <= join) return out[0..0];
+    return candidatePoints(prompt, start, boundary, out);
+}
+
 pub const Store = struct {
     /// One entry per snapshot slot: entry i's snapshot is backend snapshot slot i.
     entries: []Entry,
