@@ -82,6 +82,12 @@ zerv_vk_binary(
 )
 
 zerv_vk_binary(
+    name = "zerv-reuse-profile",
+    main = "reuse_profile.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zerv_vk_binary(
     name = "zerv-model-profile",
     main = "profile_model.zig",
     deps = ["//src:zerv_lib", "//tests:matvec_workload"],

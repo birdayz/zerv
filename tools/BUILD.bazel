@@ -13,6 +13,12 @@ zerv_vk_binary(
 )
 
 zig_binary(
+    name = "zerv-prompt-capture",
+    main = "prompt_capture.zig",
+    deps = ["//src:zerv_lib"],
+)
+
+zig_binary(
     name = "zerv-inspect",
     main = "inspect.zig",
     deps = ["//src:zerv_lib"],

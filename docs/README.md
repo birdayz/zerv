@@ -413,3 +413,4 @@ finish independent tests and benchmark gates before advancing.
 - [Queued-demand implementation plan](design/queued-demand-implementation.md) — paper-derived ordered D.2 work and acceptance gates.
 - [D.2 intermediate verification](bench/2026-09-29-queued-demand.md) — cache/scheduler tests, strengthened negative controls, window1/2 × 257/80k exact model checks and independent numerical oracle; serving/performance gates still open.
 - [Fixed-history competitive control](bench/2026-09-29-fixed-history.md) — identical serialized requests/prompt counts, preserved native outputs, remaining competitor divergence and HIP reuse-TTFT loss; not quality-equivalent parity.
+- Fixed-history report follow-up: full prompt/token-ID equivalence is now verified against both competitors; the reuse component profile isolates two costly small-prefill segments. Performance acceptance remains open.

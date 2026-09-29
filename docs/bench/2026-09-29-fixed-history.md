@@ -79,3 +79,59 @@ reuse-path profiling remain open. Exact natural-language output equality is not 
 same as semantic quality, but differing prose is not automatically equivalent either.
 A broader quality contract must be established before its evaluation, not retrofitted
 to these outputs. No access/authorization blocker; defaults remain unchanged.
+
+## Full token-ID gate closed; reuse component profile
+
+Developer-only CPU capture now uses production `parseChat`, `qwen38.render` and tokenizer
+`encode(.{})`; no production endpoint or reference runtime dependency was added.
+Both pinned competitor servers were started sequentially with their recorded serving
+commands/env. `/apply-template` plus `/tokenize` responses are retained and compared
+in full, not only hashed lengths. **All8 rendered prompts and all8 token-ID arrays are
+identical on native, Vulkan and HIP**, and lengths/request hashes match every recorded
+serving request. Model and executable hashes are pinned; HIP SHA is checked against the
+previous verified `590c6cb6…` binary. Final capture:
+[data/manifest](data/2026-09-29-prompt-equivalence-final/manifest.json).
+The first successful run is also retained in `2026-09-29-prompt-equivalence`.
+
+```sh
+tools/py bench/check_prompt_equivalence.py \
+  --serving docs/bench/data/2026-09-29-fixed-history-serving \
+  --output docs/bench/data/2026-09-29-prompt-equivalence-final
+```
+
+Prefix inspection also confirms that the entire7771-token first prompt is a prefix of
+the canonical7816-token second prompt. Cache reuse7764/native or7767/reference is a
+policy/runtime fact, not the maximum token-prefix match. Inspection command:
+`tools/py docs/bench/data/2026-09-29-prompt-equivalence/inspect_prefix.py`.
+
+Native model/cache profile, first fixed-history conversation: same f16/pool/host snapshot
+settings, initial prompt reseeded before each trial, one reuse warmup and five measured
+trials. ModelBackend begin/restore, candidate-point prefill/checkpoint and final suffix
+are timed separately. Each full vocabulary output exactly matches warmup. No production
+code changed. [Manifest and raw rows](data/2026-09-29-reuse-profile/manifest.json).
+
+| Operation | Mean ± sample SD ms |
+|---|---:|
+| Begin/reset/restore at7764 |17.257±3.192|
+| Prefill45 tokens to7809 |187.357±8.516|
+| Save checkpoint at7809 |10.582±1.139|
+| Final7-token prefill |173.563±1.240|
+
+Total measured components≈388.8ms versus previous HTTP reuse TTFT≈407.2ms. The small
+final segment costs almost as much as the45-token segment. This focuses investigation
+on separate small-prefill executions; snapshot transfer alone is not the dominant
+measured component. The unmeasured remainder is **not proven scheduler overhead**:
+this diagnostic excludes HTTP/tokenizer/queueing and uses direct model prefill rather
+than the scheduler's packed-unit interface. A controlled counterfactual and independent
+numerical gate are needed before a production policy/kernel change. Saving fewer
+checkpoints may also hurt later reuse; do not hide that tradeoff.
+
+```sh
+tools/py bench/run_reuse_profile.py \
+  --capture docs/bench/data/2026-09-29-prompt-equivalence/native.jsonl \
+  --output docs/bench/data/2026-09-29-reuse-profile
+```
+
+The token-ID gap is closed for this workload. Fixed-work/independently scored quality
+acceptance and optimization of the remaining reuse loss are still open. Different
+competitive output streams are now demonstrably not caused by different input IDs.

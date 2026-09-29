@@ -1112,3 +1112,10 @@ prefetch36.577±.598s versus Vulkan41.153±1.440s/HIP39.812±.803s, but output/c
 signatures still differ and HIP reuse TTFT wins. Per-request token-ID equivalence,
 predeclared quality/fixed-work acceptance and reuse profiling remain active. No full-goal
 completion claim, no default change, no speculative checkpoint optimization.
+
+D.2 follow-up: full rendered-prompt and token-ID equality now passes all8 fixed-history
+requests against both pinned serving competitors. Native reuse profile (five reseeded,
+exact-logit trials) measures17.3ms restore,187.4ms first suffix,10.6ms checkpoint,173.6ms
+final7-token suffix. Small split-prefill executions are the next controlled optimization
+lead, not snapshot transfer alone. Direct-model timing does not isolate scheduler costs.
+Evidence appended to the fixed-history report; quality-equivalent acceptance remains open.

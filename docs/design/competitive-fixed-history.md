@@ -32,3 +32,33 @@ existing independent tokenizer/template fixtures support the implementation, but
 per-request token-ID extraction remains a separate competitive evidence gap.
 Do not call differing output streams equivalent without a predeclared independently
 scored quality suite. Fixed history is a control, not the full performance acceptance.
+
+## Per-request token-ID extraction (next verification step)
+
+Use a CPU-only developer executable calling the same `serve.api.parseChat`,
+`chat.qwen38.render` and tokenizer `encode(.{})` functions as production preparation.
+Its input is an array of exact request bodies, output is rendered prompt plus every
+u32 token ID. It adds no production endpoint or inference dependency. Compare all
+four conversations × two fixed-history turns, not just token counts.
+
+Pinned HIP reference source `third_party/research-serving/llama.cpp-RDNA3-7900xtx-opt`
+revision15995a12, `tools/server/server-context.cpp` lines5047–5105: `/apply-template`
+uses `oaicompat_chat_params_parse` (same chat request parser, without inference);
+`/tokenize` accepts `add_special=false`, `parse_special=true` and returns full IDs.
+Run both exact serving competitors with their recorded command/env, sequentially,
+and retain API responses. Require byte-identical rendered prompts and full token arrays
+against native; independently cross-check lengths against recorded serving prompt counts.
+Hash model, binaries, native adapter and fixture. This is a correctness gate, no timing
+claim; startup can load weights even though extraction is CPU-only. Existing scratch,
+models and drivers only. Ordinary tests remain independent of external competitors.
+
+Token capture passed all8 cases on both competitors (manifest under
+`docs/bench/data/2026-09-29-prompt-equivalence`). Next profile the first fixed-history
+conversation's reuse request with native production ModelBackend/radix cache settings.
+Follow `prefillCheckpointed` exactly: begin/restore, each candidate segment and checkpoint,
+then final suffix. Report begin, intermediate prefill, checkpoint and final prefill times
+separately. One first-request seed, one reuse warmup, five measured reuse repetitions;
+reseed cache for each repetition to prevent the target request becoming its own hit.
+Compare every repeated final vocabulary row bitwise with the warmup. This is a model/
+cache component diagnostic, excludes HTTP/tokenizer/scheduler waits, and cannot itself
+explain the entire competitor gap. Do not substitute it for serving performance.

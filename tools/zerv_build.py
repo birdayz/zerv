@@ -44,9 +44,10 @@ TARGETS = {
     "spirv-val": "@spirv_tools//:spirv-val",
     "zerv-model-capture": "//tools:zerv-model-capture",
     "zerv-inspect": "//tools:zerv-inspect",
+    "zerv-prompt-capture": "//tools:zerv-prompt-capture",
     **{name: f"//bench:{name}" for name in [
         "zerv-gpu-driver-bench", "zerv-gpu-matvec-bench", "zerv-gemm-bench", "zerv-decode-f16-bench",
-        "zerv-matvec-rows-bench", "zerv-model-profile", "zerv-prefix-check", "zerv-kv-quality",
+        "zerv-matvec-rows-bench", "zerv-model-profile", "zerv-reuse-profile", "zerv-prefix-check", "zerv-kv-quality",
         "zerv-spec-check", "zerv-batch-check", "zerv-disk-probe", "zerv-storage-bench", "zerv-residency-bench", "zerv-cache-sources-bench", "zerv-pressure-bench", "zerv-preparation-bench", "zerv-archive-bench", "zerv-archive-model-check", "zerv-mtp-check", "zerv-kernel-chain", "zerv-coopmat-probe",
         "zerv-quant-bench", "zerv-tokenizer-bench", "zerv-split-bench", "zerv-nfc-bench", "zerv-sampler-bench",
         "zerv-chat-bench", "zerv-gguf-bench", "zerv-model-quant-bench"]},
