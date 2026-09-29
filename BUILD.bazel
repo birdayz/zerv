@@ -12,6 +12,16 @@ compile_pip_requirements(
     tags = ["manual"],
 )
 
+# Resolve metadata from wheels only; review/scan artifacts before adding runtime deps.
+compile_pip_requirements(
+    name = "requirements_inferencex",
+    src = "requirements_inferencex.in",
+    requirements_txt = "requirements_inferencex_lock.txt",
+    data = ["requirements_lock.txt"],
+    extra_args = ["--pip-args=--only-binary=:all:"],
+    tags = ["manual"],
+)
+
 # The build definitions, read by //tests:test_build_lists.
 exports_files(
     [

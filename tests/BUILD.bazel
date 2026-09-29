@@ -115,6 +115,7 @@ zerv_test(
 zerv_test(
     name = "session",
     deps = ["//src/session"],
+    embeds = ["fixtures/ignore-eos.json"],
 )
 
 zerv_test(
@@ -525,6 +526,11 @@ py_test(
         "//bench:run_multiturn.py",
         "//bench:score_demand_quality.py",
         "//bench:make_demand_quality.py",
+        "//bench:inferencex_observer.py",
+        "//bench:run_inferencex.py",
+        "//bench:summarize_inferencex.py",
+        "//bench:check_prompt_equivalence.py",
+        "//tools:zerv_build.py",
         "//bench:run_concurrent.py",
         "//tools:host_info.py",
     ],
@@ -925,4 +931,11 @@ cc_binary(
     linkopts = ["-lm"],
     tags = ORACLE_TAGS,
     deps = ["@ggml//:ggml_vulkan_all"],
+)
+
+py_test(
+    name = "test_inferencex_results",
+    srcs = ["test_inferencex_results.py"],
+    data = ["//tools:inferencex_results", "//bazel:inferencex.bzl"],
+    deps = ["@inferencex//:results"],
 )

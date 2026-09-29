@@ -233,6 +233,7 @@ pub const Native = struct {
         const r: session.Request = .{
             .prompt = prepared.tokens,
             .max_tokens = request.max_tokens orelse self.model.state_layout.context,
+            .ignore_eos = request.ignore_eos,
             .params = params,
             .stops = request.stops,
             .thinking = prepared.thinking,

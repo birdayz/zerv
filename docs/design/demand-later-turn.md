@@ -39,3 +39,21 @@ pressure. Acceptance of the hypothesis requires a measured reduction in zero-reu
 later turns and admission waits; absence of an outlier in three trials alone is weak
 evidence and cannot identify the exact prior failing branch. Retain third-turn small
 suffix overhead and any other regression. Do not promote the threshold or pool default.
+
+## User clarification: equal pool capacity (2026-09-29)
+
+Inspection only, paused goal not resumed. In the pool-serving manifest, llama uses
+`-c24576 -np2` and effective `--cache-ram8192 --ctx-checkpoints8` (the duplicate
+cache-ram flag explicitly uses its last value). Native192×128 likewise has24576
+GPU token positions, but host swap is4096MiB plus its separately allocated recurrent
+snapshot store and disk archive. These are not equal effective cache budgets.
+Vulkan round0 log reports `n_ctx_slot=12288, kv_unified=false` and evicts oldest
+host prompt-cache entries of300.316MiB and1695.192MiB. Thus llama also encounters
+cache pressure; no assertion that it never evicts is warranted. Those log events
+alone do not establish extra prefill or device-transfer bytes comparable to native.
+Increasing native to256pages changes capacity to32768 positions: measured resource
+tradeoff/workaround, not proof native fundamentally needs more capacity than llama.
+A fair causality comparison must match live-token capacity AND host/device byte
+budgets, identical requests, retained checkpoints, and report eviction, restoration,
+transfer and recomputation separately. No such fully matched accounting comparison
+has yet been executed. Native restore/admission fallback remains an open suspect.

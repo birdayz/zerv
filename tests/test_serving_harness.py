@@ -219,6 +219,61 @@ class EngineSuffixTests(unittest.TestCase):
             run_serving.resolve_engine(table, "zerv@novalue", "/bin/zerv")
 
 
+class InferenceXObserverTests(unittest.TestCase):
+    def test_role_reasoning_content_finish_and_failure_gates(self):
+        from inferencex_observer import observe, validate
+        r = dict(status=200, text_times=[], text=[], finishes=[], done=False)
+        observe(r, b'data: {"choices":[{"delta":{"role":"assistant"}}]}', 1)
+        self.assertEqual(r['text_times'], [])
+        observe(r, b'data: {"choices":[{"delta":{"reasoning_content":"think"}}]}', 2)
+        observe(r, b'data: {"choices":[{"delta":{"content":"answer"}}]}', 3)
+        observe(r, b'data: {"choices":[{"delta":{},"finish_reason":"length"}],"usage":{"completion_tokens":4}}', 4)
+        self.assertEqual(r['text_times'], [2, 3])
+        self.assertFalse(validate(r, 4))
+        observe(r, b'data: [DONE]', 5)
+        self.assertTrue(validate(r, 4))
+        self.assertFalse(validate(r, 5))
+        for k, v in [('status', 500), ('finishes', ['stop']), ('done', False), ('text_times', []), ('error', 'failure')]:
+            self.assertFalse(validate(dict(r, **{k: v}), 4), k)
+
+    def test_proxy_preserves_bytes_and_request_and_observes_delay(self):
+        import http.client
+        import json
+        from inferencex_observer import Observer
+        received = []
+        first = b'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n'
+        rest = b'data: {"choices":[{"delta":{"content":"OK"}}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\ndata: {"choices":[],"usage":{"completion_tokens":1}}\n\ndata: [DONE]\n\n'
+        class Upstream(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def do_POST(self):
+                received.append(self.rfile.read(int(self.headers['Content-Length'])))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(first)
+                self.wfile.flush()
+                time.sleep(.03)
+                self.wfile.write(rest)
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            with Observer(server.server_port) as observer:
+                conn = http.client.HTTPConnection('127.0.0.1', observer.port)
+                body = b'{"messages":[]}'
+                conn.request('POST', '/v1/chat/completions', body)
+                self.assertEqual(conn.getresponse().read(), first + rest)
+                conn.close()
+            self.assertEqual(received, [body])
+            r = observer.records[0]
+            self.assertEqual(r['body'], json.loads(body))
+            self.assertTrue(r['done'])
+            self.assertGreater(r['text_times'][0] - r['role_s'], .01)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+
 class DemandQualityScoring(unittest.TestCase):
     def test_strict_answers_and_negative_controls(self):
         from score_demand_quality import correct
@@ -286,6 +341,74 @@ class DemandQualityScoring(unittest.TestCase):
             selected = [records[j] for j in (4 + i, 63 + i, 124 - i)]
             self.assertEqual(ordering, [r['id'] for r in sorted(selected, key=lambda r: (r['priority'], r['id']))])
             self.assertEqual([json.loads(s) for s in conv['assistant_history']], conv['expected'][:2])
+
+
+class InferenceXReportTests(unittest.TestCase):
+    def test_matrix_and_statistics(self):
+        import itertools
+        from summarize_inferencex import ENGINES, check_matrix, stats, percentile
+        cases = [dict(engine=e, round=r, input=i, concurrency=c, output=256, status='passed')
+                 for e, r, i, c in itertools.product(ENGINES, range(3), (1024, 8192), (1, 4))]
+        check_matrix(cases)
+        native = [c for c in cases if c['engine'] == 'zerv-tiered']
+        check_matrix(native, ['zerv-tiered'])
+        paired = native + [dict(c, engine='zerv-untiered') for c in native]
+        check_matrix(paired, ['zerv-tiered', 'zerv-untiered'])
+        for invalid in ([], ['unknown'], ['zerv-tiered', 'zerv-tiered']):
+            with self.assertRaises(AssertionError): check_matrix(native, invalid)
+        with self.assertRaises(AssertionError): check_matrix(native[:-1], ['zerv-tiered'])
+        from run_inferencex import ENGINE_SPECS
+        self.assertIn('kv-swap-mib=0,prefix-cache-tier=off', ENGINE_SPECS['zerv-untiered'])
+        self.assertNotIn('disk-dir', ENGINE_SPECS['zerv-untiered'])
+        self.assertIn('prefix-cache-disk-dir=', ENGINE_SPECS['zerv-tiered'])
+        for engine in ('zerv-tiered', 'zerv-untiered'):
+            self.assertIn('kv-pool-pages=192', ENGINE_SPECS[engine])
+        for broken in (cases[:-1], cases + [cases[0]], [dict(c, status='running') for c in cases],
+                       [dict(c, output=255) for c in cases]):
+            with self.assertRaises(AssertionError):
+                check_matrix(broken)
+        self.assertEqual(stats([1, 2, 3]), dict(mean=2, sd=1, trials=[1, 2, 3]))
+        self.assertEqual(percentile([30, 10, 20], .5), 20)
+        self.assertAlmostEqual(percentile([10, 20], .99), 19.9)
+
+    def test_resume_rejects_mismatched_identity_workload_and_gate_only(self):
+        import copy
+        import json
+        import tempfile
+        from run_inferencex import resume_cases
+        with tempfile.TemporaryDirectory() as tmp:
+            prior_root, out = Path(tmp)/'prior', Path(tmp)/'new'
+            prior_root.mkdir()
+            out.mkdir()
+            manifest = dict.fromkeys(('model_sha256', 'native_sha256', 'llama_sha256', 'hip_sha256', 'tokenizer'), 'same')
+            manifest['sources'] = dict.fromkeys(('tools/inferencex_client.py', 'bench/inferencex_observer.py', 'bazel/inferencex.bzl', 'requirements_inferencex_lock.txt'), 'same')
+            for name in ('workload-1024.json', 'requests-1024.json', 'prompts-1024.jsonl'):
+                (prior_root/name).write_text('same')
+                (out/name).write_text('same')
+            case = dict(engine='zerv-tiered', round=0, input=1024, concurrency=1, output=256,
+                        status='passed', client_command=['client'], path='case')
+            prior = dict(manifest, cases=[case, dict(case, status='running')])
+            def resume(data):
+                (prior_root/'manifest.json').write_text(json.dumps(data))
+                return resume_cases(manifest, prior_root, out, [1024], [1], 256, 3)
+            inherited = resume(prior)
+            self.assertEqual(len(inherited), 1)
+            self.assertEqual(inherited[0]['path'], str(prior_root/'case'))
+            for field in ('model_sha256', 'native_sha256', 'llama_sha256', 'hip_sha256', 'tokenizer'):
+                with self.assertRaises(AssertionError):
+                    resume(dict(prior, **{field: 'changed'}))
+            for source in manifest['sources']:
+                bad = copy.deepcopy(prior)
+                bad['sources'][source] = 'changed'
+                with self.assertRaises(AssertionError): resume(bad)
+            for changes in ({'client_command': []}, {'output': 255}, {'round': -1}, {'engine': 'unknown'}):
+                with self.assertRaises(AssertionError):
+                    resume(dict(prior, cases=[dict(case, **changes)]))
+            with self.assertRaises(AssertionError): resume(dict(prior, cases=[case, case]))
+            for name in ('workload-1024.json', 'requests-1024.json', 'prompts-1024.jsonl'):
+                (out/name).write_text('different')
+                with self.assertRaises(AssertionError): resume(prior)
+                (out/name).write_text('same')
 
 
 if __name__ == "__main__":

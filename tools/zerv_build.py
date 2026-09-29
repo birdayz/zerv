@@ -24,6 +24,8 @@ BAZEL = "bazelisk"
 # Executable name -> Bazel label.
 TARGETS = {
     "zerv": "//src:zerv",
+    "inferencex-client": "//tools:inferencex_client",
+    "inferencex-results": "//tools:inferencex_results",
     "zig": "//bazel:zig",
     # External test oracles, source-built (docs/specs/hermetic-build.md, phase 3).
     "libggml-base.so": "@ggml//:ggml_base_so",

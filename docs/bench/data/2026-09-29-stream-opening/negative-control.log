@@ -1,0 +1,38 @@
+INFO: Invocation ID: e3c20819-842c-4d22-ac14-2cb363dd45db
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: target //tests:serve (0 packages loaded, 0 targets configured)
+Analyzing: target //tests:serve (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed target //tests:serve (0 packages loaded, 0 targets configured).
+[2 / 3] [Prepa] runfiles for //tests:serve
+[3 / 4] Testing //tests:serve; 1s disk-cache, linux-sandbox
+FAIL: //tests:serve (Aborted) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/serve/test.log)
+INFO: From Testing //tests:serve:
+==================== Test output for //tests:serve:
+1/14 serve.test.chat request parsing: fields, defaults, content parts and template controls...OK
+2/14 serve.test.chat request rejections are explicit OpenAI errors...OK
+3/14 serve.test.response encoding: completion, chunks, usage, errors and models...OK
+4/14 serve.test.HTTP server: real sockets, JSON and SSE framing, errors, keep-alive...expected 5, found 6
+FAIL (TestExpectedEqual)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/10342/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:118:17: 0x12c52e9 in expectEqualInner__anon_57432 (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/10342/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:83:5: 0x1342a4a in expectEqual (serve.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/10342/execroot/_main/tests/serve.zig:351:9: 0x1342b24 in test.HTTP server: real sockets, JSON and SSE framing, errors, keep-alive (serve.zig)
+5/14 serve.test.HTTP stream opens with generated payload or terminal result, never role-only...thread 12 panic: attempt to use null value
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/10342/execroot/_main/tests/serve.zig:448:82: 0x13398f7 in test.HTTP stream opens with generated payload or terminal result, never role-only (serve.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/10342/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/compiler/test_runner.zig:291:25: 0x121dd56 in mainTerminal (test_runner.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/10342/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/compiler/test_runner.zig:73:28: 0x121d572 in main (test_runner.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/10342/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/start.zig:699:88: 0x1219d85 in callMain (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/10342/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/start.zig:190:5: 0x1219761 in _start (std.zig)
+================================================================================
+INFO: Found 1 test target...
+Target //tests:serve up-to-date:
+  bazel-bin/tests/serve
+INFO: Elapsed time: 2.980s, Critical Path: 2.51s
+INFO: 4 processes: 2 internal, 3 linux-sandbox.
+INFO: Build completed, 1 test FAILED, 4 total actions
+//tests:serve                                                            FAILED in 1.2s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/serve/test.log
+
+Executed 1 out of 1 test: 1 fails locally.

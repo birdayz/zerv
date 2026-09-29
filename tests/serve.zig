@@ -166,14 +166,12 @@ test "response encoding: completion, chunks, usage, errors and models" {
     try api.writeCompletion(&out.writer, meta, null, "x", null, "length", .{ .prompt_tokens = 1, .completion_tokens = 1 });
     try t.expect(std.mem.indexOf(u8, out.written(), "reasoning_content") == null);
     out.clearRetainingCapacity();
-    try api.writeChunk(&out.writer, meta, .role);
-    try api.writeChunk(&out.writer, meta, .{ .reasoning = "a" });
-    try api.writeChunk(&out.writer, meta, .{ .content = "b" });
-    try api.writeChunk(&out.writer, meta, .{ .finish = "stop" });
+    try api.writeChunk(&out.writer, meta, .{ .reasoning = "a" }, true);
+    try api.writeChunk(&out.writer, meta, .{ .content = "b" }, false);
+    try api.writeChunk(&out.writer, meta, .{ .finish = "stop" }, false);
     try api.writeUsageChunk(&out.writer, meta, .{ .prompt_tokens = 2, .completion_tokens = 5, .cached_tokens = 1 });
     try t.expectEqualStrings(
-        "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":7,\"model\":\"qwen3.8-27b\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null}]}\n\n" ++
-            "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":7,\"model\":\"qwen3.8-27b\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"a\"},\"logprobs\":null,\"finish_reason\":null}]}\n\n" ++
+        "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":7,\"model\":\"qwen3.8-27b\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"a\"},\"logprobs\":null,\"finish_reason\":null}]}\n\n" ++
             "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":7,\"model\":\"qwen3.8-27b\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"b\"},\"logprobs\":null,\"finish_reason\":null}]}\n\n" ++
             "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":7,\"model\":\"qwen3.8-27b\",\"choices\":[{\"index\":0,\"delta\":{},\"logprobs\":null,\"finish_reason\":\"stop\"}]}\n\n" ++
             "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"created\":7,\"model\":\"qwen3.8-27b\",\"choices\":[],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":5,\"total_tokens\":7,\"prompt_tokens_details\":{\"cached_tokens\":1}}}\n\n",
@@ -199,6 +197,17 @@ const Fake = struct {
         return .{ .tokens = tokens, .thinking = request.template.enable_thinking };
     }
     fn generate(_: *anyopaque, _: std.mem.Allocator, request: *const api.ChatRequest, prepared: http.Prepared, sink: http.Sink) anyerror!http.Completion {
+        const mode = request.messages[request.messages.len - 1].content;
+        try sink.emit(.{ .content = "" });
+        try sink.emit(.{ .reasoning = "" });
+        if (std.mem.eql(u8, mode, "fail-before")) return error.TestFailure;
+        if (std.mem.eql(u8, mode, "empty")) return .{ .finish = .stop, .prompt_tokens = 1, .completion_tokens = 0, .prefill_ns = 1, .decode_ns = 0 };
+        if (std.mem.eql(u8, mode, "tool-first")) {
+            try sink.emit(.{ .call_begin = .{ .index = 0, .name = "get_weather" } });
+            try sink.emit(.{ .call_arguments = .{ .index = 0, .text = "" } });
+            try sink.emit(.{ .call_arguments = .{ .index = 0, .text = "}" } });
+            return .{ .finish = .stop, .prompt_tokens = 1, .completion_tokens = 2, .prefill_ns = 1, .decode_ns = 1, .tool_calls = 1 };
+        }
         if (request.toolMode() != null) {
             try sink.emit(.{ .content = "Checking." });
             try sink.emit(.{ .call_begin = .{ .index = 0, .name = "get_weather" } });
@@ -339,13 +348,13 @@ test "HTTP server: real sockets, JSON and SSE framing, errors, keep-alive" {
         defer events.deinit(t.allocator);
         var it = std.mem.splitSequence(u8, out.written(), "\n\n");
         while (it.next()) |e| if (e.len > 0) try events.append(t.allocator, e);
-        try t.expectEqual(@as(usize, 6), events.items.len);
+        try t.expectEqual(@as(usize, 5), events.items.len);
         for (events.items) |e| try t.expect(std.mem.startsWith(u8, e, "data: "));
         try t.expect(std.mem.indexOf(u8, events.items[0], "\"role\":\"assistant\"") != null);
-        try t.expect(std.mem.indexOf(u8, events.items[1], "\"content\":\"Hello\"") != null);
-        try t.expect(std.mem.indexOf(u8, events.items[3], "\"finish_reason\":\"length\"") != null);
-        try t.expect(std.mem.indexOf(u8, events.items[4], "\"total_tokens\":5") != null);
-        try t.expectEqualStrings("data: [DONE]", events.items[5]);
+        try t.expect(std.mem.indexOf(u8, events.items[0], "\"content\":\"Hello\"") != null);
+        try t.expect(std.mem.indexOf(u8, events.items[2], "\"finish_reason\":\"length\"") != null);
+        try t.expect(std.mem.indexOf(u8, events.items[3], "\"total_tokens\":5") != null);
+        try t.expectEqualStrings("data: [DONE]", events.items[4]);
         for (events.items) |e| try t.expect(std.mem.indexOf(u8, e, "reasoning_content") == null);
     }
     // Tool calls: JSON message.tool_calls and SSE tool_call deltas, finish tool_calls.
@@ -401,6 +410,58 @@ test "HTTP server: real sockets, JSON and SSE framing, errors, keep-alive" {
     try t.expect(std.mem.indexOf(u8, out.written(), "zerv_spec_draft_tokens_total{stage=\"accepted\"} 3\n") != null);
     // Keep-alive: every request above went over one connection (none answered `close`).
     try t.expectEqual(@as(u32, 1), client.connects);
+}
+
+test "HTTP stream opens with generated payload or terminal result, never role-only" {
+    const io = t.io;
+    var dummy: u8 = 0;
+    const engine: http.Engine = .{ .context = &dummy, .prepareFn = Fake.prepare, .generateFn = Fake.generate, .ids = &ids, .defaults = .{} };
+    var server = http.Server.init(io, t.allocator, engine, .{});
+    const address = try std.Io.net.IpAddress.parse("127.0.0.1", 0);
+    var listener = try address.listen(io, .{ .reuse_address = true });
+    defer listener.deinit(io);
+    var group: std.Io.Group = .init;
+    try group.concurrent(io, serveTask, .{ &server, &listener });
+    defer group.cancel(io);
+    for ([_][]const u8{ "hi", "tool-first", "empty", "fail-before" }) |mode| {
+        var client: Client = .{ .io = io, .port = listener.socket.address.getPort() };
+        defer client.deinit();
+        var out: std.Io.Writer.Allocating = .init(t.allocator);
+        defer out.deinit();
+        const body = try std.fmt.allocPrint(t.allocator, "{{\"model\":\"qwen3.8-27b\",\"messages\":[{{\"role\":\"user\",\"content\":\"{s}\"}}],\"stream\":true}}", .{mode});
+        defer t.allocator.free(body);
+        try t.expectEqual(std.http.Status.ok, try post(&client, "/v1/chat/completions", body, &out));
+        var events = std.mem.splitSequence(u8, out.written(), "\n\n");
+        const first = events.next().?;
+        try t.expect(std.mem.startsWith(u8, first, "data: "));
+        const parsed = try std.json.parseFromSlice(std.json.Value, t.allocator, first[6..], .{});
+        defer parsed.deinit();
+        if (std.mem.eql(u8, mode, "fail-before")) {
+            try t.expect(parsed.value.object.contains("error"));
+            try t.expect(std.mem.indexOf(u8, out.written(), "\"role\":\"assistant\"") == null);
+            continue;
+        }
+        const choice = parsed.value.object.get("choices").?.array.items[0].object;
+        const delta = choice.get("delta").?.object;
+        try t.expectEqualStrings("assistant", delta.get("role").?.string);
+        if (std.mem.eql(u8, mode, "hi")) {
+            try t.expect(delta.contains("reasoning_content"));
+            try t.expectEqualStrings("hmm \"ok\"", delta.get("reasoning_content").?.string);
+        } else if (std.mem.eql(u8, mode, "tool-first")) {
+            try t.expect(delta.contains("tool_calls"));
+            try t.expectEqualStrings("get_weather", delta.get("tool_calls").?.array.items[0].object.get("function").?.object.get("name").?.string);
+        } else {
+            try t.expectEqualStrings("stop", choice.get("finish_reason").?.string);
+        }
+        var count: usize = 1;
+        while (events.next()) |event| {
+            if (event.len == 0) continue;
+            count += 1;
+            try t.expect(std.mem.indexOf(u8, event, "\"role\"") == null);
+            try t.expect(std.mem.indexOf(u8, event, "\"arguments\":\"\"") == null);
+        }
+        try t.expectEqual(@as(usize, if (std.mem.eql(u8, mode, "hi")) 5 else if (std.mem.eql(u8, mode, "tool-first")) 4 else 2), count);
+    }
 }
 
 const Gated = struct {
@@ -876,4 +937,19 @@ test "disk windows: explicit staging budgets, read reservation and rejected limi
         try t.expectError(error.InvalidOptions, disk.Window.init(mib, (64 << 20) - 1));
     }
     for ([_]u32{ 0, 3, 16, std.math.maxInt(u32) }) |mib| try t.expectError(error.InvalidOptions, disk.Window.init(mib, 64 << 20));
+}
+
+test "ignore_eos is opt-in boolean and rejects tool mode" {
+    var arena: std.heap.ArenaAllocator = .init(t.allocator);
+    defer arena.deinit();
+    const base = "\"model\":\"qwen3.8-27b\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]";
+    const a = try parse(arena.allocator(), "{" ++ base ++ "}");
+    try t.expect(!a.ok.ignore_eos);
+    const b = try parse(arena.allocator(), "{" ++ base ++ ",\"ignore_eos\":true}");
+    try t.expect(b.ok.ignore_eos);
+    const c = try parse(arena.allocator(), "{" ++ base ++ ",\"ignore_eos\":false}");
+    try t.expect(!c.ok.ignore_eos);
+    try expectError("{" ++ base ++ ",\"ignore_eos\":1}", .bad_request, "ignore_eos");
+    try expectError("{" ++ base ++ ",\"ignore_eos\":null}", .bad_request, "ignore_eos");
+    try expectError("{" ++ base ++ ",\"ignore_eos\":true,\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"f\",\"parameters\":{\"type\":\"object\",\"properties\":{}}}}]}", .bad_request, "ignore_eos");
 }

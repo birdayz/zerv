@@ -159,3 +159,14 @@ pip.parse(
     requirements_lock = "//:requirements_lock.txt",
 )
 use_repo(pip, "zerv_pypi")
+
+# Reviewed InferenceX fixed-sequence client: development benchmark only.
+inferencex_source = use_repo_rule("//bazel:inferencex.bzl", "inferencex_source")
+inferencex_source(name = "inferencex")
+pip.parse(
+    hub_name = "inferencex_pypi",
+    python_version = "3.14",
+    requirements_lock = "//:requirements_inferencex_lock.txt",
+    extra_pip_args = ["--only-binary=:all:"],
+)
+use_repo(pip, "inferencex_pypi")

@@ -30,6 +30,7 @@ pub const ChatRequest = struct {
     stream: bool = false,
     include_usage: bool = false,
     max_tokens: ?u32 = null,
+    ignore_eos: bool = false,
     params: sampler.Params,
     seed_given: bool = false,
     stops: []const []const u8 = &.{},
@@ -131,6 +132,11 @@ pub fn parseChat(arena: std.mem.Allocator, body: []const u8, served: []const []c
         request.template.tools = rendered;
         request.tools = parsed;
     };
+    if (o.get("ignore_eos")) |v| {
+        if (v != .bool) return fail("'ignore_eos' must be a boolean", "ignore_eos");
+        request.ignore_eos = v.bool;
+        if (v.bool and request.toolMode() != null) return unsupported("ignore_eos with tools is not supported", "ignore_eos");
+    }
     if (o.get("logit_bias")) |v| if (!(v == .null or (v == .object and v.object.count() == 0))) return unsupported("logit_bias is not supported", "logit_bias");
     if (o.get("response_format")) |v| if (v != .null) {
         const kind = if (v == .object) v.object.get("type") else null;
@@ -414,7 +420,6 @@ pub fn writeCompletion(w: *std.Io.Writer, meta: Meta, reasoning: ?[]const u8, co
 }
 
 pub const Delta = union(enum) {
-    role,
     reasoning: []const u8,
     content: []const u8,
     finish: []const u8,
@@ -422,22 +427,23 @@ pub const Delta = union(enum) {
     call_arguments: struct { index: u32, text: []const u8 },
 };
 
-/// One SSE event line `data: {...}\n\n`.
-pub fn writeChunk(w: *std.Io.Writer, meta: Meta, delta: Delta) std.Io.Writer.Error!void {
+/// One SSE event line `data: {...}\n\n`; role accompanies the first payload
+/// (or terminal finish if generation produced no payload), never an opening event.
+pub fn writeChunk(w: *std.Io.Writer, meta: Meta, delta: Delta, first: bool) std.Io.Writer.Error!void {
+    const role: ?[]const u8 = if (first) "assistant" else null;
     try w.writeAll("data: ");
     const head = .{ .id = meta.id, .object = "chat.completion.chunk", .created = meta.created, .model = meta.model };
     switch (delta) {
-        .role => try std.json.Stringify.value(.{ .id = head.id, .object = head.object, .created = head.created, .model = head.model, .choices = .{.{ .index = 0, .delta = .{ .role = "assistant", .content = "" }, .logprobs = null, .finish_reason = null }} }, .{}, w),
-        .reasoning => |s| try std.json.Stringify.value(.{ .id = head.id, .object = head.object, .created = head.created, .model = head.model, .choices = .{.{ .index = 0, .delta = .{ .reasoning_content = s }, .logprobs = null, .finish_reason = null }} }, .{}, w),
-        .content => |s| try std.json.Stringify.value(.{ .id = head.id, .object = head.object, .created = head.created, .model = head.model, .choices = .{.{ .index = 0, .delta = .{ .content = s }, .logprobs = null, .finish_reason = null }} }, .{}, w),
-        .finish => |f| try std.json.Stringify.value(.{ .id = head.id, .object = head.object, .created = head.created, .model = head.model, .choices = .{.{ .index = 0, .delta = EmptyObject{}, .logprobs = null, .finish_reason = f }} }, .{}, w),
+        .reasoning => |s| try std.json.Stringify.value(.{ .id = head.id, .object = head.object, .created = head.created, .model = head.model, .choices = .{.{ .index = 0, .delta = .{ .role = role, .reasoning_content = s }, .logprobs = null, .finish_reason = null }} }, .{ .emit_null_optional_fields = false }, w),
+        .content => |s| try std.json.Stringify.value(.{ .id = head.id, .object = head.object, .created = head.created, .model = head.model, .choices = .{.{ .index = 0, .delta = .{ .role = role, .content = s }, .logprobs = null, .finish_reason = null }} }, .{ .emit_null_optional_fields = false }, w),
+        .finish => |f| try std.json.Stringify.value(.{ .id = head.id, .object = head.object, .created = head.created, .model = head.model, .choices = .{.{ .index = 0, .delta = .{ .role = role }, .logprobs = null, .finish_reason = f }} }, .{ .emit_null_optional_fields = false }, w),
         .call_begin => |c| {
             const call = .{ .index = c.index, .id = c.id, .type = "function", .function = .{ .name = c.name, .arguments = "{" } };
-            try std.json.Stringify.value(.{ .id = head.id, .object = head.object, .created = head.created, .model = head.model, .choices = .{.{ .index = 0, .delta = .{ .tool_calls = .{call} }, .logprobs = null, .finish_reason = null }} }, .{}, w);
+            try std.json.Stringify.value(.{ .id = head.id, .object = head.object, .created = head.created, .model = head.model, .choices = .{.{ .index = 0, .delta = .{ .role = role, .tool_calls = .{call} }, .logprobs = null, .finish_reason = null }} }, .{ .emit_null_optional_fields = false }, w);
         },
         .call_arguments => |c| {
             const call = .{ .index = c.index, .function = .{ .arguments = c.text } };
-            try std.json.Stringify.value(.{ .id = head.id, .object = head.object, .created = head.created, .model = head.model, .choices = .{.{ .index = 0, .delta = .{ .tool_calls = .{call} }, .logprobs = null, .finish_reason = null }} }, .{}, w);
+            try std.json.Stringify.value(.{ .id = head.id, .object = head.object, .created = head.created, .model = head.model, .choices = .{.{ .index = 0, .delta = .{ .role = role, .tool_calls = .{call} }, .logprobs = null, .finish_reason = null }} }, .{ .emit_null_optional_fields = false }, w);
         },
     }
     try w.writeAll("\n\n");

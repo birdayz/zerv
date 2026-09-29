@@ -611,3 +611,64 @@ test "generation short reuse joins exactly the suffix without new checkpoint sid
         try t.expectEqual(session.Finish.stop, r.finish);
     };
 }
+
+const EosBackend = struct {
+    logits: [3]f32,
+    ctx: u32 = 32,
+    steps: u32 = 0,
+    pub fn context(b: *@This()) u32 {
+        return b.ctx;
+    }
+    pub fn vocab(_: *@This()) usize {
+        return 3;
+    }
+    pub fn reset(_: *@This()) !void {}
+    pub fn prefill(b: *@This(), _: []const u32) ![]const f32 {
+        return &b.logits;
+    }
+    pub fn step(b: *@This(), _: u32) ![]const f32 {
+        b.steps += 1;
+        return &b.logits;
+    }
+};
+test "ignore EOS filters before sampling: independent exhaustive greedy oracle" {
+    const Case = struct { logits: [3]f32, eos: []u32, token: u32 };
+    const Fixture = struct { generator_sha256: []const u8, cases: []Case };
+    const fixture = try std.json.parseFromSlice(Fixture, t.allocator, @embedFile("fixtures/ignore-eos.json"), .{});
+    defer fixture.deinit();
+    const tok: FakeTokenizer = .{ .pieces = &.{ "A", "B", "C" } };
+    const Gen = session.Generation(*EosBackend, FakeTokenizer, *Sink);
+    for (fixture.value.cases) |c| {
+        var b: EosBackend = .{ .logits = c.logits };
+        var sink: Sink = .{};
+        defer sink.deinit();
+        const r = try Gen.run(t.io, t.allocator, &b, tok, .{ .eos = c.eos }, .{ .prompt = &.{0}, .max_tokens = 3, .ignore_eos = true, .params = .{ .temperature = 0 } }, &sink);
+        try t.expectEqual(session.Finish.length, r.finish);
+        try t.expectEqual(@as(u32, 3), r.completion_tokens);
+        const expected: [3]u8 = @splat(@as(u8, @intCast(c.token)) + 'A');
+        try t.expectEqualStrings(&expected, sink.content.items);
+        try t.expectEqualSlices(f32, &c.logits, &b.logits); // never mutate borrowed rows
+    }
+}
+test "ignore EOS preserves default, explicit stops, context and cancellation" {
+    const Gen = session.Generation(*EosBackend, FakeTokenizer, *Sink);
+    const tok: FakeTokenizer = .{ .pieces = &.{ "", "A", "B" } };
+    var b: EosBackend = .{ .logits = .{ 10, 1, 0 } };
+    var sink: Sink = .{};
+    defer sink.deinit();
+    var r = try Gen.run(t.io, t.allocator, &b, tok, special, .{ .prompt = &.{0}, .max_tokens = 5, .params = .{ .temperature = 0 } }, &sink);
+    try t.expectEqual(session.Finish.stop, r.finish);
+    try t.expectEqual(@as(u32, 1), r.completion_tokens);
+    r = try Gen.run(t.io, t.allocator, &b, tok, special, .{ .prompt = &.{0}, .max_tokens = 5, .ignore_eos = true, .stops = &.{"A"}, .params = .{ .temperature = 0 } }, &sink);
+    try t.expectEqual(session.Finish.stop, r.finish);
+    try t.expectEqual(@as(u32, 1), r.completion_tokens);
+    b.ctx = 3;
+    r = try Gen.run(t.io, t.allocator, &b, tok, special, .{ .prompt = &.{0}, .max_tokens = 5, .ignore_eos = true, .params = .{ .temperature = 0 } }, &sink);
+    try t.expectEqual(session.Finish.length, r.finish);
+    try t.expectEqual(@as(u32, 2), r.completion_tokens);
+    sink.fail_after = sink.calls;
+    try t.expectError(error.ClientGone, Gen.run(t.io, t.allocator, &b, tok, special, .{ .prompt = &.{0}, .max_tokens = 5, .ignore_eos = true, .params = .{ .temperature = 0 } }, &sink));
+    for ([_][]const u32{ &.{ 0, 1, 2 }, &.{3} }) |eos_ids| {
+        try t.expectError(error.InvalidLogits, Gen.run(t.io, t.allocator, &b, tok, .{ .eos = eos_ids }, .{ .prompt = &.{0}, .max_tokens = 5, .ignore_eos = true }, &sink));
+    }
+}

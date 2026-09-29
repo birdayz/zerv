@@ -1,0 +1,54 @@
+{
+  "status": "failed",
+  "source": "/home/USER/projects/zerv/docs/bench/data/2026-09-29-inferencex-local-resumed",
+  "source_manifest_sha256": "3d822d155bf2d9ba533d2f9851aae45a82acb3153ae53501a14a94d78f99ddc0",
+  "revision": "f437f7bfd164422036b0de7e3818f8afb5bc70d7",
+  "argv": [
+    "/home/USER/projects/zerv/bench/process_inferencex.py",
+    "--source",
+    "docs/bench/data/2026-09-29-inferencex-local-resumed",
+    "--output",
+    "docs/bench/data/2026-09-29-inferencex-processing/run"
+  ],
+  "publication": "LOCAL ONLY; no upload/publish/push authorized",
+  "cases": [
+    {
+      "name": "zerv-tiered-r0-i1024-c1",
+      "input_sha256": "cd921b24eb7a495a59049391b5c79cf85e595c1e44ba33f8bfce85b5f81ed0e0",
+      "source": "/home/USER/projects/zerv/docs/bench/data/2026-09-29-inferencex-local/zerv-tiered-r0-i1024-c1/upstream.json",
+      "metadata": {
+        "RUNNER_TYPE": "RX-7900-XTX",
+        "FRAMEWORK": "zerv",
+        "PRECISION": "Q4_0;KV=f16",
+        "SPEC_DECODING": "none",
+        "RESULT_FILENAME": "upstream",
+        "ISL": "1024",
+        "OSL": "256",
+        "DISAGG": "false",
+        "MODEL_PREFIX": "qwen3.8-27b",
+        "IMAGE": "binary-sha256:5c72086d80f28a7e129b95323fab63b7938b5ede6c4a17cf8eaff7170548e148",
+        "TP": "1",
+        "PP_SIZE": "1",
+        "EP_SIZE": "1",
+        "DP_ATTENTION": "false",
+        "IS_MULTINODE": "false",
+        "REQUIRE_POWER": "false",
+        "GPU_METRICS_CSV": "gpu_metrics.csv"
+      },
+      "command": [
+        "/home/USER/projects/zerv/bazel-out/k8-opt/bin/tools/inferencex_results",
+        "process",
+        "/home/USER/projects/zerv/docs/bench/data/2026-09-29-inferencex-processing/run/zerv-tiered-r0-i1024-c1",
+        "/home/USER/projects/zerv/docs/bench/data/2026-09-29-inferencex-processing/run/zerv-tiered-r0-i1024-c1/metadata.json"
+      ],
+      "status": "running",
+      "exit_code": 0
+    }
+  ],
+  "adapter_sha256": "84b0a60f22effee0c04e7c4bc9bdfca330bf0b9e7d1865782d83272ccddb8d4e",
+  "wrapper_sha256": "ee2c73da1acaa527880ecae1d0465e951d4daf44303bfde34c37c718f95a5647",
+  "source_rule_sha256": "c90963e3e3c1e8c4ed754133898d0deb911f5c349e7e5431cd03ef70d19eeb7d",
+  "executable": "/home/USER/projects/zerv/bazel-out/k8-opt/bin/tools/inferencex_results",
+  "executable_sha256": "9e60946db3fdbe92065f3b38b2e1e7b8cea6014d21d059b28d012341cf0a27bc",
+  "error": "AssertionError()"
+}

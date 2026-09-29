@@ -80,3 +80,6 @@ before coding it. Do not invent untested commands in docs and label them working
   requires its pre-code ownership oracle and scheduling contract.
 - [Bounded short-reuse checkpoint suppression](reuse-join.md): opt-in cache-hit suffix joining, unchanged default and explicit future-recomputation tradeoff; independent policy and numerical/serving gates.
 - [D.2 held-out quality gate](demand-quality-gate.md): predeclared synthetic record oracle, strict JSON scoring, resource limits and performance criteria; executed with shared model-answer failures, not passed.
+- [Local InferenceX fixed-sequence benchmark](inferencex-local.md): security/build boundary,
+  native ignore_eos contract, matched-work/resource gates, transparent timing observer,
+  execution lifetime and checked resume. Three-round local matrix completed.

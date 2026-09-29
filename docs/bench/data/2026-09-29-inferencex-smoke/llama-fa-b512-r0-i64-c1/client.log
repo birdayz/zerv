@@ -1,0 +1,49 @@
+PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+Namespace(backend='openai-chat', base_url='http://127.0.0.1:40309', host='127.0.0.1', port=8000, endpoint='/v1/chat/completions', dataset_name='random', dataset_path=None, max_concurrency=1, model='/home/USER/projects/zerv/third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0', tokenizer='/home/USER/projects/zerv/third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0', best_of=1, use_beam_search=False, num_prompts=2, logprobs=None, request_rate=inf, burstiness=1.0, seed=42, trust_remote_code=False, disable_tqdm=False, profile=False, save_result=True, save_detailed=True, metadata=None, result_dir='/home/USER/projects/zerv/docs/bench/data/2026-09-29-inferencex-smoke/llama-fa-b512-r0-i64-c1', result_filename='upstream.json', ignore_eos=True, percentile_metrics='ttft,tpot,itl,e2el', metric_percentiles='90,99,99.9', goodput=None, sonnet_input_len=550, sonnet_output_len=150, sonnet_prefix_len=200, sharegpt_output_len=None, random_input_len=64, random_output_len=16, random_range_ratio=1.0, random_prefix_len=0, use_chat_template=False, random_num_workers=1, dsv4=False, hf_subset=None, hf_split=None, hf_output_len=None, tokenizer_mode='auto', served_model_name='qwen3.8-27b', lora_modules=None, num_warmups=2)
+-------------------  Input/Output Length Statistics  -------------------
+ input_lens : min=64    max=64    mean=64.00    avg_token_mismatch=0.00  
+ output_lens: min=16    max=16    mean=16.00   
+------------------------------------------------------------------------ 
+
+Starting initial single prompt test run...
+Warming up with 2 requests...
+  0%|          | 0/2 [00:00<?, ?it/s] 50%|█████     | 1/2 [00:00<00:00,  1.11it/s]100%|██████████| 2/2 [00:01<00:00,  1.51it/s]100%|██████████| 2/2 [00:01<00:00,  1.43it/s]
+Warmup completed.
+Traffic request rate: inf
+Burstiness factor: 1.0 (Poisson process)
+Maximum request concurrency: 1
+  0%|          | 0/2 [00:00<?, ?it/s] 50%|█████     | 1/2 [00:00<00:00,  2.09it/s]100%|██████████| 2/2 [00:01<00:00,  1.48it/s]100%|██████████| 2/2 [00:01<00:00,  1.54it/s]
+Starting main benchmark run...
+============ Serving Benchmark Result ============
+Successful requests:                     2         
+Benchmark duration (s):                  1.30      
+Total input tokens:                      128       
+Total generated tokens:                  32        
+Request throughput (req/s):              1.54      
+Output token throughput (tok/s):         24.70     
+Total Token throughput (tok/s):          123.48    
+---------------Time to First Token----------------
+Mean TTFT (ms):                          280.91    
+Median TTFT (ms):                        280.91    
+P90 TTFT (ms):                           416.67    
+P99 TTFT (ms):                           447.21    
+P99.9 TTFT (ms):                         450.27    
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          24.44     
+Median TPOT (ms):                        24.44     
+P90 TPOT (ms):                           24.44     
+P99 TPOT (ms):                           24.44     
+P99.9 TPOT (ms):                         24.44     
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           21.56     
+Median ITL (ms):                         23.92     
+P90 ITL (ms):                            24.53     
+P99 ITL (ms):                            30.13     
+P99.9 ITL (ms):                          30.24     
+----------------End-to-end Latency----------------
+Mean E2EL (ms):                          647.47    
+Median E2EL (ms):                        647.47    
+P90 E2EL (ms):                           783.23    
+P99 E2EL (ms):                           813.78    
+P99.9 E2EL (ms):                         816.83    
+==================================================

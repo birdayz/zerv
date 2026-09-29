@@ -1,0 +1,49 @@
+PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+Namespace(backend='openai-chat', base_url='http://127.0.0.1:44121', host='127.0.0.1', port=8000, endpoint='/v1/chat/completions', dataset_name='random', dataset_path=None, max_concurrency=1, model='/home/USER/projects/zerv/third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0', tokenizer='/home/USER/projects/zerv/third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0', best_of=1, use_beam_search=False, num_prompts=8, logprobs=None, request_rate=inf, burstiness=1.0, seed=42, trust_remote_code=False, disable_tqdm=False, profile=False, save_result=True, save_detailed=True, metadata=None, result_dir='/home/USER/projects/zerv/docs/bench/data/2026-09-29-inferencex-local/rdna3-nofusion-r0-i8192-c1', result_filename='upstream.json', ignore_eos=True, percentile_metrics='ttft,tpot,itl,e2el', metric_percentiles='90,99,99.9', goodput=None, sonnet_input_len=550, sonnet_output_len=150, sonnet_prefix_len=200, sharegpt_output_len=None, random_input_len=8192, random_output_len=256, random_range_ratio=1.0, random_prefix_len=0, use_chat_template=False, random_num_workers=1, dsv4=False, hf_subset=None, hf_split=None, hf_output_len=None, tokenizer_mode='auto', served_model_name='qwen3.8-27b', lora_modules=None, num_warmups=2)
+-------------------  Input/Output Length Statistics  -------------------
+ input_lens : min=8192  max=8192  mean=8192.00  avg_token_mismatch=0.00  
+ output_lens: min=256   max=256   mean=256.00  
+------------------------------------------------------------------------ 
+
+Starting initial single prompt test run...
+Warming up with 2 requests...
+  0%|          | 0/2 [00:00<?, ?it/s] 50%|█████     | 1/2 [00:16<00:16, 16.22s/it]100%|██████████| 2/2 [00:23<00:00, 11.25s/it]100%|██████████| 2/2 [00:23<00:00, 12.00s/it]
+Warmup completed.
+Traffic request rate: inf
+Burstiness factor: 1.0 (Poisson process)
+Maximum request concurrency: 1
+  0%|          | 0/8 [00:00<?, ?it/s] 12%|█▎        | 1/8 [00:07<00:53,  7.71s/it] 25%|██▌       | 2/8 [00:23<01:14, 12.35s/it] 38%|███▊      | 3/8 [00:39<01:10, 14.18s/it] 50%|█████     | 4/8 [00:56<01:00, 15.05s/it] 62%|██████▎   | 5/8 [01:12<00:46, 15.52s/it] 75%|███████▌  | 6/8 [01:28<00:31, 15.85s/it] 88%|████████▊ | 7/8 [01:44<00:15, 15.85s/it]100%|██████████| 8/8 [02:01<00:00, 16.00s/it]100%|██████████| 8/8 [02:01<00:00, 15.13s/it]
+Starting main benchmark run...
+============ Serving Benchmark Result ============
+Successful requests:                     8         
+Benchmark duration (s):                  121.08    
+Total input tokens:                      65536     
+Total generated tokens:                  2048      
+Request throughput (req/s):              0.07      
+Output token throughput (tok/s):         16.91     
+Total Token throughput (tok/s):          558.18    
+---------------Time to First Token----------------
+Mean TTFT (ms):                          7576.22   
+Median TTFT (ms):                        8793.15   
+P90 TTFT (ms):                           8843.25   
+P99 TTFT (ms):                           8896.02   
+P99.9 TTFT (ms):                         8901.30   
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          29.64     
+Median TPOT (ms):                        29.62     
+P90 TPOT (ms):                           29.74     
+P99 TPOT (ms):                           29.78     
+P99.9 TPOT (ms):                         29.79     
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           29.55     
+Median ITL (ms):                         29.45     
+P90 ITL (ms):                            29.78     
+P99 ITL (ms):                            39.54     
+P99.9 ITL (ms):                          88.33     
+----------------End-to-end Latency----------------
+Mean E2EL (ms):                          15134.50  
+Median E2EL (ms):                        16339.61  
+P90 E2EL (ms):                           16419.79  
+P99 E2EL (ms):                           16489.68  
+P99.9 E2EL (ms):                         16496.67  
+==================================================

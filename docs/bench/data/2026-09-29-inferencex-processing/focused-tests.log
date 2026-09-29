@@ -1,0 +1,107 @@
+INFO: Invocation ID: 8d627b1d-49df-41bb-a72f-65d82f447e9d
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: target //tests:test_inferencex_results (1 packages loaded, 0 targets configured)
+Analyzing: target //tests:test_inferencex_results (1 packages loaded, 0 targets configured)
+
+Analyzing: target //tests:test_inferencex_results (2 packages loaded, 2 targets configured)
+
+Analyzing: target //tests:test_inferencex_results (2 packages loaded, 2 targets configured)
+
+DEBUG: /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/external/rules_python+/python/private/py_executable.bzl:1595:14: 
+======================================================================
+WARNING: Target @@//tools:inferencex_results is using implicit __init__.py creation.
+  This diabolic behavior is deprecated and will be disabled by default in a
+  future release.
+  See https://github.com/bazel-contrib/rules_python/issues/2945
+
+  Ensure all __init__.py files are explicitly created and
+  added to the srcs or deps of your targets.
+
+  Disable implicit creation for your module in MODULE.bazel:
+
+    rules_python_config = use_extension("@rules_python//python/extensions:config.bzl", "config")
+    rules_python_config.explicit_init_py(default = True)
+
+  Or for a specific target by setting:
+
+    legacy_create_init = 0
+
+  Or globally with the following Bazel flag:
+
+    --incompatible_default_to_explicit_init_py
+======================================================================
+DEBUG: /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/external/rules_python+/python/private/py_executable.bzl:1595:14: 
+======================================================================
+WARNING: Target @@//tests:test_inferencex_results is using implicit __init__.py creation.
+  This diabolic behavior is deprecated and will be disabled by default in a
+  future release.
+  See https://github.com/bazel-contrib/rules_python/issues/2945
+
+  Ensure all __init__.py files are explicitly created and
+  added to the srcs or deps of your targets.
+
+  Disable implicit creation for your module in MODULE.bazel:
+
+    rules_python_config = use_extension("@rules_python//python/extensions:config.bzl", "config")
+    rules_python_config.explicit_init_py(default = True)
+
+  Or for a specific target by setting:
+
+    legacy_create_init = 0
+
+  Or globally with the following Bazel flag:
+
+    --incompatible_default_to_explicit_init_py
+======================================================================
+INFO: Analyzed target //tests:test_inferencex_results (3 packages loaded, 25 targets configured).
+FAIL: //tests:test_inferencex_results (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/test_inferencex_results/test.log)
+INFO: From Testing //tests:test_inferencex_results:
+==================== Test output for //tests:test_inferencex_results:
+.E
+======================================================================
+ERROR: test_full_processor_and_collector_preserve_artifacts_and_failures (__main__.InferenceXResultsTests.test_full_processor_and_collector_preserve_artifacts_and_failures)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/10300/execroot/_main/bazel-out/k8-fastbuild/bin/tests/test_inferencex_results.runfiles/_main/tests/test_inferencex_results.py", line 49, in test_full_processor_and_collector_preserve_artifacts_and_failures
+    result = self.invoke(['process', root, config])
+  File "/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/10300/execroot/_main/bazel-out/k8-fastbuild/bin/tests/test_inferencex_results.runfiles/_main/tests/test_inferencex_results.py", line 27, in invoke
+    return subprocess.run([str(BINARY), *map(str, args)],
+           ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                          env=dict(PATH=os.environ['PATH'], LANG='C.UTF-8'),
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                          capture_output=True, text=True, timeout=30)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/USER/.cache/bazel/_bazel_USER/cache/repos/v1/contents/7f9c7b3b41b6955212eeb58fc0f53b1d6c2afa815efb37ab675ea8c5b160cd18/37b01377-c4e2-4c3b-822e-930e00d0481d/lib/python3.14/subprocess.py", line 555, in run
+    with Popen(*popenargs, **kwargs) as process:
+         ~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/USER/.cache/bazel/_bazel_USER/cache/repos/v1/contents/7f9c7b3b41b6955212eeb58fc0f53b1d6c2afa815efb37ab675ea8c5b160cd18/37b01377-c4e2-4c3b-822e-930e00d0481d/lib/python3.14/subprocess.py", line 1039, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        pass_fds, cwd, env,
+                        ^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+                        gid, gids, uid, umask,
+                        ^^^^^^^^^^^^^^^^^^^^^^
+                        start_new_session, process_group)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/USER/.cache/bazel/_bazel_USER/cache/repos/v1/contents/7f9c7b3b41b6955212eeb58fc0f53b1d6c2afa815efb37ab675ea8c5b160cd18/37b01377-c4e2-4c3b-822e-930e00d0481d/lib/python3.14/subprocess.py", line 1990, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+FileNotFoundError: [Errno 2] No such file or directory: '/home/USER/projects/zerv/tools/inferencex_results'
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.003s
+
+FAILED (errors=1)
+================================================================================
+INFO: Found 1 test target...
+Target //tests:test_inferencex_results up-to-date:
+  bazel-bin/tests/test_inferencex_results
+INFO: Elapsed time: 3.139s, Critical Path: 0.49s
+INFO: 20 processes: 17 internal, 4 linux-sandbox.
+INFO: Build completed, 1 test FAILED, 20 total actions
+//tests:test_inferencex_results                                          FAILED in 0.3s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/test_inferencex_results/test.log
+
+Executed 1 out of 1 test: 1 fails locally.

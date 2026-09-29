@@ -385,8 +385,6 @@ pub const Server = struct {
             .{ .name = "cache-control", .value = "no-cache" },
         } } });
         var streamer: Streamer = .{ .body = &body, .meta = meta };
-        try api.writeChunk(&body.writer, meta, .role);
-        try push(&body);
         const done = self.engine.generateFn(self.engine.context, arena, chat, prepared, streamer.sink()) catch |e| {
             _ = self.metrics.failed.fetchAdd(1, .monotonic);
             self.checkEngine();
@@ -400,7 +398,7 @@ pub const Server = struct {
             return false;
         };
         self.record(done);
-        try api.writeChunk(&body.writer, meta, .{ .finish = finishName(done) });
+        try api.writeChunk(&body.writer, meta, .{ .finish = finishName(done) }, !streamer.started);
         if (chat.include_usage) try api.writeUsageChunk(&body.writer, meta, .{ .prompt_tokens = done.prompt_tokens, .completion_tokens = done.completion_tokens, .cached_tokens = done.cached_tokens });
         try body.writer.writeAll("data: [DONE]\n\n");
         try body.end();
@@ -459,8 +457,14 @@ const Streamer = struct {
     body: *std.http.BodyWriter,
     meta: api.Meta,
     failed: bool = false,
+    started: bool = false,
     fn emit(ctx: *anyopaque, event: Event) anyerror!void {
         const self: *Streamer = @ptrCast(@alignCast(ctx));
+        switch (event) {
+            .reasoning, .content => |bytes| if (bytes.len == 0) return,
+            .call_arguments => |c| if (c.text.len == 0) return,
+            .call_begin => {},
+        }
         var id_buf: [40]u8 = undefined;
         const delta: api.Delta = switch (event) {
             .reasoning => |bytes| .{ .reasoning = bytes },
@@ -468,10 +472,11 @@ const Streamer = struct {
             .call_begin => |c| .{ .call_begin = .{ .index = c.index, .id = api.callId(&id_buf, self.meta, c.index), .name = c.name } },
             .call_arguments => |c| .{ .call_arguments = .{ .index = c.index, .text = c.text } },
         };
-        api.writeChunk(&self.body.writer, self.meta, delta) catch |e| {
+        api.writeChunk(&self.body.writer, self.meta, delta, !self.started) catch |e| {
             self.failed = true;
             return e;
         };
+        self.started = true;
         push(self.body) catch |e| {
             self.failed = true;
             return e;

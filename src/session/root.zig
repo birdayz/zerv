@@ -32,6 +32,8 @@ pub const Request = struct {
     /// row of `tokens[0]`, every span whole inside the tokens.
     media: []const Media = &.{},
     max_tokens: u32,
+    /// Suppress EOG token selection; explicit stops/context/cancellation still apply.
+    ignore_eos: bool = false,
     params: sampler.Params = .{},
     stops: []const []const u8 = &.{},
     /// Prompt ends inside an open `<think>` block: output starts as reasoning.
@@ -99,6 +101,20 @@ pub fn Generation(comptime Backend: type, comptime Tokenizer: type, comptime Sin
             const limit: u32 = @intCast(@min(request.max_tokens, context - request.prompt.len));
             var s = try sampler.Sampler.init(allocator, backend.vocab(), request.params);
             defer s.deinit(allocator);
+            var non_eos: []u32 = &.{};
+            defer allocator.free(non_eos);
+            var non_eos_count: usize = 0;
+            if (request.ignore_eos) {
+                if (request.tools != null) return error.IgnoreEosToolsUnsupported;
+                for (special.eos) |id| if (id >= backend.vocab()) return error.InvalidLogits;
+                non_eos = try allocator.alloc(u32, backend.vocab());
+                for (0..backend.vocab()) |id| {
+                    if (std.mem.indexOfScalar(u32, special.eos, @intCast(id)) != null) continue;
+                    non_eos[non_eos_count] = @intCast(id);
+                    non_eos_count += 1;
+                }
+                if (non_eos_count == 0) return error.InvalidLogits;
+            }
             // Scratch for one token: UTF-8 output, stop holdback + text, split holdback + text.
             const utf8_len = max_piece * 3 + 64;
             const stop_len = utf8_len + text.max_stop_bytes;
@@ -160,6 +176,8 @@ pub fn Generation(comptime Backend: type, comptime Tokenizer: type, comptime Sin
                 const sample_start = std.Io.Clock.awake.now(io);
                 const token = if (splitter.afterCall()) |space|
                     try s.sampleFrom(row_logits, try afterCallTokens(tokenizer, special, request.tools.?.parallel, space, allowed))
+                else if (request.ignore_eos)
+                    try s.sampleFrom(row_logits, non_eos[0..non_eos_count])
                 else
                     try s.sample(row_logits);
                 sample_ns += elapsed(io, sample_start);

@@ -89,9 +89,11 @@ Unknown top-level keys are ignored (OpenAI clients send many optional fields).
 Non-streaming: `chat.completion` with one choice, `message.content`,
 `message.reasoning_content` (only when non-empty, as llama-server omits it),
 `message.tool_calls` (when the model called tools), `finish_reason`
-`stop|length|tool_calls`, `usage`. Streaming: `chat.completion.chunk` events: role chunk,
-then `reasoning_content` / `content` / `tool_calls` deltas as generated, a final empty delta with
-`finish_reason`, an optional usage chunk (`choices: []`), then `data: [DONE]`.
+`stop|length|tool_calls`, `usage`. Streaming: `chat.completion.chunk` events:
+`reasoning_content` / `content` / `tool_calls` deltas as generated, with role attached
+to the first payload (no standalone role event), a final delta with `finish_reason`,
+an optional usage chunk (`choices: []`), then `data: [DONE]`. If generation has no
+payload, role is attached to the finish delta instead; otherwise the finish delta is empty.
 A mid-stream failure sends an `error` event and closes the connection. The
 reasoning/content split, whitespace handling and stop-string semantics follow
 llama-server's parser for this model ([session spec](session.md#termination-and-text)).
@@ -160,3 +162,27 @@ modes.
 
 End-to-end: `tools/check_session.py` (greedy equality with libllama through the real
 server) and `bench/run_serving.py` (matched llama-server comparison).
+
+## No standalone opening role event (2026-09-29)
+
+User explicitly requires removing the early role-only SSE event. Supersedes the
+older role-chunk sequence above. Emit no SSE data before generated output. Include
+`role: assistant` in the same delta as the first nonempty content/reasoning or tool
+call payload; suppress empty text/argument callbacks. Later deltas omit role. If
+completion has no payload, include role on the terminal finish delta only, after
+generation completes. Errors/cancellation must not fabricate an opening chunk.
+HTTP headers are not generated tokens. Finish/usage/DONE and non-streaming semantics
+otherwise remain unchanged. No benchmark/client/processor change or metric correction.
+
+Research: pinned InferenceX `backend_request_func.py:368–377` starts TTFT on any choices
+chunk, and the existing retained native/reference observer traces demonstrate the
+role timing mismatch (see interactivity research). OpenAI chunk delta schema permits
+role and content in the same delta; the endpoint does not require a separate opening
+role-only event. This is an intentional stricter server emission policy, not byte
+parity with llama's separate role chunk. Independent reference traces already retain
+content/reasoning/tool/finish semantics; preserve those fields while changing only
+role placement. Correctness mechanism: exact JSON expectations, real socket first-
+payload checks (not timing thresholds), reasoning/content/tool-first/empty/error
+cases and both serve build modes. Existing streaming socket-gating test must still
+prove each generated delta is flushed before generation continues. No allocation or
+model math change; one per-stream started flag. Full CPU suite at finalization.

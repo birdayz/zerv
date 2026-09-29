@@ -109,3 +109,23 @@ filegroup(
 
 # Read by //tests:test_build_lists.
 exports_files(["BUILD.bazel"], visibility = ["//tests:__pkg__"])
+
+# External benchmark, isolated from production and ordinary tools' Python closure.
+py_binary(
+    name = "inferencex_client",
+    srcs = ["inferencex_client.py"],
+    deps = [
+        "@inferencex//:client",
+        "@inferencex_pypi//aiohttp",
+        "@inferencex_pypi//numpy",
+        "@inferencex_pypi//transformers",
+        "@inferencex_pypi//tqdm",
+    ],
+)
+
+# Full upstream fixed-sequence processor and collector; stdlib-only execution path.
+py_binary(
+    name = "inferencex_results",
+    srcs = ["inferencex_results.py"],
+    deps = ["@inferencex//:results"],
+)

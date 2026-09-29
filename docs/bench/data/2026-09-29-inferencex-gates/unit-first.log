@@ -1,0 +1,29 @@
+INFO: Invocation ID: 608ea8d2-2f65-47c5-b03f-80b46e013d6e
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 4 targets (1 packages loaded, 0 targets configured)
+Analyzing: 4 targets (1 packages loaded, 0 targets configured)
+
+INFO: Analyzed 4 targets (18 packages loaded, 1842 targets configured).
+ERROR: /home/USER/projects/zerv/tests/BUILD.bazel:115:10: zig test //tests:session failed: (Exit 1): zig failed: error executing ZigBuildTest command (from zig_test rule target //tests:session) external/rules_zig++zig+zig_0.16.0_x86_64-linux/zig test --test-no-exec --zig-lib-dir external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib --cache-dir /tmp/zig-cache --global-cache-dir /tmp/zig-cache -O ... (remaining 29 arguments skipped)
+
+Use --sandbox_debug to see verbose messages from the sandbox and retain the sandbox build root for debugging
+src/session/root.zig:393:39: error: no field or member function named 'prefill' in 'session.EosBackend'
+    if (inner.len == 0) return backend.prefill(tokens);
+                               ~~~~~~~^~~~~~~~
+tests/session.zig:615:20: note: struct declared here
+const EosBackend = struct {
+                   ^~~~~~
+src/session/root.zig:393:39: note: method invocation only supports up to one level of implicit pointer dereferencing
+src/session/root.zig:393:39: note: use '.*' to dereference pointer
+referenced by:
+    run: src/session/root.zig:154:44
+    test.ignore EOS filters before sampling: independent exhaustive greedy oracle: tests/session.zig:642:30
+Use --verbose_failures to see the command lines of failed build steps.
+INFO: Elapsed time: 1.179s, Critical Path: 0.93s
+INFO: 11 processes: 38 action cache hit, 11 internal.
+ERROR: Build did NOT complete successfully
+//tests:session_release_fast                                    FAILED TO BUILD
+
+Executed 0 out of 4 tests: 1 fails to build and 3 were skipped.
