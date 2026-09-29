@@ -86,6 +86,10 @@ const Fake = struct {
     in_reset: std.atomic.Value(bool) = .init(false),
     resume_reset: std.Io.Event = .unset,
 
+    demand_pause: bool = false,
+    demand_in_poll: std.Io.Event = .unset,
+    demand_resume: std.Io.Event = .unset,
+    demand_calls: u32 = 0,
     maintenance_live: std.atomic.Value(bool) = .init(false),
     maintenance_entered: std.atomic.Value(bool) = .init(false),
     maintenance_ready: std.atomic.Value(bool) = .init(false),
@@ -94,6 +98,7 @@ const Fake = struct {
     maintenance_reads: std.atomic.Value(u32) = .init(0),
     maintenance_cancel_polls: u32 = 0,
     maintenance_block_grow: bool = false,
+    maintenance_block_begin: bool = false,
     maintenance_pause: bool = false,
     maintenance_chunk_pause: bool = false,
     maintenance_chunk_polls: u32 = 0,
@@ -113,6 +118,22 @@ const Fake = struct {
     io_cancel_polls: u32 = 0,
     io_entered: std.atomic.Value(bool) = .init(false),
     io_ready: std.atomic.Value(bool) = .init(false),
+    pub fn pollDemand(self: *Fake, demand: ?batcher.Demand, _: bool, _: bool) !batcher.MaintenancePoll {
+        if (demand) |q| {
+            self.demand_calls += 1;
+            var before: u64 = 0;
+            for (q.tokens) |token| before = mix(before, token);
+            if (self.demand_pause) {
+                self.demand_pause = false;
+                self.demand_in_poll.set(self.io);
+                self.demand_resume.waitUncancelable(self.io);
+            }
+            var after: u64 = 0;
+            for (q.tokens) |token| after = mix(after, token);
+            if (before != after) return error.DemandTokensChanged;
+        }
+        return .{};
+    }
     pub fn pollMaintenance(self: *Fake, stopping: bool, reads_pending: bool) !batcher.MaintenancePoll {
         if (!self.maintenance_live.load(.acquire)) return .{};
         if (self.flight != null) {
@@ -189,6 +210,11 @@ const Fake = struct {
         self.hist[slot] = 7;
     }
     pub fn begin(self: *Fake, slot: u32, prompt: []const u32) !u32 {
+        if (slot == 0 and self.maintenance_block_begin and self.maintenance_live.load(.acquire)) {
+            _ = self.maintenance_grows.fetchAdd(1, .monotonic);
+            self.maintenance_urgent.store(true, .release);
+            return error.CacheReclaimPending;
+        }
         try self.reset(slot);
         if (self.io_kind == .begin and slot == 0) try self.pending(slot, prompt);
         var best: ?usize = null;
@@ -1519,4 +1545,106 @@ test "batcher: accumulate multiple victims for oldest swapped decoder" {
     defer b.mutex.unlock(io);
     try t.expectEqual(@as(?anyerror, null), b.slot[0].err);
     try t.expect(b.stats.slice_swaps >= 3);
+}
+
+test "batcher: queued demand callback retains tokens across leave/reuse and stop" {
+    const io = t.io;
+    for ([_]bool{ false, true }) |stopping| {
+        var fake: Fake = .{ .io = io, .demand_pause = true };
+        var b = try B.init(io, &fake, .{ .slots = 1, .vocab = V, .demand = true });
+        const slot = try b.join();
+        var scheduler = try io.concurrent(B.run, .{&b});
+        var tokens = [_]u32{ 1, 2, 3, 4 };
+        var request = try io.concurrent(pendingCacheOp, .{ &b, slot, @as([]const u32, &tokens), false });
+        fake.demand_in_poll.waitUncancelable(io);
+        if (stopping) b.stop() else {
+            b.leave(slot);
+            try t.expectError(error.NoSlot, b.join()); // callback still borrows this generation
+        }
+        fake.demand_resume.set(io);
+        try t.expectError(error.Canceled, request.await(io));
+        @memset(&tokens, 0xdead); // caller can now reclaim its token memory
+        if (!stopping) {
+            var reused: ?u32 = null;
+            for (0..1000) |_| {
+                reused = b.join() catch null;
+                if (reused != null) break;
+                try io.sleep(.fromMicroseconds(100), .awake);
+            }
+            try t.expectEqual(@as(?u32, slot), reused);
+            _ = try b.begin(reused.?, &.{ 7, 8, 9 });
+            b.leave(reused.?);
+            b.stop();
+        }
+        scheduler.await(io);
+        try t.expect(fake.demand_calls > 0);
+        try t.expectEqual(@as(u32, 0), fake.violations);
+    }
+}
+
+test "batcher: reclaim-blocked begin retains request and permits independent decode" {
+    const io = t.io;
+    var fake: Fake = .{ .io = io, .maintenance_live = .init(true), .maintenance_block_begin = true };
+    var b = try B.init(io, &fake, .{ .slots = 2, .vocab = V, .demand = true });
+    const a = try b.join();
+    const other = try b.join();
+    var scheduler = try io.concurrent(B.run, .{&b});
+    defer {
+        b.stop();
+        scheduler.await(io);
+    }
+    // Seed the checkpoint and the independent row before the blocked begin.
+    try b.reset(a);
+    _ = try b.prefill(a, &.{ 3, 4 });
+    b.sampled(a);
+    try b.checkpoint(a, &.{ 3, 4 });
+    try b.reset(other);
+    _ = try b.prefill(other, &.{11});
+    b.sampled(other);
+    var pending = try io.concurrent(pendingCacheOp, .{ &b, a, @as([]const u32, &.{ 3, 4, 5 }), false });
+    while (!fake.maintenance_urgent.load(.acquire)) try io.sleep(.fromMicroseconds(100), .awake);
+    try io.sleep(.fromMilliseconds(5), .awake);
+    try t.expectEqual(@as(u32, 1), fake.maintenance_grows.load(.acquire));
+    const row = try b.step(other, 13);
+    var want: [V]f32 = undefined;
+    logitsFor(mix(mix(7, 11), 13), &want);
+    try t.expectEqualSlices(f32, &want, row);
+    b.sampled(other);
+    fake.maintenance_ready.store(true, .release);
+    try t.expectEqual(@as(u32, 2), try pending.await(io));
+    b.leave(a);
+    b.leave(other);
+    try t.expectEqual(@as(u32, 0), fake.violations);
+}
+
+test "batcher: arrival identity exhaustion rejects without consuming held logits" {
+    const io = t.io;
+    var fake: Fake = .{ .io = io };
+    var b = try B.init(io, &fake, .{ .slots = 1, .vocab = V, .demand = true });
+    const slot = try b.join();
+    b.arrivals = std.math.maxInt(u64) - 1;
+    var scheduler = try io.concurrent(B.run, .{&b});
+    defer {
+        b.stop();
+        scheduler.await(io);
+    }
+    const row = try b.prefill(slot, &.{11});
+    const copy = row[0..V].*;
+    try t.expectError(error.ArrivalExhausted, b.begin(slot, &.{ 11, 13 }));
+    try t.expectEqualSlices(f32, &copy, row);
+    b.mutex.lockUncancelable(io);
+    const order = b.slot[slot].order;
+    const held = b.slot[slot].hold;
+    const exhausted = b.arrivals;
+    b.mutex.unlock(io);
+    try t.expectEqual(std.math.maxInt(u64) - 1, order);
+    try t.expectEqual(std.math.maxInt(u64), exhausted);
+    try t.expect(held != .none);
+    b.sampled(slot);
+    const next = try b.step(slot, 13);
+    var want: [V]f32 = undefined;
+    logitsFor(mix(mix(0, 11), 13), &want);
+    try t.expectEqualSlices(f32, &want, next);
+    b.sampled(slot);
+    b.leave(slot);
 }

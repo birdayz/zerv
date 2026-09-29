@@ -1,8 +1,9 @@
 # Queued-demand protection and staging prefetch (D.2)
 
-Status: **pre-implementation contract draft, 2026-09-29**. Native baseline
-`576a197`; no D.2 API, flag or prefetch is implemented. The independent event
-fixture and boundary tests below must exist before native implementation.
+Status: **implementation under verification, 2026-09-29**. Native baseline
+`576a197`; opt-in APIs, flags and staging prefetch now exist, but acceptance and
+performance gates remain open. The independent fixture preceded the native APIs.
+[Ordered implementation and acceptance plan](../design/queued-demand-implementation.md).
 [Primary-source/native audit](../design/queued-demand-audit.md).
 
 ## Scope and non-goals
@@ -24,6 +25,10 @@ protecting every waiter can starve active decode. No per-request heap allocation
 An optional backend demand hook receives one `{slot, order, tokens}` or none,
 plus stop/read-pending state. Select the oldest non-running, non-I/O queued begin;
 use its existing nonwrapping arrival identity, not a reusable slot index alone.
+Reserve `maxInt(u64)` as exhausted: reject new non-step submissions with
+`ArrivalExhausted` before releasing logits or changing the slot. Existing step
+operations do not allocate identities and remain legal. Test the last issued
+identity, rejection without mutation, and continuing decode in both build modes.
 Before unlocking for the callback, mark that operation running. Cancellation then
 waits instead of releasing token storage. The hook must synchronously resolve all
 token comparisons and retain only qualified cache/record identities on return.
@@ -147,3 +152,50 @@ The API names and cancellation ordering must be checked against the independent
 fixture before this draft is promoted to an implementation-ready contract. In
 particular, every return path must account for both the temporary scheduler token
 borrow and the longer-lived disk job; one cannot stand in for the other.
+
+## Resolved first boundaries (2026-09-29, before code)
+
+Implement and test the following supporting boundaries as part of this same D.2
+increment; none independently constitutes scheduler prefetch completion:
+
+- `Cache.setDemand(prompt)` synchronously selects a longest proper token prefix,
+  stores a qualified handle and returns `{handle,tokens,has_host,source_held}` or
+  none. An empty prompt clears it. `Cache.clearDemand()` clears the preference.
+  `Radix.demandProtected(index)` checks the selected live generation and its current
+  ancestor chain. Candidate selection/removal/demotion respects it; restore does
+  not treat it as a source lease. Urgent caller overrides are explicit clearing.
+- `Archive.Advance.allow_upload` defaults true. False prevents completed read
+  tickets from being consumed/uploaded unless cancellation/error is draining them.
+  It does not change writes. Repeated staging polls neither rehash nor recount bytes.
+- `session.readahead.Owner` owns one generation-qualified `{slot,order}` and an
+  archive read job. `start` validates window1/2, establishes the reader pin and
+  snapshots the record index; `poll` receives the currently selected key or null,
+  latches cancellation on mismatch, and issues only with more than two free staging
+  tickets. `take` transfers the exact key's still-active job to foreground ownership,
+  rejecting stale/mismatched/canceled keys without mutation. `cancel` is latched.
+  Disk adapter must populate/validate the private destination map **before** take.
+  Terminal cancellation releases its pin after all tickets drain; stale take cannot
+  resurrect it. Pure owner never invokes device callbacks before take.
+- `Store.freeSlots()` counts only reusable free tickets (generation not exhausted),
+  with acquire ordering. Optional write polling must subtract speculative occupancy
+  from its six-ticket bound. Prefetch start is forbidden while foreground reads
+  exist; already owned tickets are always cancellable/drainable.
+
+Independent fixture is generated before these APIs: token-prefix sets independently
+compute protected ancestry; staging cases enumerate chunk counts/windows/other ticket
+owners and cancellation, stale generation, stop, corruption or handoff. The native
+cache and read-ahead/archive interfaces consume these cases separately; asynchronous
+scheduler lifetime interleavings are directed tests, not claimed from this fixture.
+
+## Component timing contract
+
+Extend the existing CPU/archive benchmark with an explicit demand mode, preserving
+its default output. Fixed64MiB bytes and1MiB chunks, eight tickets, direct4096 I/O,
+one warmup plus five trials. Alternate off/window1/window2 order. Read-ahead cases
+wait for the full staged window, then hand off the same tickets; report staging wait,
+foreground drain and total start-to-finish separately. This is a controlled completed-
+window experiment, not simulated useful overlap: total includes the wait. Compare all
+64MiB against deterministic source bytes and require no uploads before handoff, exact
+submitted/completed counts and zero owners. Repeat an explicit cancel/drain and report
+its latency/discarded bytes separately. CPU memcpy stands in for the device callback;
+no GPU or serving speed claim follows. Pin binary/source hashes and retain raw trials.

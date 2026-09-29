@@ -13,6 +13,7 @@ const usage =
     \\            [--prefix-cache-slots 8, with --parallel N: 3N]  (recurrent-state snapshots, ~150 MiB each; 0 = no prefix cache)
     \\            [--prefix-cache-disk-dir DIR --prefix-cache-disk-mib N]  (opt-in immutable RAM-staged disk archive; shared KV, parallel > 1)
     \\            [--prefix-cache-disk-entries 64] [--prefix-cache-disk-alignment N]  (bounded metadata; optional explicit direct-I/O alignment in bytes)
+    \\            [--prefix-cache-demand off|protect|prefetch --prefix-cache-prefetch-chunks 1|2]  (default off; prefetch is disk-to-staging only)
     \\            [--prefix-cache-prepare-pages N --prefix-cache-prepare-window-pages 1|2|4 --prefix-cache-prepare-host-headroom-mib N]  (opt-in GPU to host preparation; default off)
     \\            [--prefix-cache-disk-chunk-mib 1|2|4|8]  (default 1; eight staging tickets, two reserved for reads)
     \\            [--prefix-cache-disk-headroom-slots N] [--prefix-cache-disk-headroom-mib N]  (pressure-driven preservation; auto: 0/1 slots, up to 256 MiB host KV)
@@ -72,6 +73,8 @@ pub fn main(init: std.process.Init) !void {
     var disk_mib: u64 = 0;
     var disk_entries: u32 = 64;
     var disk_chunk_mib: ?u32 = null;
+    var demand_mode: zerv.serve.DemandMode = .off;
+    var prefetch_chunks: ?u32 = null;
     var prepare_pages: u32 = 0;
     var prepare_window: ?u32 = null;
     var prepare_headroom_mib: ?u64 = null;
@@ -130,6 +133,8 @@ pub fn main(init: std.process.Init) !void {
         else if (std.mem.eql(u8, arg, "--prefix-cache-disk-mib")) disk_mib = try std.fmt.parseInt(u64, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-disk-entries")) disk_entries = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-disk-alignment")) disk_alignment = try std.fmt.parseInt(u32, value, 10) //
+        else if (std.mem.eql(u8, arg, "--prefix-cache-demand")) demand_mode = std.meta.stringToEnum(zerv.serve.DemandMode, value) orelse return error.InvalidArguments //
+        else if (std.mem.eql(u8, arg, "--prefix-cache-prefetch-chunks")) prefetch_chunks = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-prepare-pages")) prepare_pages = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-prepare-window-pages")) prepare_window = try std.fmt.parseInt(u32, value, 10) //
         else if (std.mem.eql(u8, arg, "--prefix-cache-prepare-host-headroom-mib")) prepare_headroom_mib = try std.fmt.parseInt(u64, value, 10) //
@@ -181,6 +186,9 @@ pub fn main(init: std.process.Init) !void {
         (disk_dir != null and (parallel < 2 or !kv_share or prefix_cache_kind != .radix)) or
         (disk_dir == null and (disk_entries != 64 or disk_alignment != 0 or disk_headroom_slots != null or disk_headroom_mib != null or disk_chunk_mib != null)) or
         (disk_alignment != 0 and (!std.math.isPowerOfTwo(disk_alignment) or disk_alignment > (1 << 20)))) return error.InvalidArguments;
+    if (demand_mode != .off and (parallel < 2 or !kv_share or prefix_cache_kind != .radix or snapshot_slots_arg == 0 or spec_draft != 0)) return error.InvalidArguments;
+    if (demand_mode == .prefetch and disk_dir == null) return error.InvalidArguments;
+    if (prefetch_chunks) |w| if (demand_mode != .prefetch or (w != 1 and w != 2)) return error.InvalidArguments;
     if (prepare_pages == 0 and (prepare_window != null or prepare_headroom_mib != null)) return error.InvalidArguments;
     if (prepare_pages != 0 and (parallel < 2 or !kv_share or prefix_cache_kind != .radix or !prefix_cache_tier or spec_draft != 0 or snapshot_slots_arg == 0 or kv_swap_mib == 0)) return error.InvalidArguments;
     if (prepare_window) |w| if (w != 1 and w != 2 and w != 4) return error.InvalidArguments;
@@ -290,13 +298,13 @@ pub fn main(init: std.process.Init) !void {
     native.admission = kv_admission;
     var model_backend_store = false;
     // --parallel N > 1: the batcher owns the model on its scheduler task.
-    var model_backend: zerv.serve.ModelBackend = .{ .m = &model };
+    var model_backend: zerv.serve.ModelBackend = .{ .m = &model, .demand_mode = demand_mode, .prefetch_chunks = prefetch_chunks orelse 1 };
     defer model_backend.deinitDisk();
     defer model_backend.deinitPreparation() catch @panic("preparation owner not drained");
     if (disk_dir) |directory| try model_backend.initDisk(gpa, init.io, .{ .directory = directory, .bytes = disk_mib << 20, .records = disk_entries, .alignment = if (disk_alignment == 0) null else .{ .memory = disk_alignment, .offset = disk_alignment }, .headroom_slots = disk_headroom_slots, .headroom_mib = disk_headroom_mib, .chunk_mib = disk_chunk_mib orelse 1 });
     if (model_backend.disk_archive) |d| std.debug.print("zerv: disk pressure headroom: {d} snapshot slots, {d} host KV pages; two staging tickets reserved for reads\n", .{ d.headroom_slots, d.headroom_pages });
     if (disk_window) |w| std.debug.print("zerv: disk transfer window: {d} MiB per ticket, {d} MiB staging; six write tickets, two reserved for reads\n", .{ w.chunk_bytes >> 20, w.staging_bytes >> 20 });
-    var batch = try zerv.serve.Batcher.init(io, &model_backend, .{ .slots = parallel, .vocab = zerv.model.config.vocab, .stall = stall, .order = prefill_order, .swap_slice = if (model.swap_pages > 0 and kv_swap_slice_ms > 0) std.Io.Duration.fromMilliseconds(@intCast(kv_swap_slice_ms)) else null, .pack = if (model.packable()) @max(1, @min(prefill_pack, model.pack_seqs)) else 1 });
+    var batch = try zerv.serve.Batcher.init(io, &model_backend, .{ .slots = parallel, .vocab = zerv.model.config.vocab, .demand = demand_mode != .off, .stall = stall, .order = prefill_order, .swap_slice = if (model.swap_pages > 0 and kv_swap_slice_ms > 0) std.Io.Duration.fromMilliseconds(@intCast(kv_swap_slice_ms)) else null, .pack = if (model.packable()) @max(1, @min(prefill_pack, model.pack_seqs)) else 1 });
     var scheduler: ?std.Io.Future(void) = null;
     if (parallel > 1) {
         if (model.options.kv_share and model.snapshot_slots > 0) {
@@ -313,6 +321,7 @@ pub fn main(init: std.process.Init) !void {
             try model_backend.initPreparation(io, .{ .target = prepare_pages, .window = prepare_window orelse 1, .host_headroom = @intCast(reserve_pages) });
             std.debug.print("zerv: preparation: target {d} free GPU pages, window {d} pages, reserve {d} host pages\n", .{ prepare_pages, prepare_window orelse 1, reserve_pages });
         }
+        if (demand_mode != .off) std.debug.print("zerv: queued demand: {s}, one request lookahead, {d} staging chunks; no prefetch GPU upload, two tickets reserved for foreground reads\n", .{ @tagName(demand_mode), if (demand_mode == .prefetch) prefetch_chunks orelse 1 else @as(u32, 0) });
         try native.attachBatcher(&batch, &model_backend);
         scheduler = try io.concurrent(zerv.serve.Batcher.run, .{&batch});
     }
@@ -328,6 +337,13 @@ pub fn main(init: std.process.Init) !void {
             const ds = d.catalog.stats;
             std.debug.print("zerv: disk prefix archive: {d} writes, {d} restores, {d} bytes written, {d} read, {d} evictions, {d} skips, {d} failures, {d} cancellations\n", .{ ds.writes, ds.reads, ds.write_bytes, ds.read_bytes, ds.evictions, ds.skips, ds.failures, ds.cancellations });
             std.debug.print("zerv: disk source retention: total {d:.3} s, maximum {d:.3} s; {d} CPU and {d} GPU quanta\n", .{ @as(f64, @floatFromInt(d.source_hold_ns)) / 1e9, @as(f64, @floatFromInt(d.source_max_hold_ns)) / 1e9, d.source_cpu_quanta, d.source_gpu_quanta });
+        }
+        if (demand_mode != .off) {
+            std.debug.print("zerv: queued demand: {d} source waits, {d} urgent protection override attempts\n", .{ model_backend.demand_waits, model_backend.demand_overrides });
+            if (model_backend.disk_archive) |d| {
+                const ra = d.read_ahead;
+                std.debug.print("zerv: staging prefetch: {d} jobs, {d} handoffs, {d} cancellations; {d} bytes submitted, {d} completed while speculative, {d} completed bytes discarded\n", .{ ra.starts, ra.handoffs, ra.cancellations, ra.submitted_bytes, ra.completed_bytes, ra.discarded_bytes });
+            }
         }
         if (model_backend.preparation_owner) |*p| {
             const ps = p.counters;

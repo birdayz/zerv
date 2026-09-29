@@ -8,6 +8,7 @@ pub const prefix = @import("prefix.zig");
 pub const checkpoint = @import("checkpoint.zig");
 pub const residency = @import("residency.zig");
 pub const archive = @import("archive.zig");
+pub const readahead = @import("readahead.zig");
 pub const kvcache = @import("kvcache.zig");
 pub const pressure = @import("pressure.zig");
 pub const spec = @import("spec.zig");

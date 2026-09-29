@@ -147,7 +147,7 @@ zerv_test(
     name = "archive",
     sha = True,
     deps = ["//src/session", "//src/storage"],
-    embeds = ["fixtures/archive/oracle.json", "fixtures/archive/windows.json", "fixtures/storage/positional.bin", "reference/generate_archive_fixture.py", "reference/generate_archive_windows.py"],
+    embeds = ["fixtures/archive/oracle.json", "fixtures/archive/windows.json", "fixtures/storage/positional.bin", "reference/generate_archive_fixture.py", "reference/generate_archive_windows.py", "fixtures/queued-demand.json", "reference/generate_demand_fixture.py"],
 )
 
 zerv_test(
@@ -165,7 +165,7 @@ zerv_test(
 zerv_test(
     name = "kvcache",
     deps = ["//src/session"],
-    embeds = ["fixtures/cache-sources.json", "reference/generate_cache_source_fixture.py", "fixtures/tiering-pressure.json", "reference/generate_tiering_pressure_fixture.py"],
+    embeds = ["fixtures/cache-sources.json", "reference/generate_cache_source_fixture.py", "fixtures/tiering-pressure.json", "reference/generate_tiering_pressure_fixture.py", "fixtures/queued-demand.json"],
 )
 
 zerv_test(

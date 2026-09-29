@@ -409,3 +409,6 @@ finish independent tests and benchmark gates before advancing.
      staging-window prefetch, not whole-image fetching. Token callback lifetime,
      request generation, record pin and foreground ticket reserve must be verified
      by an independent event fixture before native implementation. Not implemented.
+
+- [Queued-demand implementation plan](design/queued-demand-implementation.md) — paper-derived ordered D.2 work and acceptance gates.
+- [D.2 intermediate verification](bench/2026-09-29-queued-demand.md) — cache/scheduler tests, strengthened negative controls, window1/2 × 257/80k exact model checks and independent numerical oracle; serving/performance gates still open.

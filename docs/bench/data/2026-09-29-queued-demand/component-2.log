@@ -1,0 +1,53 @@
+DEBUG: /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/external/rules_python+/python/private/py_executable.bzl:1595:14: 
+======================================================================
+WARNING: Target @@//tools:py is using implicit __init__.py creation.
+  This diabolic behavior is deprecated and will be disabled by default in a
+  future release.
+  See https://github.com/bazel-contrib/rules_python/issues/2945
+
+  Ensure all __init__.py files are explicitly created and
+  added to the srcs or deps of your targets.
+
+  Disable implicit creation for your module in MODULE.bazel:
+
+    rules_python_config = use_extension("@rules_python//python/extensions:config.bzl", "config")
+    rules_python_config.explicit_init_py(default = True)
+
+  Or for a specific target by setting:
+
+    legacy_create_init = 0
+
+  Or globally with the following Bazel flag:
+
+    --incompatible_default_to_explicit_init_py
+======================================================================
+INFO: Invocation ID: e4eb50a4-63af-4297-a5b2-2428f535cef1
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+WARNING: Build option --compilation_mode has changed, discarding analysis cache (this can be expensive, see https://bazel.build/advanced/performance/iteration-speed).
+Analyzing: target //bench:zerv-archive-bench (0 packages loaded, 0 targets configured)
+Analyzing: target //bench:zerv-archive-bench (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed target //bench:zerv-archive-bench (0 packages loaded, 786 targets configured).
+INFO: Found 1 target...
+Target //bench:zerv-archive-bench up-to-date:
+  bazel-bin/bench/zerv-archive-bench
+INFO: Elapsed time: 0.397s, Critical Path: 0.00s
+INFO: 1 process: 10 action cache hit, 1 internal.
+INFO: Build completed successfully, 1 total action
+INFO: Invocation ID: 57439c0c-7231-4036-864d-fef20c47f366
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+WARNING: Build option --compilation_mode has changed, discarding analysis cache (this can be expensive, see https://bazel.build/advanced/performance/iteration-speed).
+Analyzing: target //bazel:zig (0 packages loaded, 0 targets configured)
+Analyzing: target //bazel:zig (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed target //bazel:zig (0 packages loaded, 681 targets configured).
+INFO: Found 1 target...
+Target //bazel:zig up-to-date:
+  bazel-bin/bazel/zig
+INFO: Elapsed time: 0.314s, Critical Path: 0.00s
+INFO: 1 process: 5 action cache hit, 1 internal.
+INFO: Build completed successfully, 1 total action

@@ -46,7 +46,7 @@ const Job = struct {
 const Pending = struct { ticket: storage.Ticket, slot: u32, chunk: u32 };
 pub const Progress = struct { done: bool = false, progressed: bool = false, position: u32 = 0 };
 /// Drain/acknowledge owners even when discretionary new work is forbidden.
-pub const Advance = struct { allow_start: bool = true, max_pending: u32 = storage.max_depth };
+pub const Advance = struct { allow_start: bool = true, max_pending: u32 = storage.max_depth, allow_upload: bool = true };
 
 pub const Archive = struct {
     allocator: std.mem.Allocator,
@@ -274,7 +274,7 @@ pub const Archive = struct {
             if (held.slot != slot) continue;
             // Leave completed reads on disk-owned tickets until an upload can start.
             // Canceled jobs can drain without waiting for another job's device quantum.
-            if (!j.writing and j.failure == null and self.device_pending != null) continue;
+            if (!j.writing and j.failure == null and (self.device_pending != null or !options.allow_upload)) continue;
             const c = (try self.store.poll(held.ticket)) orelse continue;
             if (!c.exact()) fail(j, error.DiskIoFailed) else {
                 if (j.writing) self.stats.write_bytes += self.store.slot_bytes else self.stats.read_bytes += self.store.slot_bytes;

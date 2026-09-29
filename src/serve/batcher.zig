@@ -35,6 +35,7 @@ pub const Order = enum { shortest, fifo };
 /// Optional backend pollCache(slot, cancel): error only after all I/O is drained.
 pub const CachePoll = struct { done: bool = false, progressed: bool = false, position: u32 = 0 };
 /// Optional background owner: terminal errors mean all its borrowed state drained.
+pub const Demand = struct { slot: u32, order: u64, tokens: []const u32 };
 pub const MaintenancePoll = struct { pending: bool = false, progressed: bool = false, reclaimed: bool = false };
 
 pub const Stats = struct {
@@ -108,6 +109,7 @@ pub fn Batcher(comptime Backend: type) type {
         };
         const can_poll = @hasDecl(BackendType, "pollCache");
         const can_maintain = @hasDecl(BackendType, "pollMaintenance");
+        const can_demand = @hasDecl(BackendType, "pollDemand");
         pub const Options = struct {
             slots: u32,
             vocab: usize,
@@ -116,6 +118,7 @@ pub fn Batcher(comptime Backend: type) type {
             order: Order = .fifo,
             /// Prompts per packed chunk at most (1: one prompt at a time).
             pack: u32 = 1,
+            demand: bool = false,
             /// Time slice of swapped-out sequences (docs/specs/concurrent.md, "18d.3
             /// design"): once the longest-waiting one has waited this long and cannot come
             /// back, the sequence that has run longest since it last came in is swapped out
@@ -182,6 +185,7 @@ pub fn Batcher(comptime Backend: type) type {
         stopping: bool = false,
         io_cursor: u32 = 0,
         maintenance_pending: bool = false,
+        demand_changed: bool = false,
         held_rows: u32 = 0,
         /// Completed prompts whose logits are not yet sampled (a new chunk would overwrite them).
         prefill_holds: u32 = 0,
@@ -296,8 +300,13 @@ pub fn Batcher(comptime Backend: type) type {
                 self.mutex.unlock(self.io);
                 return error.InvalidState;
             }
+            if (op != .step and self.arrivals == std.math.maxInt(u64)) {
+                self.mutex.unlock(self.io);
+                return error.ArrivalExhausted;
+            }
             self.release(s); // a new operation implies the previous logits were consumed
             s.op = op;
+            s.reclaim_epoch = null;
             s.canceled = false;
             s.tokens = tokens;
             s.done = 0;
@@ -380,6 +389,7 @@ pub fn Batcher(comptime Backend: type) type {
         /// admitted, or when it has not failed admission since the last release and no older
         /// prompt is waiting for memory.
         fn eligible(self: *const Self, s: *const Slot) bool {
+            if (s.op == .begin and s.reclaim_epoch != null and s.reclaim_epoch.? == self.admit_epoch) return false;
             if (s.op == .reset or s.op == .begin or s.op == .checkpoint) return true;
             // A prompt swapped out while it waited comes back through `swapIn` first.
             if (s.swapped) return false;
@@ -516,6 +526,41 @@ pub fn Batcher(comptime Backend: type) type {
             return .{};
         }
 
+        /// Temporarily retain the oldest queued begin's tokens across the unlocked hook.
+        fn pollDemand(self: *Self) MaintenancePoll {
+            if (comptime !can_demand) return .{};
+            if (!self.options.demand) return .{};
+            var chosen: ?u32 = null;
+            var reads = false;
+            for (self.slot[0..self.options.slots], 0..) |*s, i| {
+                reads = reads or s.io_pending;
+                if (self.stopping or !s.used or s.closing or s.running or s.op != .begin) continue;
+                if (chosen == null or s.order < self.slot[chosen.?].order) chosen = @intCast(i);
+            }
+            const demand: ?Demand = if (chosen) |i| blk: {
+                self.slot[i].running = true;
+                break :blk .{ .slot = i, .order = self.slot[i].order, .tokens = self.slot[i].tokens };
+            } else null;
+            const stopping = self.stopping;
+            self.mutex.unlock(self.io);
+            const result = self.backend.pollDemand(demand, stopping, reads);
+            self.mutex.lockUncancelable(self.io);
+            if (chosen) |i| {
+                const s = &self.slot[i];
+                s.running = false;
+                if (s.canceled or s.closing or self.stopping) {
+                    s.op = .none;
+                    s.tokens = &.{};
+                    s.err = error.Canceled;
+                    self.complete(s);
+                    self.demand_changed = true;
+                }
+            }
+            const p = result catch MaintenancePoll{ .progressed = true, .reclaimed = true };
+            if (p.reclaimed) self.admit_epoch += 1;
+            return p;
+        }
+
         fn pollBackground(self: *Self, reads_pending: bool) MaintenancePoll {
             if (comptime !can_maintain) return .{};
             const in_chunk = self.pack != null;
@@ -559,7 +604,15 @@ pub fn Batcher(comptime Backend: type) type {
                     self.mutex.unlock(self.io);
                     continue;
                 }
+                const demand_progress = self.pollDemand();
+                if (self.to_release != 0 or self.demand_changed) {
+                    self.demand_changed = false;
+                    self.mutex.unlock(self.io);
+                    continue;
+                }
                 var io_progress = self.pollIo();
+                io_progress.pending = io_progress.pending or demand_progress.pending;
+                io_progress.progressed = io_progress.progressed or demand_progress.progressed;
                 const background = self.pollBackground(io_progress.pending);
                 io_progress.pending = io_progress.pending or background.pending;
                 io_progress.progressed = io_progress.progressed or background.progressed;
@@ -901,7 +954,7 @@ pub fn Batcher(comptime Backend: type) type {
                     var start: u32 = 0;
                     const out: anyerror!void = switch (op) {
                         .reset => self.backend.reset(pre.?),
-                        .begin => if (self.backend.begin(pre.?, s.tokens)) |v| {
+                        .begin => if (if (comptime @hasDecl(BackendType, "beginWithDemand")) self.backend.beginWithDemand(pre.?, s.order, s.tokens) else self.backend.begin(pre.?, s.tokens)) |v| {
                             start = v;
                         } else |e| e,
                         .checkpoint => self.backend.checkpoint(pre.?, s.tokens),
@@ -917,6 +970,14 @@ pub fn Batcher(comptime Backend: type) type {
                             continue;
                         }
                     };
+                    if (out) |_| {} else |e| {
+                        if (op == .begin and e == error.CacheReclaimPending and !s.canceled and !s.closing and !self.stopping) {
+                            s.running = false;
+                            s.reclaim_epoch = self.admit_epoch;
+                            self.mutex.unlock(self.io);
+                            continue;
+                        }
+                    }
                     s.op = .none;
                     s.tokens = &.{};
                     if (op != .checkpoint) {

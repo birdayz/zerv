@@ -6,6 +6,7 @@ const model = @import("model");
 const storage = @import("storage");
 const archive = @import("session").archive;
 const kvcache = @import("session").kvcache;
+const readahead = @import("session").readahead;
 const linux = std.os.linux;
 pub const staging_tickets = 8;
 pub const write_tickets = staging_tickets - 2;
@@ -42,6 +43,7 @@ pub const Disk = struct {
     headroom_pages: u32,
     failed_generation: [model.max_snapshots]u64 = @splat(0),
     source_cancel_requested: bool = false,
+    read_ahead: readahead.Owner = .{},
     source_started_ns: i96 = 0,
     source_hold_ns: i96 = 0,
     source_max_hold_ns: i96 = 0,
@@ -116,6 +118,15 @@ pub const Disk = struct {
         try self.catalog.startRead(slot, record);
         self.positions[slot] = n;
     }
+    /// Populate the destination map before transferring the exact speculative job.
+    pub fn takeReadAhead(self: *Disk, key: readahead.Key) !void {
+        const held = self.read_ahead.held orelse return error.InvalidReadAhead;
+        if (!self.read_ahead.matches(key)) return error.InvalidReadAhead;
+        const n = self.catalog.entries[held.record].len;
+        try self.m.archiveMap(key.slot, n, self.map(key.slot, n), true);
+        _ = try self.read_ahead.take(&self.catalog, key);
+        self.positions[key.slot] = n;
+    }
     /// One optional write job independent of all request slots. No request-state pause.
     pub fn startSource(self: *Disk, cache: kvcache.Cache) !bool {
         return self.startSourceHandle(cache, cache.coldSource() orelse return false);
@@ -148,7 +159,7 @@ pub const Disk = struct {
     }
     pub fn pollSourceWith(self: *Disk, cancel: bool, allow_start: bool) !archive.Progress {
         if (self.source == null) return .{ .done = true, .progressed = false };
-        const p = self.pollWith(self.m.state_layout.slots, cancel, .{ .allow_start = allow_start, .max_pending = write_tickets }) catch |err| {
+        const p = self.pollWith(self.m.state_layout.slots, cancel, .{ .allow_start = allow_start, .max_pending = write_tickets - self.read_ahead.occupancy(&self.catalog) }) catch |err| {
             self.releaseSource(); // archive errors are returned only after both owners drain
             return err;
         };

@@ -9,6 +9,8 @@ const session = @import("session");
 const batcher = @import("batcher.zig");
 const disk = @import("disk.zig");
 const preparation = @import("preparation.zig");
+const DemandKey = session.readahead.Key;
+pub const DemandMode = enum { off, protect, prefetch };
 
 pub const eos = [_][]const u8{ "<|im_end|>", "<|endoftext|>" };
 
@@ -277,6 +279,46 @@ pub const ModelBackend = struct {
     disk_archive: ?*disk.Disk = null,
     pressure_reclaim: bool = false,
     preparation_owner: ?preparation.Preparation = null,
+    demand_mode: DemandMode = .off,
+    prefetch_chunks: u32 = 1,
+    demand_key: ?DemandKey = null,
+    suppressed_prefetch: ?DemandKey = null,
+    demand_overrides: u64 = 0,
+    demand_waits: u64 = 0,
+
+    fn sameDemand(a: ?DemandKey, b: ?DemandKey) bool {
+        return if (a) |x| if (b) |y| x.eql(y) else false else b == null;
+    }
+    /// Tokens are borrowed only for this callback. Longer ownership uses key + record pin.
+    pub fn pollDemand(self: *ModelBackend, requested: ?batcher.Demand, stopping: bool, reads_pending: bool) !batcher.MaintenancePoll {
+        if (self.demand_mode == .off) return .{};
+        const demand = if (stopping) null else requested;
+        const key: ?DemandKey = if (demand) |q| .{ .slot = q.slot, .order = q.order } else null;
+        self.demand_key = key;
+        const hot = if (self.cache) |c| c.setDemand(if (demand) |q| q.tokens else &.{}) else null;
+        if (hot) |h| if (h.has_host and h.source_held) {
+            if (self.disk_archive) |d| d.source_cancel_requested = true;
+            if (self.preparation_owner) |*p| if (p.held != null) {
+                p.canceled = true;
+            };
+        };
+        const d = self.disk_archive orelse return .{};
+        if (d.read_ahead.held) |held| {
+            if (reads_pending or (hot != null and hot.?.tokens >= d.catalog.entries[held.record].len)) d.read_ahead.cancel();
+            const p = d.read_ahead.poll(&d.catalog, key, !stopping and !reads_pending) catch |e| {
+                self.suppressed_prefetch = held.key;
+                self.noteFailure();
+                return e;
+            };
+            return .{ .pending = !p.done, .progressed = p.progressed, .reclaimed = p.done };
+        }
+        if (self.demand_mode != .prefetch or stopping or reads_pending or key == null or sameDemand(key, self.suppressed_prefetch)) return .{};
+        const record = d.catalog.lookup(demand.?.tokens) orelse return .{};
+        if (hot != null and hot.?.tokens >= d.catalog.entries[record].len) return .{};
+        try d.read_ahead.start(&d.catalog, key.?, record, self.prefetch_chunks);
+        const p = try d.read_ahead.poll(&d.catalog, key, true);
+        return .{ .pending = true, .progressed = p.progressed };
+    }
 
     pub fn initPreparation(self: *ModelBackend, io: std.Io, options: preparation.Options) !void {
         if (self.preparation_owner != null) return error.InvalidOptions;
@@ -431,10 +473,40 @@ pub const ModelBackend = struct {
     }
     /// Start `prompt` in `slot`: reset, then the cache's best checkpoint (or cold).
     pub fn begin(self: *ModelBackend, slot: u32, prompt: []const u32) !u32 {
+        return self.beginKey(slot, null, prompt);
+    }
+    pub fn beginWithDemand(self: *ModelBackend, slot: u32, order: u64, prompt: []const u32) !u32 {
+        return self.beginKey(slot, .{ .slot = slot, .order = order }, prompt);
+    }
+    fn beginKey(self: *ModelBackend, slot: u32, key: ?DemandKey, prompt: []const u32) !u32 {
+        if (self.demand_mode != .off) {
+            if (self.cache) |c| if (c.setDemand(prompt)) |h| if (h.has_host and h.source_held) {
+                if (self.disk_archive) |d| d.source_cancel_requested = true;
+                if (self.preparation_owner) |*p| if (p.held != null) {
+                    p.canceled = true;
+                };
+                self.demand_waits += 1;
+                return error.CacheReclaimPending;
+            };
+            if (self.disk_archive) |d| if (d.read_ahead.held) |held| if (held.key.slot == slot and (key == null or !d.read_ahead.matches(key.?))) {
+                d.read_ahead.cancel();
+                return error.CacheReclaimPending;
+            };
+        }
         const m = self.m;
         m.select(slot) catch |e| return self.check(e);
         m.reset() catch |e| return self.check(e);
         if (m.options.kv_share) m.releasePages(slot) catch |e| return self.check(e);
+        if (self.disk_archive) |d| if (key) |k| if (d.read_ahead.matches(k)) {
+            const n = d.catalog.entries[d.read_ahead.held.?.record].len;
+            if (!self.admit(slot, n)) {
+                d.read_ahead.cancel();
+                self.suppressed_prefetch = k;
+                return error.CacheReclaimPending;
+            }
+            d.takeReadAhead(k) catch |e| return self.check(e);
+            return error.PendingIo;
+        };
         const hot = if (self.cache) |c| try c.restore(self.device(), slot, prompt) else 0;
         if (self.disk_archive) |d| if (d.catalog.lookup(prompt)) |record| {
             const n = d.catalog.entries[record].len;
@@ -458,7 +530,14 @@ pub const ModelBackend = struct {
     /// False: nothing left to free.
     fn makeRoom(self: *ModelBackend, except: ?u32) bool {
         if (self.preparation_owner) |*p| if (p.held != null) return false;
-        if (self.cache) |c| if (c.evict(self.device())) return true;
+        if (self.cache) |c| {
+            if (c.evict(self.device())) return true;
+            if (self.demand_mode != .off) {
+                c.clearDemand();
+                self.demand_overrides += 1;
+                if (c.evict(self.device())) return true;
+            }
+        }
         if (self.disk_archive) |d| if (d.source != null) {
             self.pressure_reclaim = true;
             d.source_cancel_requested = true;
@@ -470,7 +549,7 @@ pub const ModelBackend = struct {
             if (except != null and except.? == slot or !self.m.holdsResident(slot)) continue;
             while (true) {
                 const moved = self.m.swapShared(slot) catch |e| {
-                    if (e == error.SwapFull) if (self.cache) |c| if (c.evictHost(self.device())) continue;
+                    if (e == error.SwapFull) if (self.evictHostForLive()) continue;
                     if (e != error.SwapFull) self.noteFailure();
                     break;
                 };
@@ -516,6 +595,7 @@ pub const ModelBackend = struct {
         }
     }
     pub fn release(self: *ModelBackend, slot: u32) void {
+        if (self.disk_archive) |d| if (d.read_ahead.held) |held| if (held.key.slot == slot) d.read_ahead.cancel();
         self.pressure_reclaim = false;
         if (!self.m.options.kv_share) return;
         self.m.releasePages(slot) catch self.noteFailure();
@@ -538,13 +618,21 @@ pub const ModelBackend = struct {
             return true;
         }
     }
+    fn evictHostForLive(self: *ModelBackend) bool {
+        const c = self.cache orelse return false;
+        if (c.evictHost(self.device())) return true;
+        if (self.demand_mode == .off) return false;
+        c.clearDemand();
+        self.demand_overrides += 1;
+        return c.evictHost(self.device());
+    }
     pub fn swapOut(self: *ModelBackend, slot: u32) !bool {
         if (self.m.swap_pages == 0) return false;
         while (true) {
             self.m.swapOut(slot) catch |e| {
                 // A running sequence goes before demoted checkpoints in the host store.
                 if (e == error.SwapFull) {
-                    if (self.cache) |c| if (c.evictHost(self.device())) continue;
+                    if (self.evictHostForLive()) continue;
                     return false;
                 }
                 return self.check(e);

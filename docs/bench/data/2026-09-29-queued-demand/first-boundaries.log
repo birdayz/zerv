@@ -1,0 +1,60 @@
+INFO: Invocation ID: a06fac6c-82bb-46fe-a3b9-334e098e9c88
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 4 targets (1 packages loaded, 0 targets configured)
+Analyzing: 4 targets (1 packages loaded, 0 targets configured)
+
+INFO: Analyzed 4 targets (2 packages loaded, 35 targets configured).
+[29 / 39] zig test //tests:kvcache; 1s disk-cache, linux-sandbox ... (4 actions running)
+[30 / 39] 1 / 4 tests; zig test //tests:kvcache; 2s disk-cache, linux-sandbox ... (3 actions running)
+FAIL: //tests:archive (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/archive/test.log)
+INFO: From Testing //tests:archive:
+==================== Test output for //tests:archive:
+1/11 archive.test.archive independent POSIX SHA256 goldens, eviction, exact partial tails and no steady allocation...OK
+2/11 archive.test.archive cancellation drains, leases block eviction, corruption and I/O failures never publish...OK
+3/11 archive.test.archive options, longest prefix and device-error drain...OK
+4/11 archive.test.async capture keeps staging leased, submits no early disk write, cancellation waits for device...OK
+5/11 archive.test.async upload keeps disk-done ticket until acknowledgment, other slot disk progress and cancel...OK
+6/11 archive.test.async device start and completion faults drain before slot reuse...OK
+7/11 archive.test.archive additional source job is independent of all 64 request identities...OK
+8/11 archive.test.archive optional issue gate yields to reads, reserves tickets and retains clean backing...OK
+9/11 archive.test.archive production windows match independent POSIX hashes, drain cancellation and reserve reads...OK
+10/11 archive.test.read-ahead independent ticket sets preserve reserve and never upload before handoff...expected 0, found 1
+FAIL (TestExpectedEqual)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/9095/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:118:17: 0x12664c3 in expectEqualInner__anon_44827 (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/9095/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/testing.zig:83:5: 0x126ec32 in expectEqual (archive.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/9095/execroot/_main/tests/archive.zig:533:9: 0x126edb7 in test.read-ahead independent ticket sets preserve reserve and never upload before handoff (archive.zig)
+11/11 fast_sha256.test.same digests as std...OK
+10 passed; 0 skipped; 1 failed.
+================================================================================
+[31 / 39] 2 / 4 tests, 1 failed; zig test //tests:kvcache; 3s disk-cache, linux-sandbox ... (2 actions running)
+[32 / 39] 2 / 4 tests, 1 failed; zig test //tests:archive; 7s disk-cache, linux-sandbox ... (2 actions, 1 running)
+FAIL: //tests:archive_release_fast (Exit 1) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/archive_release_fast/test.log)
+INFO: From Testing //tests:archive_release_fast:
+==================== Test output for //tests:archive_release_fast:
+1/11 archive.test.archive independent POSIX SHA256 goldens, eviction, exact partial tails and no steady allocation...OK
+2/11 archive.test.archive cancellation drains, leases block eviction, corruption and I/O failures never publish...OK
+3/11 archive.test.archive options, longest prefix and device-error drain...OK
+4/11 archive.test.async capture keeps staging leased, submits no early disk write, cancellation waits for device...OK
+5/11 archive.test.async upload keeps disk-done ticket until acknowledgment, other slot disk progress and cancel...OK
+6/11 archive.test.async device start and completion faults drain before slot reuse...OK
+7/11 archive.test.archive additional source job is independent of all 64 request identities...OK
+8/11 archive.test.archive optional issue gate yields to reads, reserves tickets and retains clean backing...OK
+9/11 archive.test.archive production windows match independent POSIX hashes, drain cancellation and reserve reads...OK
+10/11 archive.test.read-ahead independent ticket sets preserve reserve and never upload before handoff...expected 0, found 1
+FAIL (TestExpectedEqual)
+11/11 fast_sha256.test.same digests as std...OK
+10 passed; 0 skipped; 1 failed.
+================================================================================
+INFO: Found 4 test targets...
+INFO: Elapsed time: 8.326s, Critical Path: 8.14s
+INFO: 17 processes: 24 action cache hit, 9 internal, 12 linux-sandbox.
+INFO: Build completed, 2 tests FAILED, 17 total actions
+//tests:archive                                                          FAILED in 1.9s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/archive/test.log
+//tests:archive_release_fast                                             FAILED in 0.4s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/archive_release_fast/test.log
+
+Executed 4 out of 4 tests: 2 tests pass and 2 fail locally.
+There were tests whose specified size is too big. Use the --test_verbose_timeout_warnings command line option to see which ones these are.

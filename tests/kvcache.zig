@@ -744,3 +744,95 @@ test "pressure metadata: host ancestry, leaf-only discard, generation and capaci
     bad.free_host_pages = 0;
     try t.expectError(error.InvalidCapacity, bad.validate());
 }
+
+test "queued demand independent prefix sets protect ancestors without source leases" {
+    const Oracle = struct { cache_cases: []struct { nodes: [][]u32, prompt: []u32, best: i32, protected: []bool } };
+    const parsed = try std.json.parseFromSlice(Oracle, t.allocator, @embedFile("fixtures/queued-demand.json"), .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+    for (parsed.value.cache_cases) |case| {
+        var fake: Fake = .{ .host_n = 256 };
+        const r = try kvcache.Radix.create(t.allocator, 8, ctx_max, ctx_max / P + 1, B);
+        const c = r.cache();
+        defer c.deinit(t.allocator);
+        for (case.nodes) |tokens| {
+            try fake.run(0, tokens);
+            try c.checkpoint(fake.device(), 0, tokens);
+            fake.release(0);
+        }
+        const demand = c.setDemand(case.prompt);
+        if (case.best < 0) try t.expect(demand == null) else {
+            try t.expectEqual(@as(u32, @intCast(case.best)), demand.?.handle.index);
+            try t.expectEqual(case.nodes[@intCast(case.best)].len, demand.?.tokens);
+        }
+        for (case.protected, 0..) |protected, i| {
+            try t.expectEqual(protected, r.demandProtected(i));
+            try t.expectEqual(@as(u32, 0), r.sources[i].refs);
+            if (protected) {
+                try t.expect(c.sourceCandidate(@intCast(i)) == null);
+                try t.expect(c.preparationCandidate(@intCast(i)) == null);
+                try t.expectError(error.Busy, c.discardSource(fake.device(), .{ .index = @intCast(i), .generation = r.sources[i].generation }));
+            }
+        }
+        while (c.evict(fake.device()) or c.evictHost(fake.device())) {}
+        for (case.protected, 0..) |protected, i| if (protected) try t.expectEqualSlices(u32, case.nodes[i], r.store.entryTokens(i));
+        c.clearDemand();
+        while (c.evict(fake.device()) or c.evictHost(fake.device())) {}
+        try t.expectEqual(@as(u32, pool), fake.freeCount());
+        try t.expectEqual(@as(u32, 0), fake.violations);
+    }
+}
+
+test "queued demand permits host promotion and follows newly inserted ancestry" {
+    var fake: Fake = .{ .host_n = 64 };
+    const r = try kvcache.Radix.create(t.allocator, 4, ctx_max, ctx_max / P + 1, B);
+    const c = r.cache();
+    defer c.deinit(t.allocator);
+    const tokens = [_]u32{ 1, 2, 3, 4, 5, 6, 7, 8, 10 };
+    try fake.run(0, tokens[0..8]);
+    try c.checkpoint(fake.device(), 0, tokens[0..8]);
+    fake.release(0);
+    try t.expect(c.evict(fake.device()));
+    const demand = c.setDemand(&tokens).?;
+    try t.expect(demand.has_host and !demand.source_held);
+    try t.expect(!c.evictHost(fake.device()));
+    @memcpy(fake.hist[1][0..tokens.len], &tokens);
+    try t.expectEqual(@as(u32, 8), try c.restore(fake.device(), 1, &tokens));
+    try t.expect(fake.exact(1));
+    try t.expectEqual(@as(u64, 1), c.stats().promotions);
+    fake.release(1);
+    // Insert a shorter checkpoint after selecting demand: its new parent link must
+    // be protected, without reselecting demand or freezing the previous ancestry.
+    try fake.run(0, tokens[0..4]);
+    try c.checkpoint(fake.device(), 0, tokens[0..4]);
+    fake.release(0);
+    try t.expectEqual(@as(u32, 2), r.store.live());
+    for (0..2) |i| {
+        try t.expect(r.demandProtected(i));
+        try t.expectEqual(@as(u32, 0), r.sources[i].refs);
+    }
+    try t.expect(!c.evict(fake.device()));
+    c.clearDemand();
+    while (c.evict(fake.device()) or c.evictHost(fake.device())) {}
+    try t.expectEqual(@as(u32, pool), fake.freeCount());
+    try t.expectEqual(@as(u32, 0), fake.violations);
+}
+
+test "queued demand stale generation never protects a reused cache index" {
+    var fake: Fake = .{};
+    const r = try kvcache.Radix.create(t.allocator, 1, ctx_max, ctx_max / P + 1, B);
+    const c = r.cache();
+    defer c.deinit(t.allocator);
+    try fake.run(0, &.{ 1, 2, 3, 4 });
+    try c.checkpoint(fake.device(), 0, &.{ 1, 2, 3, 4 });
+    fake.release(0);
+    const old = c.setDemand(&.{ 1, 2, 3, 4, 5 }).?.handle;
+    c.clearDemand();
+    try t.expect(c.evict(fake.device()));
+    try fake.run(0, &.{ 5, 6, 7, 8 });
+    try c.checkpoint(fake.device(), 0, &.{ 5, 6, 7, 8 });
+    fake.release(0);
+    r.demand = old; // inject stale preference across reuse, as a generation negative control
+    try t.expect(!r.demandProtected(old.index));
+    try t.expect(c.evict(fake.device()));
+    try t.expectEqual(@as(u32, pool), fake.freeCount());
+}

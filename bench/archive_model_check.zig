@@ -13,13 +13,14 @@ pub fn main(init: std.process.Init) !void {
     const chunk_mib = if (args.len >= 7) try std.fmt.parseInt(u32, args[6], 10) else 1;
     const prepare_window = if (args.len == 8) try std.fmt.parseInt(u32, args[7], 10) else 1;
     const window = try zerv.serve.disk.Window.init(chunk_mib, 8 << 20);
+    const demand_mode = args.len >= 6 and std.mem.eql(u8, args[5], "demand");
     const prepare_mode = args.len >= 6 and std.mem.eql(u8, args[5], "prepare");
     const disk_mode = args.len >= 5 and !(prepare_mode and std.mem.eql(u8, args[3], "-"));
     const cache_mode = disk_mode or prepare_mode;
     const prefill_deferred = args.len >= 6 and std.mem.eql(u8, args[5], "prefill-chunk");
     const prefill_mode = prefill_deferred or (args.len >= 6 and std.mem.eql(u8, args[5], "prefill"));
     const pressure_mode = prefill_mode or (args.len >= 6 and std.mem.eql(u8, args[5], "pressure"));
-    const source_mode = prepare_mode or pressure_mode or (args.len >= 6 and std.mem.eql(u8, args[5], "source"));
+    const source_mode = demand_mode or prepare_mode or pressure_mode or (args.len >= 6 and std.mem.eql(u8, args[5], "source"));
     if (args.len >= 6 and !source_mode and !std.mem.eql(u8, args[5], "disk")) return error.Usage;
     const n = try std.fmt.parseInt(u32, args[2], 10);
     if (n == 0 or n > 80000) return error.Usage;
@@ -72,7 +73,7 @@ pub fn main(init: std.process.Init) !void {
     const pack_gold = try a.alloc(f32, 2 * model.config.vocab);
     defer a.free(pack_gold);
     var prefill_source_quanta: u64 = 0;
-    if (prefill_mode or prepare_mode) {
+    if (prefill_mode or prepare_mode or demand_mode) {
         for (&pack_tokens, 0..) |*prompt, slot| {
             for (prompt, 0..) |*token, i| token.* = @intCast(31 + slot * 1000 + i * 7);
             try backend.reset(@intCast(slot));
@@ -120,6 +121,134 @@ pub fn main(init: std.process.Init) !void {
     const continuation = [_]u32{ 11, 220, 42, 1000 };
     const logits = try a.alloc(f32, continuation.len * model.config.vocab);
     defer a.free(logits);
+    if (demand_mode) {
+        const d = backend.disk_archive orelse return error.Usage;
+        try std.testing.expect(try d.startWrite(0, tokens));
+        _ = try drain(&backend, init.io, 0, false);
+        for (continuation, 0..) |t, i| {
+            try std.testing.expect(try backend.grow(0));
+            @memcpy(logits[i * model.config.vocab ..][0..model.config.vocab], try m.step(t));
+        }
+        try backend.reset(0);
+        while (backend.cache.?.evict(backend.device()) or backend.cache.?.evictHost(backend.device())) {}
+        backend.demand_mode = .prefetch;
+        backend.prefetch_chunks = prepare_window;
+        const prompt = try a.alloc(u32, n + 1);
+        defer a.free(prompt);
+        @memcpy(prompt[0..n], tokens);
+        prompt[n] = continuation[0];
+        var queued: zerv.serve.batcher.Demand = .{ .slot = 1, .order = 7, .tokens = prompt };
+        const starts = d.catalog.stats.device_starts;
+        for (0..prepare_window + 1) |_| _ = try backend.pollDemand(queued, false, false);
+        try std.testing.expectEqual(starts, d.catalog.stats.device_starts);
+        try std.testing.expectEqual(prepare_window, d.read_ahead.occupancy(&d.catalog));
+        try std.testing.expectEqual(@as(u32, 0), m.mappedPages(1));
+        // Independent packed computation proceeds while this request has staging only.
+        try m.ensurePages(0, pack_tokens[0].len);
+        var unit = try m.prefillPackedSegment(&.{.{ .slot = 0, .tokens = &pack_tokens[0] }});
+        while (!unit.done) {
+            _ = try backend.pollDemand(queued, false, false);
+            try std.testing.expectEqual(starts, d.catalog.stats.device_starts);
+            try std.testing.expectEqual(@as(u32, 0), m.mappedPages(1));
+            unit = try m.prefillPackedSegment(&.{});
+        }
+        if (!std.mem.eql(u8, std.mem.sliceAsBytes(pack_gold[0..model.config.vocab]), std.mem.sliceAsBytes(unit.logits.?))) return error.WrongReadAheadPackedLogits;
+        try backend.reset(0);
+        // Generation reuse cancels the old disk pin; it cannot hand old tickets to a new begin.
+        queued.order = 8;
+        while (d.read_ahead.held != null) _ = try backend.pollDemand(queued, false, false);
+        try std.testing.expectEqual(@as(u64, 1), d.read_ahead.cancellations);
+        _ = try backend.pollDemand(queued, false, false);
+        try std.testing.expectError(error.CacheReclaimPending, backend.beginWithDemand(1, 7, prompt));
+        while (d.read_ahead.held != null) _ = try backend.pollDemand(null, true, false);
+        try std.testing.expectEqual(@as(u64, 2), d.read_ahead.cancellations);
+        queued.order = 9;
+        for (0..prepare_window + 1) |_| _ = try backend.pollDemand(queued, false, false);
+        try std.testing.expectError(error.PendingIo, backend.beginWithDemand(1, queued.order, prompt));
+        try std.testing.expect(d.read_ahead.held == null);
+        try std.testing.expectEqual(@as(u64, 1), d.read_ahead.handoffs);
+        try std.testing.expectEqual(n, try drain(&backend, init.io, 1, false));
+        try m.archiveMap(1, n, map, false);
+        at = 0;
+        while (at < gold.len) {
+            const count = @min(quantum, gold.len - at);
+            try m.archiveCopy(&c, &imported, 0, 1, n, map, at, count, false);
+            try m.state_layout.clearArchiveTail(m.snapshotBytes(), n, at, mem[0..count]);
+            if (!std.mem.eql(u8, gold[at..][0..count], mem[0..count])) return error.WrongReadAheadState;
+            at += count;
+        }
+        for (continuation, 0..) |t, i| {
+            try std.testing.expect(try backend.grow(1));
+            const got = try m.step(t);
+            if (!std.mem.eql(u8, std.mem.sliceAsBytes(got), std.mem.sliceAsBytes(logits[i * model.config.vocab ..][0..model.config.vocab]))) return error.WrongReadAheadLogits;
+        }
+        try backend.reset(1);
+        // An unrelated live slot exhausts private target admission. Drain the old
+        // reader before fallback, and suppress speculative restart for this identity.
+        queued.order = 10;
+        _ = try backend.pollDemand(queued, false, false);
+        try m.ensurePages(0, m.state_layout.context);
+        try std.testing.expectError(error.CacheReclaimPending, backend.beginWithDemand(1, queued.order, prompt));
+        while (d.read_ahead.held != null) _ = try backend.pollDemand(queued, false, false);
+        const attempts = d.read_ahead.starts;
+        for (0..4) |_| _ = try backend.pollDemand(queued, false, false);
+        try std.testing.expectEqual(attempts, d.read_ahead.starts);
+        try std.testing.expectEqual(@as(u32, 8), d.store.freeSlots());
+        try backend.reset(0);
+        try std.testing.expectError(error.PendingIo, backend.beginWithDemand(1, queued.order, prompt));
+        try std.testing.expectEqual(n, try drain(&backend, init.io, 1, false));
+        try backend.reset(1);
+        // Foreground reads preempt optional issue and drain the speculative record pin.
+        queued.order = 11;
+        _ = try backend.pollDemand(queued, false, false);
+        const issued = d.read_ahead.submitted_bytes;
+        while (d.read_ahead.held != null) _ = try backend.pollDemand(queued, false, true);
+        _ = try backend.pollDemand(queued, false, true);
+        try std.testing.expectEqual(issued, d.read_ahead.submitted_bytes);
+        try std.testing.expectEqual(@as(u64, 4), d.read_ahead.cancellations);
+        // Corrupt every digest so any disk completion order must fail before upload.
+        // Exercise the production miss/reset path after a speculative handoff.
+        queued.order = 12;
+        _ = try backend.pollDemand(queued, false, false);
+        const record = d.read_ahead.held.?.record;
+        for (0..d.catalog.entries[record].chunks) |chunk| d.catalog.digests[d.catalog.max_chunks * record + chunk][0] ^= 1;
+        const uploads = d.catalog.stats.device_starts;
+        try std.testing.expectError(error.PendingIo, backend.beginWithDemand(1, queued.order, prompt));
+        try std.testing.expectEqual(@as(u32, 0), try drain(&backend, init.io, 1, false));
+        try std.testing.expectEqual(uploads, d.catalog.stats.device_starts);
+        try std.testing.expectEqual(@as(u32, 0), m.slotPosition(1));
+        try std.testing.expectEqual(@as(u32, 0), m.mappedPages(1));
+        try std.testing.expectEqual(@as(u32, 0), d.catalog.entries[record].readers);
+        try std.testing.expectEqual(@as(u64, 2), d.read_ahead.handoffs);
+        _ = try backend.pollDemand(null, true, false);
+        try std.testing.expectEqual(@as(u32, 8), d.store.freeSlots());
+        // A source-held host prefix is a deferred hit, never silent cold recompute.
+        backend.demand_mode = .protect;
+        try backend.reset(0);
+        try m.ensurePages(0, 129);
+        _ = try m.prefill(tokens[0..128]);
+        const cache = backend.cache.?;
+        try cache.checkpoint(backend.device(), 0, tokens[0..128]);
+        @memcpy(logits[0..model.config.vocab], try m.step(tokens[128]));
+        try backend.reset(0);
+        while (cache.evict(backend.device())) {}
+        try std.testing.expect(try d.startSource(cache));
+        _ = try d.pollSource(false);
+        const short: zerv.serve.batcher.Demand = .{ .slot = 1, .order = 13, .tokens = tokens[0..129] };
+        _ = try backend.pollDemand(short, false, false);
+        try std.testing.expect(d.source_cancel_requested);
+        try std.testing.expectError(error.CacheReclaimPending, backend.beginWithDemand(1, short.order, short.tokens));
+        while (d.source != null) _ = try backend.pollMaintenance(false, false);
+        try std.testing.expectEqual(@as(u32, 128), try backend.beginWithDemand(1, short.order, short.tokens));
+        try std.testing.expect(try backend.grow(1));
+        if (!std.mem.eql(u8, std.mem.sliceAsBytes(logits[0..model.config.vocab]), std.mem.sliceAsBytes(try m.step(tokens[128])))) return error.WrongDemandHostHit;
+        try backend.reset(1);
+        _ = try backend.pollDemand(null, true, false);
+        try std.testing.expectEqual(@as(u32, 8), d.store.freeSlots());
+        try std.testing.expect(!backend.fatal.load(.acquire));
+        std.debug.print("{{\"source_conflict\":true,\"admission_drain\":true,\"demand\":true,\"tokens\":{d},\"disk\":true,\"exact_state\":true,\"exact_vocab_rows\":4,\"exact_packed_rows\":1,\"window\":{d},\"handoffs\":2,\"cancellations\":4,\"corrupt_miss\":true,\"foreground_preemption\":true,\"submitted_bytes\":{d}}}\n", .{ n, prepare_window, d.read_ahead.submitted_bytes });
+        return;
+    }
     if (prepare_mode) {
         const cache = backend.cache.?;
         try cache.checkpoint(backend.device(), 0, tokens);

@@ -474,3 +474,75 @@ test "archive production windows match independent POSIX hashes, drain cancellat
         try t.expect(!a.active(1) and a.containsReady(&.{1}));
     }
 }
+
+test "read-ahead independent ticket sets preserve reserve and never upload before handoff" {
+    const readahead = @import("session").readahead;
+    const Oracle = struct { generator_sha256: []const u8, staging_cases: []struct { chunks: u32, window: u32, busy: u32, outcome: []const u8, staged: u32, uploaded: u32, final_readers: u32, final_owned: u32 } };
+    const parsed = try std.json.parseFromSlice(Oracle, t.allocator, @embedFile("fixtures/queued-demand.json"), .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+    try t.expectEqualStrings(parsed.value.generator_sha256, &hex(@embedFile("reference/generate_demand_fixture.py")));
+    var tmp = t.tmpDir(.{});
+    defer tmp.cleanup();
+    const mem = try t.allocator.alignedAlloc(u8, .fromByteUnits(4096), 8 * 4096);
+    defer t.allocator.free(mem);
+    const store = try open(tmp.dir, mem);
+    defer store.destroy() catch @panic("pending read-ahead disk");
+    for (parsed.value.staging_cases) |case| {
+        var a = try archive.Archive.init(t.allocator, store, opts);
+        defer a.deinit() catch @panic("pending read-ahead archive");
+        var fake: Fake = .{};
+        const length = case.chunks * 4096;
+        try t.expect(try a.startWrite(0, &.{1}, length));
+        _ = try finish(&a, &fake, 0, false);
+        const record = a.lookup(&.{ 1, 2 }) orelse return error.MissingRecord;
+        var other: [6]storage.Ticket = undefined;
+        for (other[0..case.busy]) |*ticket| ticket.* = try store.acquire();
+        var owner: readahead.Owner = .{};
+        const key: readahead.Key = .{ .slot = 1, .order = 7 };
+        try owner.start(&a, key, record, case.window);
+        const starts = a.stats.device_starts;
+        for (0..6) |_| _ = try owner.poll(&a, key, true);
+        try t.expectEqual(case.staged, owner.occupancy(&a));
+        // Exercise completed staging, not just submission: an upload-guard mutation
+        // must fail even when the worker takes longer than six tight polls.
+        for (0..10000) |_| {
+            _ = try owner.poll(&a, key, true);
+            if (owner.completed_bytes == @as(u64, case.staged) * 4096) break;
+            try std.Io.sleep(t.io, .fromMicroseconds(100), .awake);
+        }
+        try t.expectEqual(@as(u64, case.staged) * 4096, owner.completed_bytes);
+        try t.expect(store.freeSlots() >= 2);
+        try t.expectEqual(@as(u32, 1), a.entries[record].readers);
+        try t.expectEqual(starts, a.stats.device_starts);
+        try t.expectEqual(@as(u64, 0), a.stats.read_bytes);
+        const old = owner.held.?;
+        try t.expectError(error.InvalidReadAhead, owner.take(&a, .{ .slot = 1, .order = 8 }));
+        try t.expectEqual(old, owner.held.?);
+        for (other[0..case.busy]) |ticket| try store.release(ticket);
+        if (std.mem.eql(u8, case.outcome, "take") or std.mem.eql(u8, case.outcome, "corrupt")) {
+            // Corrupt every block: any completion order must reject before its first upload.
+            if (std.mem.eql(u8, case.outcome, "corrupt")) for (0..case.chunks) |chunk| {
+                a.digests[a.max_chunks * record + chunk][0] ^= 1;
+            };
+            try t.expectEqual(record, try owner.take(&a, key));
+            if (std.mem.eql(u8, case.outcome, "corrupt")) {
+                try t.expectError(error.CorruptRecord, finish(&a, &fake, 1, false));
+            } else {
+                try t.expectEqual(@as(u32, 1), try finish(&a, &fake, 1, false));
+                try t.expectEqualSlices(u8, fixture[0..length], fake.output[1][0..length]);
+            }
+        } else {
+            const selected: ?readahead.Key = if (std.mem.eql(u8, case.outcome, "reuse")) .{ .slot = 1, .order = 8 } else null;
+            if (std.mem.eql(u8, case.outcome, "cancel")) owner.cancel();
+            for (0..10000) |_| {
+                if ((try owner.poll(&a, selected, false)).done) break;
+                try std.Io.sleep(t.io, .fromMicroseconds(100), .awake);
+            }
+        }
+        try t.expect(owner.held == null and !a.active(1));
+        try t.expectEqual(case.final_readers, a.entries[record].readers);
+        try t.expectEqual(case.uploaded, a.stats.device_starts - starts);
+        try t.expectEqual(case.final_owned, 8 - store.freeSlots());
+        try t.expectError(error.InvalidReadAhead, owner.take(&a, key));
+    }
+}

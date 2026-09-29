@@ -21,6 +21,7 @@ def main():
     p.add_argument("--scratch-dir", type=Path, required=True)
     p.add_argument("--direct-alignment", type=int, default=0)
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--demand", action="store_true", help="completed-window staging/handoff/cancel component")
     a = p.parse_args()
     if not a.scratch_dir.is_dir() or a.direct_alignment not in (0, 4096):
         p.error("existing scratch-dir required; this harness supports reported or 4096 alignment")
@@ -33,17 +34,26 @@ def main():
             subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, check=True)
         binary = build.binary("zerv-archive-bench")
         m.update(build=build.provenance(), binary_sha256=build.sha(binary))
-        files = ["src/session/archive.zig", "src/storage/root.zig", "bench/archive.zig", "bench/run_archive.py", "tests/archive.zig", "tests/fixtures/archive/oracle.json", "tests/reference/generate_archive_fixture.py"]
+        files = ["src/session/archive.zig", "src/session/readahead.zig", "src/storage/root.zig", "bench/archive.zig", "bench/run_archive.py", "tests/archive.zig", "tests/fixtures/archive/oracle.json", "tests/reference/generate_archive_fixture.py"]
         m["source_sha256"] = {f: build.sha(ROOT / f) for f in files}
         with tempfile.TemporaryDirectory(prefix="zerv-archive-", dir=a.scratch_dir) as directory:
-            command = [str(binary), directory, str(a.direct_alignment)]; m["commands"].append(command)
+            command = [str(binary), directory, str(a.direct_alignment)] + (["demand"] if a.demand else []); m["commands"].append(command)
             with (a.output / "native.log").open("w") as log:
                 subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, timeout=600, check=True)
         rows = [json.loads(line) for line in (a.output / "native.log").read_text().splitlines() if line.startswith("{")]
-        if len(rows) != 5 or not all(r["exact"] for r in rows): raise RuntimeError("missing or inexact trial")
+        if len(rows) != (25 if a.demand else 5) or not all(r["exact"] for r in rows): raise RuntimeError("missing or inexact trial")
         (a.output / "raw.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
         summary = {}
-        for op in ("read", "write"):
+        if a.demand:
+            for window in (0, 1, 2):
+                selected = [r for r in rows if r["window"] == window and "total_ns" in r]
+                if len(selected) != 5 or any(r['submitted_bytes'] != window * (1 << 20) or r['completed_bytes'] != r['submitted_bytes'] for r in selected): raise RuntimeError('missing staged bytes')
+                summary[str(window)] = {metric: dict(mean=statistics.mean(r[metric] for r in selected), stdev=statistics.stdev(r[metric] for r in selected)) for metric in ('stage_ns', 'foreground_ns', 'total_ns')}
+                if window:
+                    canceled = [r for r in rows if r['window'] == window and 'cancel_ns' in r]
+                    if len(canceled) != 5 or any(r['discarded_bytes'] != window * (1 << 20) for r in canceled): raise RuntimeError('missing canceled bytes')
+                    summary[str(window)]['cancel_ns'] = dict(mean=statistics.mean(r['cancel_ns'] for r in canceled), stdev=statistics.stdev(r['cancel_ns'] for r in canceled))
+        for op in (() if a.demand else ("read", "write")):
             values = [r["bytes"] / r[op + "_ns"] for r in rows]
             summary[op + "_GBps"] = dict(mean=statistics.mean(values), stdev=statistics.stdev(values), min=min(values), max=max(values), n=5)
         (a.output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")

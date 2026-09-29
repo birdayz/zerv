@@ -152,7 +152,11 @@ including concurrent restores and late-lease rejection; clean serving has 96 exa
 native responses but no quality-matched competitor parity proof. Repeated tests
 exposed a swap-order livelock, reproduced deterministically and fixed
 ([integration report](../bench/2026-09-29-preparation-integration.md)).
-D.2 queued-demand protection/prefetch research is active; implementation is absent.
+D.2 opt-in queued-demand protection and bounded staging prefetch are implemented.
+Independent boundary/negative, production drain/model and numerical gates pass;
+component and zero-idle/idle serving results are recorded in the
+[D.2 report](../bench/2026-09-29-queued-demand.md). Quality-equivalent competitive
+performance acceptance remains active, not achieved.
 
 C is complete as a functionality/verification increment, not as the performance goal. C.1 source leases are implemented with full ancestor protection and
 independent prefix-set oracle ([report](../bench/2026-09-28-cache-sources.md)).
@@ -174,15 +178,15 @@ D.0a passes CPU/device, packed 257/80k byte/vocabulary and independent model gat
 96 native HTTP responses/counts remain exact. Zero disk restores in immediate reuse,
 increased wasted writes, host+disk 54.639 ± 0.708 s versus Vulkan 50.035 ± 0.395 s
 and HIP 50.329 ± 2.774 s. The matched component gain is only ~0.55%. Its new adversarial stop/reuse trace also fixed
-uncompleted queued waiters at shutdown. D.1.1 supplies pure reservation accounting,
-not a GPU adapter; D.1.2/D.2 remain unimplemented. The overall
+uncompleted queued waiters at shutdown. D.1.1 supplies pure reservation accounting; D.1.2 supplies the GPU adapter.
+D.2 supplies queued-demand protection and bounded staging read-ahead. The overall
 plan is **not complete**.
 The user's active session goal also requires rigorously verified faster-or-on-par
 serving against tuned compatible competitors; A/B/C.1 component gates do not close
 that goal or erase the observed long-restore regression.
 
 D.2's current [native/paper audit](queued-demand-audit.md) and
-[pre-implementation contract draft](../specs/queued-demand.md) explicitly distinguish
+[functional contract](../specs/queued-demand.md) explicitly distinguish
 staging-window read-ahead from whole-image RAM materialization. The independent
-queued-generation/ticket event fixture is the next prerequisite; no D.2 code is
-claimed from these documents.
+queued-generation/ticket event fixture preceded the native APIs; implemented features
+and measured limitations are detailed in the D.2 report, not inferred from the papers.

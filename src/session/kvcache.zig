@@ -102,6 +102,7 @@ pub const Lease = struct { handle: Handle, serial: u64 };
 pub const Source = struct { lease: Lease, snapshot: u32, tokens: []const u32, pages: []const u32 };
 pub const SourceState = struct { generation: u64 = 0, serial: u64 = 0, active: bool = false, refs: u32 = 0 };
 pub const Capacity = struct { slots: u32, free_slots: u32 };
+pub const Demand = struct { handle: Handle, tokens: u32, has_host: bool, source_held: bool };
 pub const PreparationCandidate = struct { handle: Handle, used: u64, first: u32 };
 pub const PreparedResult = struct { copied: u32, freed: u32 };
 /// Non-yielding, non-reentrant commit of an acknowledged page-pool transaction.
@@ -128,6 +129,7 @@ pub const Cache = struct {
         evict: *const fn (ctx: *anyopaque, dev: Device) bool,
         /// Host-store pressure: drop one demoted checkpoint; false: none.
         evictHost: *const fn (ctx: *anyopaque, dev: Device) bool,
+        setDemand: ?*const fn (ctx: *anyopaque, prompt: []const u32) ?Demand = null,
         preparationCandidate: ?*const fn (ctx: *anyopaque, index: u32) ?PreparationCandidate = null,
         finishPreparation: ?*const fn (ctx: *anyopaque, lease: Lease, commit: PreparationCommit) anyerror!PreparedResult = null,
         sourceCapacity: ?*const fn (ctx: *anyopaque) Capacity = null,
@@ -150,6 +152,13 @@ pub const Cache = struct {
     }
     pub fn evictHost(c: Cache, dev: Device) bool {
         return c.vtable.evictHost(c.ctx, dev);
+    }
+    /// Resolves tokens synchronously; retains only a generation-qualified policy preference.
+    pub fn setDemand(c: Cache, prompt: []const u32) ?Demand {
+        return if (c.vtable.setDemand) |f| f(c.ctx, prompt) else null;
+    }
+    pub fn clearDemand(c: Cache) void {
+        _ = c.setDemand(&.{});
     }
     pub fn preparationCandidate(c: Cache, index: u32) ?PreparationCandidate {
         return if (c.vtable.preparationCandidate) |f| f(c.ctx, index) else null;
@@ -336,6 +345,7 @@ pub const Radix = struct {
     /// Demote node segments to the host store under memory pressure (tiering) instead of
     /// dropping.
     tier: bool = true,
+    demand: ?Handle = null,
 
     pub fn create(allocator: std.mem.Allocator, snapshots: u32, context: u32, max_pages: u32, boundary: u32) !*Radix {
         if (snapshots > std.math.maxInt(u16)) return error.InvalidOptions;
@@ -365,11 +375,27 @@ pub const Radix = struct {
     pub fn cache(self: *Radix) Cache {
         return .{ .ctx = self, .vtable = &vtable };
     }
-    const vtable: Cache.VTable = .{ .restore = restore, .checkpoint = take, .evict = evict, .evictHost = evictHost, .stats = stats, .deinit = deinit, .coldSource = coldSource, .acquireSource = acquireSource, .releaseSource = releaseSource, .sourceCapacity = sourceCapacity, .sourceCandidate = sourceCandidate, .discardSource = discardSource, .preparationCandidate = preparationCandidate, .finishPreparation = finishPreparation };
+    const vtable: Cache.VTable = .{ .restore = restore, .checkpoint = take, .evict = evict, .evictHost = evictHost, .stats = stats, .deinit = deinit, .coldSource = coldSource, .acquireSource = acquireSource, .releaseSource = releaseSource, .sourceCapacity = sourceCapacity, .sourceCandidate = sourceCandidate, .discardSource = discardSource, .preparationCandidate = preparationCandidate, .finishPreparation = finishPreparation, .setDemand = setDemand };
+
+    fn setDemand(ctx: *anyopaque, prompt: []const u32) ?Demand {
+        const self: *Radix = @ptrCast(@alignCast(ctx));
+        self.demand = null;
+        const i = self.deepest(prompt, true) orelse return null;
+        const handle: Handle = .{ .index = @intCast(i), .generation = self.sources[i].generation };
+        self.demand = handle;
+        return .{ .handle = handle, .tokens = self.store.entries[i].len, .has_host = self.anyHost(self.store.entryPages(i)), .source_held = self.pathHeld(i) };
+    }
+    pub fn demandProtected(self: *const Radix, index: usize) bool {
+        const handle = self.demand orelse return false;
+        if (handle.index >= self.sources.len or !self.live(handle.index) or self.sources[handle.index].generation != handle.generation) return false;
+        var at: ?usize = handle.index;
+        while (at) |i| : (at = if (self.parent[i]) |p| p else null) if (i == index) return true;
+        return false;
+    }
 
     fn preparationCandidate(ctx: *anyopaque, index: u32) ?PreparationCandidate {
         const self: *Radix = @ptrCast(@alignCast(ctx));
-        if (!self.tier or index >= self.sources.len or !self.live(index) or self.sources[index].refs != 0 or !self.anyPool(self.segment(index))) return null;
+        if (!self.tier or index >= self.sources.len or !self.live(index) or self.sources[index].refs != 0 or self.demandProtected(index) or !self.anyPool(self.segment(index))) return null;
         return .{ .handle = .{ .index = index, .generation = self.sources[index].generation }, .used = self.store.entries[index].used, .first = self.own[index] };
     }
     fn finishPreparation(ctx: *anyopaque, lease: Lease, commit: PreparationCommit) anyerror!PreparedResult {
@@ -377,7 +403,7 @@ pub const Radix = struct {
         const i = try self.validateSource(lease.handle);
         const s = &self.sources[i];
         if (!s.active or s.serial != lease.serial) return error.InvalidSource;
-        if (s.refs != 1) return error.Busy;
+        if (s.refs != 1 or self.demandProtected(i)) return error.Busy;
         const seg = self.segment(i);
         const before = self.seg_buf[0..seg.len];
         @memcpy(before, seg);
@@ -396,7 +422,7 @@ pub const Radix = struct {
     }
     fn sourceCandidate(ctx: *anyopaque, index: u32) ?Candidate {
         const self: *Radix = @ptrCast(@alignCast(ctx));
-        if (index >= self.sources.len or !self.live(index) or self.children[index] != 0 or self.sources[index].refs != 0) return null;
+        if (index >= self.sources.len or !self.live(index) or self.children[index] != 0 or self.sources[index].refs != 0 or self.demandProtected(index)) return null;
         var host: u32 = 0;
         for (self.segment(index)) |q| host += @intFromBool(q & Device.host_flag != 0);
         return .{ .handle = .{ .index = index, .generation = self.sources[index].generation }, .tokens = self.tokens(index), .used = self.store.entries[index].used, .host_pages = host, .has_host = host != 0 or self.ancestorHost(index) };
@@ -489,7 +515,7 @@ pub const Radix = struct {
     fn leaf(self: *const Radix, keep: ?usize) ?usize {
         var best: ?usize = null;
         for (self.store.entries, 0..) |e, i| {
-            if (e.len == 0 or self.children[i] != 0 or self.sources[i].refs != 0 or (keep != null and i == keep.?)) continue;
+            if (e.len == 0 or self.children[i] != 0 or self.sources[i].refs != 0 or self.demandProtected(i) or (keep != null and i == keep.?)) continue;
             if (best == null or e.used < self.store.entries[best.?].used) best = i;
         }
         return best;
@@ -497,7 +523,7 @@ pub const Radix = struct {
 
     /// Remove leaf `i`: its own segment's pins and host pages are released.
     fn remove(self: *Radix, dev: Device, i: usize) !void {
-        if (self.sources[i].refs != 0) return error.Busy;
+        if (self.sources[i].refs != 0 or self.demandProtected(i)) return error.Busy;
         if (self.children[i] != 0) return error.InvalidState; // only leaves are removed
         try dev.unpin(self.segment(i));
         if (self.parent[i]) |u| self.children[u] -= 1;
@@ -665,7 +691,7 @@ pub const Radix = struct {
         while (self.tier) {
             var best: ?usize = null;
             for (self.store.entries, 0..) |e, i| {
-                if (e.len == 0 or i >= tried.len or tried[i] or self.sources[i].refs != 0 or !self.anyPool(self.segment(i))) continue;
+                if (e.len == 0 or i >= tried.len or tried[i] or self.sources[i].refs != 0 or self.demandProtected(i) or !self.anyPool(self.segment(i))) continue;
                 if (best == null or e.used < self.store.entries[best.?].used) best = i;
             }
             const i = best orelse break;
@@ -685,7 +711,7 @@ pub const Radix = struct {
             if (dev.reclaimable(seg) > 0) {
                 var victim: ?usize = null;
                 for (self.store.entries, 0..) |e, j| {
-                    if (e.len == 0 or self.children[j] != 0 or self.sources[j].refs != 0 or j == i or (j < path.len and path[j]) or !self.anyHost(self.segment(j))) continue;
+                    if (e.len == 0 or self.children[j] != 0 or self.sources[j].refs != 0 or self.demandProtected(j) or j == i or (j < path.len and path[j]) or !self.anyHost(self.segment(j))) continue;
                     if (victim == null or e.used < self.store.entries[victim.?].used) victim = j;
                 }
                 if (victim) |v| {
@@ -709,7 +735,7 @@ pub const Radix = struct {
         var victim: ?usize = null;
         var victim_frees = false;
         for (self.store.entries, 0..) |e, i| {
-            if (e.len == 0 or self.children[i] != 0 or self.sources[i].refs != 0 or (keep != null and i == keep.?)) continue;
+            if (e.len == 0 or self.children[i] != 0 or self.sources[i].refs != 0 or self.demandProtected(i) or (keep != null and i == keep.?)) continue;
             const seg = self.segment(i);
             const frees = dev.reclaimable(seg) > 0;
             if (!frees and (self.anyPool(seg) or !self.ancestorReclaimable(dev, i, if (keep) |k| k else null))) continue;
@@ -731,7 +757,7 @@ pub const Radix = struct {
         var victim: ?usize = null;
         var victim_own = false;
         for (self.store.entries, 0..) |e, i| {
-            if (e.len == 0 or self.children[i] != 0 or self.sources[i].refs != 0) continue;
+            if (e.len == 0 or self.children[i] != 0 or self.sources[i].refs != 0 or self.demandProtected(i)) continue;
             const own = self.anyHost(self.segment(i));
             if (!own and !self.ancestorHost(i)) continue;
             if (victim == null or (own and !victim_own) or (own == victim_own and e.used < self.store.entries[victim.?].used)) {

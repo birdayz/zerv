@@ -108,6 +108,13 @@ pub const Store = struct {
         return self;
     }
 
+    /// Reusable tickets only. Used for the combined optional-I/O allowance.
+    pub fn freeSlots(self: *const Store) u32 {
+        var count: u32 = 0;
+        for (self.slots) |*s| count += @intFromBool(s.state.load(.acquire) == .free and s.generation != std.math.maxInt(u64));
+        return count;
+    }
+
     pub fn acquire(self: *Store) !Ticket {
         for (self.slots, 0..) |*s, i| {
             if (s.state.load(.acquire) != .free) continue;
