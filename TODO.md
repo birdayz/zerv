@@ -12,6 +12,16 @@ Fixed-history C1 reuse TTFT416.6→222.8ms; 60native signatures exact. Three-tur
 47.283→49.059s (high variance). Default remains off. Quality-equivalent competitive
 acceptance is still open; [report](docs/bench/2026-09-29-reuse-join.md).
 
+D.2 held-out comparison executed ([report](docs/bench/2026-09-29-demand-quality.md)):
+all four configurations39/45 under a predeclared100%-correct rule; identical failures
+and all180 output/count/finish signatures match. All12 full prompt/token arrays match.
+Native join128 has lower wall and turn-wise mean TTFT on this narrow identical-work
+suite, but the strict quality gate stays failed. Existing-knob pool192→256 ablation
+preserves90 native signatures, reduces zero-reuse C4 later turns2/24→0/24 and wall
+49.991±5.136→45.978±.088s for~0.5GiB VRAM; C1 regresses. Next: distinguish failed
+promotion from disk destination-admission fallback before changing retry semantics.
+No new production default or second active block; full acceptance remains open.
+
 ## Work controls
 
 - **Exactly one active building block, in one package.** Finish its verification

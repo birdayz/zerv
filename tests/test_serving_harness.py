@@ -219,5 +219,74 @@ class EngineSuffixTests(unittest.TestCase):
             run_serving.resolve_engine(table, "zerv@novalue", "/bin/zerv")
 
 
+class DemandQualityScoring(unittest.TestCase):
+    def test_strict_answers_and_negative_controls(self):
+        from score_demand_quality import correct
+        self.assertTrue(correct('  [ 42, "ID" ]\n', [42, 'ID']))
+        for text in ('[42.0,"ID"]', '[true,"ID"]', '[42]', '[42,"ID",0]',
+                     '["ID",42]', '```json\n[42,"ID"]\n```', '[42,"ID"] extra',
+                     '{"answer":[42,"ID"]}', '[NaN,"ID"]', None):
+            self.assertFalse(correct(text, [42, 'ID']), text)
+        self.assertFalse(correct('[true]', [1]))
+        self.assertFalse(correct('[42]', ['42']))
+
+    def test_complete_gate_and_corruption_controls(self):
+        import hashlib
+        import json
+        import tempfile
+        from make_demand_quality import workload
+        from score_demand_quality import evaluate
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fixture = root / 'workload.json'
+            w = workload()
+            fixture.write_text(json.dumps(w))
+            names = ['zerv-f16', 'zerv-f16@reuse-join=128', 'vulkan', 'hip']
+            resource = dict(vram_peak=20 * 1024**3, host_memory={'VmHWM': '16000000 kB'})
+            manifest = dict(status='passed', workload={str(fixture): hashlib.sha256(fixture.read_bytes()).hexdigest()}, rounds=3, levels=[1, 4], engines={n: dict(resources=[resource] * 3) for n in names})
+            rows, summary = [], {}
+            for name in names:
+                summary[name] = []
+                for rnd in range(3):
+                    for level in [1, 4]:
+                        summary[name].append(dict(level=level, wall_s=1, turns=[dict(ttft_p50_ms=1)] * 3))
+                        for conv in w['conversations'][:level]:
+                            for turn, answer in enumerate(conv['expected']):
+                                text = json.dumps(answer)
+                                rows.append(dict(engine=name, round=rnd, level=level, conversation=conv['name'], turn=turn, output_text=text, output_sha256=hashlib.sha256(text.encode()).hexdigest(), request_sha256='same', finish_reasons=['stop'], usage=dict(prompt_tokens=100, completion_tokens=10)))
+            (root / 'manifest.json').write_text(json.dumps(manifest))
+            (root / 'summary.json').write_text(json.dumps(summary))
+            def score(rs):
+                (root / 'raw.jsonl').write_text('\n'.join(map(json.dumps, rs)))
+                return evaluate(root)
+            self.assertTrue(score(rows)['quality_passed'])
+            self.assertTrue(all(p['passed'] for p in score(rows)['parity'].values()))
+            for field, value in [('output_text', '["wrong"]'), ('finish_reasons', ['length']), ('request_sha256', 'different'), ('error', 'timeout')]:
+                corrupt = [dict(r) for r in rows]
+                corrupt[-1][field] = value
+                self.assertFalse(score(corrupt)['quality_passed'], field)
+            self.assertFalse(score(rows[:-1])['quality_passed'])
+            self.assertFalse(score(rows + [rows[-1]])['quality_passed'])
+            manifest['engines']['hip']['resources'][0]['vram_peak'] = 25 * 1024**3
+            (root / 'manifest.json').write_text(json.dumps(manifest))
+            self.assertFalse(score(rows)['quality_passed'])
+
+    def test_fixture_answers_from_records(self):
+        import json
+        from make_demand_quality import workload
+        w = workload()
+        self.assertEqual(w, workload())
+        self.assertEqual(len(w['conversations']), 4)
+        for i, conv in enumerate(w['conversations']):
+            records = [json.loads(line) for line in conv['system'].splitlines()[1:]]
+            self.assertEqual(len({r['id'] for r in records}), 128)
+            lookup, addition, ordering = (conv['expected'][-(i % 3):] + conv['expected'][:-(i % 3)]) if i % 3 else conv['expected']
+            self.assertEqual(lookup, [records[17 + i * 23]['tag']])
+            self.assertEqual(addition, [records[9 + i]['quantity'] + records[119 - i]['quantity']])
+            selected = [records[j] for j in (4 + i, 63 + i, 124 - i)]
+            self.assertEqual(ordering, [r['id'] for r in sorted(selected, key=lambda r: (r['priority'], r['id']))])
+            self.assertEqual([json.loads(s) for s in conv['assistant_history']], conv['expected'][:2])
+
+
 if __name__ == "__main__":
     unittest.main()

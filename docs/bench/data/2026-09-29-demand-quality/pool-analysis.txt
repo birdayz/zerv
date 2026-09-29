@@ -1,0 +1,44 @@
+C 1
+192 9 / 9 {'wall_s': (10.513, 0.049), 'tok_s': (15.41, 0.072), 'reuse_ttft_p50_ms': (224.607, 2.134), 'gap_p99_ms': (20.726, 0.053), 'turn_3_ttft_p50_ms': (463.919, 4.075)}
+256 9 / 9 {'wall_s': (10.976, 0.147), 'tok_s': (14.762, 0.197), 'reuse_ttft_p50_ms': (245.952, 9.853), 'gap_p99_ms': (23.832, 0.485), 'turn_3_ttft_p50_ms': (506.917, 7.664)}
+llama-fa-b512 0 / 9 {'wall_s': (13.236, 0.126), 'tok_s': (11.485, 0.108), 'reuse_ttft_p50_ms': (424.487, 10.411), 'gap_p99_ms': (38.1, 0.74), 'turn_3_ttft_p50_ms': (447.433, 42.356)}
+rdna3-nofusion 0 / 9 {'wall_s': (12.573, 0.113), 'tok_s': (10.34, 0.093), 'reuse_ttft_p50_ms': (247.714, 8.993), 'gap_p99_ms': (42.801, 1.402), 'turn_3_ttft_p50_ms': (292.576, 12.407)}
+C 4
+192 36 / 36 {'wall_s': (49.991, 5.136), 'tok_s': (15.355, 1.647), 'reuse_ttft_p50_ms': (4861.842, 4250.0), 'gap_p99_ms': (144.545, 0.662), 'turn_3_ttft_p50_ms': (3564.758, 160.219)}
+256 36 / 36 {'wall_s': (45.978, 0.088), 'tok_s': (16.573, 0.032), 'reuse_ttft_p50_ms': (3390.757, 48.17), 'gap_p99_ms': (145.436, 0.193), 'turn_3_ttft_p50_ms': (3723.617, 680.904)}
+llama-fa-b512 20 / 36 {'wall_s': (56.83, 2.927), 'tok_s': (12.788, 0.758), 'reuse_ttft_p50_ms': (6067.664, 1216.384), 'gap_p99_ms': (689.945, 69.817), 'turn_3_ttft_p50_ms': (5289.55, 939.753)}
+rdna3-nofusion 3 / 36 {'wall_s': (51.865, 0.899), 'tok_s': (14.524, 0.222), 'reuse_ttft_p50_ms': (4674.027, 1305.102), 'gap_p99_ms': (1285.589, 473.501), 'turn_3_ttft_p50_ms': (4004.35, 518.628)}
+zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096,prefix-cache-disk-chunk-mib=8,prefix-cache-demand=prefetch,prefix-cache-prefetch-chunks=2,prefix-cache-reuse-join=128
+resources [(17.357, 14.824), (17.353, 14.824), (17.35, 14.824)]
+0 zerv: queued demand: prefetch, one request lookahead, 2 staging chunks; no prefetch GPU upload, two tickets reserved for foreground reads
+0 zerv: batcher: 808 batches (910 rows, 4 partial, 162 inside prefill chunks), 110 prefill chunks (0 packed, 1760 units, 0 aborted, 1 admission waits, 0 swaps out (0 by time slice), 0 in, 0.0 ms swapping, 0 rows failed for memory); GPU busy 90.7% (decode 27.3%, prefill 63.4%) over 62.2 s; batches by rows: 1:706 2:102
+0 zerv: disk prefix archive: 5 writes, 3 restores, 4362076160 bytes written, 2088763392 read, 0 evictions, 0 skips, 0 failures, 4 cancellations
+0 zerv: queued demand: 0 source waits, 1 urgent protection override attempts
+1 zerv: queued demand: prefetch, one request lookahead, 2 staging chunks; no prefetch GPU upload, two tickets reserved for foreground reads
+1 zerv: batcher: 753 batches (910 rows, 4 partial, 123 inside prefill chunks), 93 prefill chunks (1 packed, 1488 units, 0 aborted, 0 admission waits, 0 swaps out (0 by time slice), 0 in, 0.0 ms swapping, 0 rows failed for memory); GPU busy 89.4% (decode 28.8%, prefill 60.5%) over 55.2 s; batches by rows: 1:596 2:157
+1 zerv: disk prefix archive: 5 writes, 3 restores, 3867148288 bytes written, 2055208960 read, 0 evictions, 0 skips, 0 failures, 2 cancellations
+1 zerv: queued demand: 0 source waits, 0 urgent protection override attempts
+2 zerv: queued demand: prefetch, one request lookahead, 2 staging chunks; no prefetch GPU upload, two tickets reserved for foreground reads
+2 zerv: batcher: 766 batches (910 rows, 2 partial, 132 inside prefill chunks), 113 prefill chunks (1 packed, 1808 units, 0 aborted, 1 admission waits, 0 swaps out (0 by time slice), 0 in, 0.0 ms swapping, 0 rows failed for memory); GPU busy 89.1% (decode 25.0%, prefill 64.2%) over 65.2 s; batches by rows: 1:622 2:144
+2 zerv: disk prefix archive: 5 writes, 2 restores, 5410652160 bytes written, 1375731712 read, 0 evictions, 0 skips, 0 failures, 5 cancellations
+2 zerv: queued demand: 0 source waits, 1 urgent protection override attempts
+zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=256,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096,prefix-cache-disk-chunk-mib=8,prefix-cache-demand=prefetch,prefix-cache-prefetch-chunks=2,prefix-cache-reuse-join=128
+resources [(17.856, 14.824), (17.855, 14.823), (17.85, 14.824)]
+0 zerv: queued demand: prefetch, one request lookahead, 2 staging chunks; no prefetch GPU upload, two tickets reserved for foreground reads
+0 zerv: batcher: 770 batches (910 rows, 2 partial, 143 inside prefill chunks), 93 prefill chunks (1 packed, 1488 units, 0 aborted, 0 admission waits, 0 swaps out (0 by time slice), 0 in, 0.0 ms swapping, 0 rows failed for memory); GPU busy 89.0% (decode 29.5%, prefill 59.5%) over 57.6 s; batches by rows: 1:630 2:140
+0 zerv: disk prefix archive: 5 writes, 3 restores, 4194304000 bytes written, 2030043136 read, 0 evictions, 0 skips, 0 failures, 3 cancellations
+0 zerv: queued demand: 0 source waits, 0 urgent protection override attempts
+1 zerv: queued demand: prefetch, one request lookahead, 2 staging chunks; no prefetch GPU upload, two tickets reserved for foreground reads
+1 zerv: batcher: 740 batches (910 rows, 3 partial, 179 inside prefill chunks), 92 prefill chunks (2 packed, 1472 units, 0 aborted, 0 admission waits, 0 swaps out (0 by time slice), 0 in, 0.0 ms swapping, 0 rows failed for memory); GPU busy 87.9% (decode 28.3%, prefill 59.7%) over 57.2 s; batches by rows: 1:570 2:170
+1 zerv: disk prefix archive: 6 writes, 3 restores, 4412407808 bytes written, 2172649472 read, 0 evictions, 0 skips, 0 failures, 2 cancellations
+1 zerv: queued demand: 0 source waits, 0 urgent protection override attempts
+2 zerv: queued demand: prefetch, one request lookahead, 2 staging chunks; no prefetch GPU upload, two tickets reserved for foreground reads
+2 zerv: batcher: 778 batches (910 rows, 3 partial, 176 inside prefill chunks), 94 prefill chunks (0 packed, 1504 units, 0 aborted, 0 admission waits, 0 swaps out (0 by time slice), 0 in, 0.0 ms swapping, 0 rows failed for memory); GPU busy 89.7% (decode 29.5%, prefill 60.3%) over 57.2 s; batches by rows: 1:646 2:132
+2 zerv: disk prefix archive: 5 writes, 3 restores, 3640655872 bytes written, 2172649472 read, 0 evictions, 0 skips, 0 failures, 1 cancellations
+2 zerv: queued demand: 0 source waits, 0 urgent protection override attempts
+llama-fa-b512
+resources [(16.941, 15.084), (16.941, 15.084), (16.941, 15.085)]
+rdna3-nofusion
+resources [(17.449, 15.378), (17.449, 15.381), (17.389, 15.378)]
+zero reuse 192 [(0, 'conv1', 1), (2, 'conv2', 2)] / 24
+zero reuse 256 [] / 24

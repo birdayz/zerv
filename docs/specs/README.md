@@ -79,3 +79,4 @@ before coding it. Do not invent untested commands in docs and label them working
   page-pool transaction implemented/verified; D.1.2 joint cache/GPU adapter still
   requires its pre-code ownership oracle and scheduling contract.
 - [Bounded short-reuse checkpoint suppression](reuse-join.md): opt-in cache-hit suffix joining, unchanged default and explicit future-recomputation tradeoff; independent policy and numerical/serving gates.
+- [D.2 held-out quality gate](demand-quality-gate.md): predeclared synthetic record oracle, strict JSON scoring, resource limits and performance criteria; executed with shared model-answer failures, not passed.
