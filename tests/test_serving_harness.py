@@ -180,6 +180,33 @@ class EngineSuffixTests(unittest.TestCase):
         self.assertEqual(result["completion_tokens"], 4)
         self.assertEqual(result["errors"], [])
 
+    def test_fixed_history_keeps_requests_equal_despite_different_answers(self):
+        import copy
+        import run_multiturn
+        w = dict(system="system", max_tokens=128, temperature=0, seed=1234, options={}, conversations=[])
+        conv = dict(name="case", turns=["first", "second"], assistant_history=["canonical"])
+        w["conversations"] = [conv]
+        run_multiturn.validate_history(w)
+        outputs = []
+        for answer in ("answer A", "answer B"):
+            bodies, recs = [], []
+            def turn(port, body, rec):
+                bodies.append(copy.deepcopy(body))
+                return answer
+            with mock.patch.object(run_multiturn, "turn", turn):
+                run_multiturn.conversation(0, w, conv, recs, "engine", 1, 0)
+            self.assertEqual(bodies[1]["messages"][2]["content"], "canonical")
+            outputs.append([r["request_sha256"] for r in recs])
+        self.assertEqual(*outputs)
+        del conv["assistant_history"]
+        with mock.patch.object(run_multiturn, "turn", turn):
+            bodies.clear()
+            run_multiturn.conversation(0, w, conv, [], "engine", 1, 0)
+        self.assertEqual(bodies[1]["messages"][2]["content"], "answer B")
+        for bad in (None, "text", [], [1], ["one", "two"]):
+            conv["assistant_history"] = bad
+            with self.assertRaises(ValueError): run_multiturn.validate_history(w)
+
     def test_zerv_flags(self):
         table = {"zerv": dict(cmd=["/bin/zerv", "--model", "m"], env={}), "llama": dict(cmd=["/usr/bin/llama-server"], env={})}
         spec = run_serving.resolve_engine(table, "zerv@embedding-memory=device,spec-draft=3", "/bin/zerv")

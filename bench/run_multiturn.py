@@ -66,7 +66,7 @@ def turn(port, body, rec):
         if resp.status != 200:
             rec["error"] = f"HTTP {resp.status}: {resp.read()[:300]!r}"
             return ""
-        times, content = [], []
+        times, content, finishes = [], [], []
         done = False
         for raw in resp:
             line = raw.decode().strip()
@@ -78,6 +78,7 @@ def turn(port, body, rec):
             if j.get("error"): raise RuntimeError(f"stream error: {j['error']}")
             if j.get("usage"): rec["usage"] = j["usage"]
             for ch in j.get("choices", []):
+                if ch.get("finish_reason") is not None: finishes.append(ch["finish_reason"])
                 d = ch.get("delta", {})
                 piece = (d.get("reasoning_content") or d.get("reasoning") or "") + (d.get("content") or "")
                 if piece: times.append(time.perf_counter())
@@ -86,6 +87,8 @@ def turn(port, body, rec):
         rec["times"] = times
         text = "".join(content)
         rec["output_sha256"] = hashlib.sha256(text.encode()).hexdigest()
+        rec["output_text"] = text
+        rec["finish_reasons"] = finishes
         return text
     except Exception as e:  # noqa: BLE001 - recorded, the level is marked failed
         rec["error"] = f"{type(e).__name__}: {e}"
@@ -93,6 +96,14 @@ def turn(port, body, rec):
         return ""
     finally:
         if conn is not None: conn.close()
+
+
+def validate_history(w):
+    for conv in w["conversations"]:
+        if "assistant_history" in conv:
+            history = conv["assistant_history"]
+            if not isinstance(history, list) or len(history) != len(conv["turns"]) - 1 or not all(isinstance(text, str) for text in history):
+                raise ValueError("assistant_history must contain exactly turns-1 strings")
 
 
 def conversation(port, w, conv, recs, engine, level, rnd, barrier=None):
@@ -103,11 +114,14 @@ def conversation(port, w, conv, recs, engine, level, rnd, barrier=None):
         rec = dict(engine=engine, round=rnd, level=level, conversation=conv["name"], turn=t)
         body = dict(model="qwen3.8-27b", messages=messages, stream=True, stream_options={"include_usage": True},
                     max_tokens=w["max_tokens"], temperature=w["temperature"], seed=w["seed"], **w["options"])
+        rec["request_sha256"] = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+        rec["history_mode"] = "fixed" if "assistant_history" in conv else "generated"
         answer = turn(port, body, rec)
         recs.append(rec)
         if "error" in rec:
             if barrier is not None: barrier.abort()
             return
+        if "assistant_history" in conv and t < len(conv["assistant_history"]): answer = conv["assistant_history"][t]
         messages.append({"role": "assistant", "content": answer})
 
 
@@ -164,6 +178,8 @@ def main():
     p.add_argument("--reference", type=pathlib.Path, help="raw.jsonl of an earlier run: every turn's output must match it (identity gate; exit 1 otherwise)")
     a = p.parse_args()
     if not 0 <= a.phase_idle_s <= 60 or (a.phase_idle_s and not a.phased): p.error("phase idle requires --phased and 0..60 seconds")
+    w = json.loads(a.workload.read_text())
+    validate_history(w)
     rs.require_host_gpu()
     if a.llama_server: rs.LLAMA_SERVER_OVERRIDE = str(a.llama_server.resolve(strict=True))
     if a.zerv_binary is None:
@@ -174,7 +190,6 @@ def main():
     out.mkdir(parents=True, exist_ok=False)
     busy = rc.gpu_busy()
     if busy: raise SystemExit("GPU busy: " + "; ".join(busy))
-    w = json.loads(a.workload.read_text())
     levels = [int(x) for x in a.levels.split(",")]
     if max(levels) > len(w["conversations"]): raise SystemExit("more conversations requested than the workload has")
     zb = a.zerv_binary.resolve()

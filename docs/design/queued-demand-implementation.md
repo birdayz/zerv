@@ -80,3 +80,9 @@ and expanded idle C1/C4 serving are now executed and recorded in the report. Com
 window component timing is neutral/slower, not a win. Expanded serving preserves90
 native signatures but not competitor signatures; C1 reuse TTFT also loses to competitors.
 Quality-equivalent competitive acceptance remains the active gate.
+
+[Fixed-history competitive control](../bench/2026-09-29-fixed-history.md) now removes
+own-answer drift from second-turn inputs:30/30 request hashes/prompt counts match each
+engine. Native signatures remain exact, but Vulkan18/30 and HIP7/30 do not close the
+output-equivalence gate. HIP reuse TTFT still wins. Production checkpoint policy was
+not changed without causal evidence; token-ID proof and reuse profiling remain open.

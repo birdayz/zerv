@@ -1104,3 +1104,11 @@ Proposed order (by impact on bruh use); the user chooses what comes next.
 
 Evidence and limitations: [documentation index](docs/README.md),
 [roadmap](docs/roadmap.md), [benchmark index](docs/bench/README.md).
+
+D.2 competitive-control update (2026-09-29): [fixed-history report](docs/bench/2026-09-29-fixed-history.md).
+Canonical assistant history eliminates divergent subsequent requests; all30 request
+hashes/prompt counts match across engines, native60 signatures stay exact. C4 native
+prefetch36.577±.598s versus Vulkan41.153±1.440s/HIP39.812±.803s, but output/count
+signatures still differ and HIP reuse TTFT wins. Per-request token-ID equivalence,
+predeclared quality/fixed-work acceptance and reuse profiling remain active. No full-goal
+completion claim, no default change, no speculative checkpoint optimization.

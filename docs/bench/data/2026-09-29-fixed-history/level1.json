@@ -1,0 +1,247 @@
+{
+  "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096,prefix-cache-disk-chunk-mib=8": {
+    "metrics": {
+      "wall_s": {
+        "mean": 8.730312728332743,
+        "sd": 0.04331686750576222,
+        "trials": [
+          8.680477146001067,
+          8.751534297000035,
+          8.75892674199713
+        ]
+      },
+      "tok_s": {
+        "mean": 10.079988087247443,
+        "sd": 0.05015251570387997,
+        "trials": [
+          10.137691571544538,
+          10.055379664131099,
+          10.04689302606669
+        ]
+      },
+      "reuse_ttft_p50_ms": {
+        "mean": 404.473762998047,
+        "sd": 4.7931047607155595,
+        "trials": [
+          399.262392995297,
+          408.69347100669984,
+          405.4654249921441
+        ]
+      },
+      "gap_p99_ms": {
+        "mean": 20.810495004601155,
+        "sd": 0.06089681943644803,
+        "trials": [
+          20.828503009397537,
+          20.74262499809265,
+          20.86035700631328
+        ]
+      }
+    },
+    "exact_matches_to_native_off": 6,
+    "responses": 6,
+    "logs": [
+      {
+        "round": 0,
+        "counters": [
+          "zerv: disk prefix archive: 4 writes, 1 restores, 2407530496 bytes written, 679477248 read, 0 evictions, 0 skips, 0 failures, 1 cancellations"
+        ]
+      },
+      {
+        "round": 1,
+        "counters": [
+          "zerv: disk prefix archive: 4 writes, 1 restores, 2298478592 bytes written, 679477248 read, 0 evictions, 0 skips, 0 failures, 1 cancellations"
+        ]
+      },
+      {
+        "round": 2,
+        "counters": [
+          "zerv: disk prefix archive: 5 writes, 1 restores, 2910846976 bytes written, 679477248 read, 0 evictions, 0 skips, 0 failures, 1 cancellations"
+        ]
+      }
+    ]
+  },
+  "zerv-f16@parallel=2,kv-type=f16,kv-pool-pages=192,prefix-cache-slots=8,kv-swap-mib=4096,prefix-cache-tier=host,prefix-cache-disk-dir=third_party/nvme-probe,prefix-cache-disk-mib=8192,prefix-cache-disk-entries=16,prefix-cache-disk-alignment=4096,prefix-cache-disk-chunk-mib=8,prefix-cache-demand=prefetch,prefix-cache-prefetch-chunks=2": {
+    "metrics": {
+      "wall_s": {
+        "mean": 8.764574822998838,
+        "sd": 0.011204432820761471,
+        "trials": [
+          8.75170159600384,
+          8.772129172997666,
+          8.76989369999501
+        ]
+      },
+      "tok_s": {
+        "mean": 10.040429538321444,
+        "sd": 0.012844514727567338,
+        "trials": [
+          10.05518744379746,
+          10.03177202074056,
+          10.034329150426313
+        ]
+      },
+      "reuse_ttft_p50_ms": {
+        "mean": 407.22809433646034,
+        "sd": 2.1077201629470856,
+        "trials": [
+          406.7330440011574,
+          405.4119630018249,
+          409.5392760063987
+        ]
+      },
+      "gap_p99_ms": {
+        "mean": 20.9614396590041,
+        "sd": 0.3198280935178536,
+        "trials": [
+          20.620405994122848,
+          21.00922899262514,
+          21.25468399026431
+        ]
+      }
+    },
+    "exact_matches_to_native_off": 6,
+    "responses": 6,
+    "logs": [
+      {
+        "round": 0,
+        "counters": [
+          "zerv: queued demand: prefetch, one request lookahead, 2 staging chunks; no prefetch GPU upload, two tickets reserved for foreground reads",
+          "zerv: disk prefix archive: 4 writes, 1 restores, 2692743168 bytes written, 679477248 read, 0 evictions, 0 skips, 0 failures, 2 cancellations",
+          "zerv: queued demand: 0 source waits, 0 urgent protection override attempts",
+          "zerv: staging prefetch: 1 jobs, 1 handoffs, 0 cancellations; 8388608 bytes submitted, 0 completed while speculative, 0 completed bytes discarded"
+        ]
+      },
+      {
+        "round": 1,
+        "counters": [
+          "zerv: queued demand: prefetch, one request lookahead, 2 staging chunks; no prefetch GPU upload, two tickets reserved for foreground reads",
+          "zerv: disk prefix archive: 4 writes, 1 restores, 3464495104 bytes written, 671088640 read, 0 evictions, 0 skips, 0 failures, 3 cancellations",
+          "zerv: queued demand: 0 source waits, 1 urgent protection override attempts",
+          "zerv: staging prefetch: 1 jobs, 1 handoffs, 0 cancellations; 8388608 bytes submitted, 0 completed while speculative, 0 completed bytes discarded"
+        ]
+      },
+      {
+        "round": 2,
+        "counters": [
+          "zerv: queued demand: prefetch, one request lookahead, 2 staging chunks; no prefetch GPU upload, two tickets reserved for foreground reads",
+          "zerv: disk prefix archive: 3 writes, 1 restores, 2273312768 bytes written, 679477248 read, 0 evictions, 0 skips, 0 failures, 2 cancellations",
+          "zerv: queued demand: 0 source waits, 0 urgent protection override attempts",
+          "zerv: staging prefetch: 1 jobs, 1 handoffs, 0 cancellations; 8388608 bytes submitted, 0 completed while speculative, 0 completed bytes discarded"
+        ]
+      }
+    ]
+  },
+  "llama-fa-b512": {
+    "metrics": {
+      "wall_s": {
+        "mean": 10.834398642997257,
+        "sd": 0.10078310682022472,
+        "trials": [
+          10.77058219400351,
+          10.782028576999437,
+          10.950585157988826
+        ]
+      },
+      "tok_s": {
+        "mean": 8.491959965695456,
+        "sd": 0.07857761730124646,
+        "trials": [
+          8.541785238983714,
+          8.532717136018105,
+          8.401377522084548
+        ]
+      },
+      "reuse_ttft_p50_ms": {
+        "mean": 420.11678633571137,
+        "sd": 37.593774969438925,
+        "trials": [
+          395.6855950091267,
+          401.2578010006109,
+          463.4069629973965
+        ]
+      },
+      "gap_p99_ms": {
+        "mean": 31.77093500562478,
+        "sd": 1.3003261619155082,
+        "trials": [
+          30.541832005837932,
+          31.638608008506708,
+          33.132365002529696
+        ]
+      }
+    },
+    "exact_matches_to_native_off": 0,
+    "responses": 6,
+    "logs": [
+      {
+        "round": 0,
+        "counters": []
+      },
+      {
+        "round": 1,
+        "counters": []
+      },
+      {
+        "round": 2,
+        "counters": []
+      }
+    ]
+  },
+  "rdna3-nofusion": {
+    "metrics": {
+      "wall_s": {
+        "mean": 11.206683685668395,
+        "sd": 0.12399228093443326,
+        "trials": [
+          11.110672580005485,
+          11.1627083360072,
+          11.3466701409925
+        ]
+      },
+      "tok_s": {
+        "mean": 8.47777243201572,
+        "sd": 0.09332105742190536,
+        "trials": [
+          8.550337463004702,
+          8.510479458964404,
+          8.372500374078054
+        ]
+      },
+      "reuse_ttft_p50_ms": {
+        "mean": 325.64749499821727,
+        "sd": 18.967453085587206,
+        "trials": [
+          312.88015299651306,
+          316.6197899990948,
+          347.4425419990439
+        ]
+      },
+      "gap_p99_ms": {
+        "mean": 34.281208999649,
+        "sd": 1.4649530000636775,
+        "trials": [
+          33.4967009985121,
+          33.375580998836085,
+          35.97134500159882
+        ]
+      }
+    },
+    "exact_matches_to_native_off": 0,
+    "responses": 6,
+    "logs": [
+      {
+        "round": 0,
+        "counters": []
+      },
+      {
+        "round": 1,
+        "counters": []
+      },
+      {
+        "round": 2,
+        "counters": []
+      }
+    ]
+  }
+}
