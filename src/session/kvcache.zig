@@ -102,6 +102,14 @@ pub const Lease = struct { handle: Handle, serial: u64 };
 pub const Source = struct { lease: Lease, snapshot: u32, tokens: []const u32, pages: []const u32 };
 pub const SourceState = struct { generation: u64 = 0, serial: u64 = 0, active: bool = false, refs: u32 = 0 };
 pub const Capacity = struct { slots: u32, free_slots: u32 };
+pub const PreparationCandidate = struct { handle: Handle, used: u64, first: u32 };
+pub const PreparedResult = struct { copied: u32, freed: u32 };
+/// Non-yielding, non-reentrant commit of an acknowledged page-pool transaction.
+/// Errors must leave every page ID/owner unchanged; no borrowed mutable slice escapes.
+pub const PreparationCommit = struct {
+    ctx: *anyopaque,
+    apply: *const fn (ctx: *anyopaque, pages: []u32, first: u32) anyerror!PreparedResult,
+};
 /// Borrowed until the next cache mutation; retaining bytes requires acquireSource.
 pub const Candidate = struct { handle: Handle, tokens: []const u32, used: u64, host_pages: u32, has_host: bool };
 
@@ -120,6 +128,8 @@ pub const Cache = struct {
         evict: *const fn (ctx: *anyopaque, dev: Device) bool,
         /// Host-store pressure: drop one demoted checkpoint; false: none.
         evictHost: *const fn (ctx: *anyopaque, dev: Device) bool,
+        preparationCandidate: ?*const fn (ctx: *anyopaque, index: u32) ?PreparationCandidate = null,
+        finishPreparation: ?*const fn (ctx: *anyopaque, lease: Lease, commit: PreparationCommit) anyerror!PreparedResult = null,
         sourceCapacity: ?*const fn (ctx: *anyopaque) Capacity = null,
         sourceCandidate: ?*const fn (ctx: *anyopaque, index: u32) ?Candidate = null,
         discardSource: ?*const fn (ctx: *anyopaque, dev: Device, handle: Handle) anyerror!void = null,
@@ -140,6 +150,13 @@ pub const Cache = struct {
     }
     pub fn evictHost(c: Cache, dev: Device) bool {
         return c.vtable.evictHost(c.ctx, dev);
+    }
+    pub fn preparationCandidate(c: Cache, index: u32) ?PreparationCandidate {
+        return if (c.vtable.preparationCandidate) |f| f(c.ctx, index) else null;
+    }
+    /// Success consumes the source lease. Every error retains it for drain/abort/release.
+    pub fn finishPreparation(c: Cache, lease: Lease, commit: PreparationCommit) !PreparedResult {
+        return (c.vtable.finishPreparation orelse return error.UnsupportedSource)(c.ctx, lease, commit);
     }
     pub fn sourceCapacity(c: Cache) !Capacity {
         return (c.vtable.sourceCapacity orelse return error.UnsupportedSource)(c.ctx);
@@ -348,8 +365,29 @@ pub const Radix = struct {
     pub fn cache(self: *Radix) Cache {
         return .{ .ctx = self, .vtable = &vtable };
     }
-    const vtable: Cache.VTable = .{ .restore = restore, .checkpoint = take, .evict = evict, .evictHost = evictHost, .stats = stats, .deinit = deinit, .coldSource = coldSource, .acquireSource = acquireSource, .releaseSource = releaseSource, .sourceCapacity = sourceCapacity, .sourceCandidate = sourceCandidate, .discardSource = discardSource };
+    const vtable: Cache.VTable = .{ .restore = restore, .checkpoint = take, .evict = evict, .evictHost = evictHost, .stats = stats, .deinit = deinit, .coldSource = coldSource, .acquireSource = acquireSource, .releaseSource = releaseSource, .sourceCapacity = sourceCapacity, .sourceCandidate = sourceCandidate, .discardSource = discardSource, .preparationCandidate = preparationCandidate, .finishPreparation = finishPreparation };
 
+    fn preparationCandidate(ctx: *anyopaque, index: u32) ?PreparationCandidate {
+        const self: *Radix = @ptrCast(@alignCast(ctx));
+        if (!self.tier or index >= self.sources.len or !self.live(index) or self.sources[index].refs != 0 or !self.anyPool(self.segment(index))) return null;
+        return .{ .handle = .{ .index = index, .generation = self.sources[index].generation }, .used = self.store.entries[index].used, .first = self.own[index] };
+    }
+    fn finishPreparation(ctx: *anyopaque, lease: Lease, commit: PreparationCommit) anyerror!PreparedResult {
+        const self: *Radix = @ptrCast(@alignCast(ctx));
+        const i = try self.validateSource(lease.handle);
+        const s = &self.sources[i];
+        if (!s.active or s.serial != lease.serial) return error.InvalidSource;
+        if (s.refs != 1) return error.Busy;
+        const seg = self.segment(i);
+        const before = self.seg_buf[0..seg.len];
+        @memcpy(before, seg);
+        const result = try commit.apply(commit.ctx, self.store.entryPagesMut(i), self.own[i]);
+        self.rename(i, self.own[i], before);
+        self.st.demotions += 1;
+        self.st.demoted_pages += result.copied;
+        self.releaseValidated(i);
+        return result;
+    }
     fn sourceCapacity(ctx: *anyopaque) Capacity {
         const self: *Radix = @ptrCast(@alignCast(ctx));
         var free: u32 = 0;
@@ -400,9 +438,12 @@ pub const Radix = struct {
         const i = try self.validateSource(lease.handle);
         const s = &self.sources[i];
         if (!s.active or s.serial != lease.serial) return error.InvalidSource;
+        self.releaseValidated(i);
+    }
+    fn releaseValidated(self: *Radix, i: usize) void {
         var at: ?usize = i;
         while (at) |u| : (at = if (self.parent[u]) |p| p else null) self.sources[u].refs -= 1;
-        s.active = false;
+        self.sources[i].active = false;
     }
     fn pathHeld(self: *const Radix, i: usize) bool {
         var at: ?usize = i;

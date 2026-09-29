@@ -395,3 +395,11 @@ finish independent tests and benchmark gates before advancing.
      freed accounting. Independent 1,362-case oracle, CPU 82/82, both page modes ×20,
      two negative controls and two metadata runs pass. No GPU adapter or serving
      speedup yet; D.1.2 cache/GPU integration research/specification is active.
+115. [Preparation integration](bench/2026-09-29-preparation-integration.md) (D.1.2
+     functionality/evaluation gates closed, performance goal open): qualified atomic cache finish, bounded GPU owner, packed-safe polling,
+     host-only policy and opt-in knobs. Joint oracle 3,872 cases, initial CPU/device
+     gates, exact 257/80k state/vocabulary/packed rows and independent 337/337 pass.
+     Repetition found a swap-order livelock; deterministic negative control and fix
+     recorded. Twelve final ownership/window/host/disk cases pass, including real
+     concurrent reads. Clean serving: 96 exact native responses, disk still slower
+     than references, no matched-quality parity. D.2 research active, not implemented.

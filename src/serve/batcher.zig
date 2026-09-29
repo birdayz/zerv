@@ -598,7 +598,7 @@ pub fn Batcher(comptime Backend: type) type {
                         if (!s.used or s.closing) continue;
                         if (s.swapped and !s.running) {
                             if (first_swapped == null or s.swapped_ns < first_swapped.?) first_swapped = s.swapped_ns;
-                            if (s.swap_epoch != self.admit_epoch and (oldest == null or s.swapped_ns < self.slot[oldest.?].swapped_ns)) oldest = i;
+                            if (oldest == null or s.swapped_ns < self.slot[oldest.?].swapped_ns) oldest = i;
                         }
                         if (s.op == .prefill and !s.admitted and !s.running and !s.swapped and s.failed_epoch != std.math.maxInt(u64)) {
                             if (first_prompt == null or s.wait_ns < first_prompt.?) first_prompt = s.wait_ns;
@@ -608,6 +608,11 @@ pub fn Batcher(comptime Backend: type) type {
                     self.first_swapped_ns = first_swapped orelse 0;
                     // A prompt that has waited longer goes first (it is eligible then).
                     if (oldest != null and first_prompt != null and first_prompt.? < self.slot[oldest.?].swapped_ns) oldest = null;
+                    // Do not restore a younger, smaller waiter into space just reclaimed
+                    // for the oldest. Several victims may have to leave before it fits.
+                    if (oldest) |i| if (self.slot[i].swap_epoch == self.admit_epoch) {
+                        oldest = null;
+                    };
                     if (oldest == null) {
                         // Time slice: the longest waiter waited a slice; the sequence that has
                         // run longest since it came in (at least a slice) makes room.

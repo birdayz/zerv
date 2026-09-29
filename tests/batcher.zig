@@ -1490,3 +1490,33 @@ test "batcher: legacy maintenance remains deferred without explicit in-chunk opt
     try t.expectEqual(@as(u32, 0), fake.maintenance_chunk_polls);
     try t.expectEqual(@as(u32, 3), fake.maintenance_cancel_polls);
 }
+
+test "batcher: accumulate multiple victims for oldest swapped decoder" {
+    const io = t.io;
+    var fake: Fake = .{ .io = io, .pool = 10, .page = 4, .host_pool = 40 };
+    var b = try B.init(io, &fake, .{ .slots = 4, .vocab = V, .stall = .{ .ns = 0 }, .swap_slice = .fromMilliseconds(1) });
+    const now = std.Io.Clock.awake.now(io).nanoseconds;
+    b.slot[0] = .{ .used = true, .op = .step, .decoding = true, .admitted = true, .swapped = true, .swapped_ns = now - 10_000_000, .swap_epoch = 0, .token = 7 };
+    b.swapped_slots = 1;
+    fake.host_held[0] = 9;
+    fake.swapped[0] = true;
+    fake.pos[0] = 32;
+    const held = [_]usize{ 4, 4, 2 };
+    for (held, 1..) |pages, i| {
+        fake.held[i] = pages;
+        fake.pos[i] = pages * 4;
+        b.slot[i] = .{ .used = true, .op = .prefill, .base = pages * 4, .tokens = &.{3}, .order = i, .wait_ns = now - 5_000_000 + @as(i96, @intCast(i)), .resumed_ns = now - 5_000_000 };
+    }
+    var task = try io.concurrent(B.run, .{&b});
+    defer {
+        b.stop();
+        task.await(io);
+    }
+    const deadline = now + std.time.ns_per_s;
+    while (b.slot[0].status.load(.acquire) == 0 and std.Io.Clock.awake.now(io).nanoseconds < deadline) try io.sleep(.fromMilliseconds(1), .awake);
+    try t.expect(b.slot[0].status.load(.acquire) != 0);
+    b.mutex.lockUncancelable(io);
+    defer b.mutex.unlock(io);
+    try t.expectEqual(@as(?anyerror, null), b.slot[0].err);
+    try t.expect(b.stats.slice_swaps >= 3);
+}

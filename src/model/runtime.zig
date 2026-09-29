@@ -1795,6 +1795,26 @@ pub const Model = struct {
         return true;
     }
 
+    /// Submit a bounded, leased checkpoint preparation without publishing page IDs.
+    /// The caller retains the source and reservations until this command's fence drains.
+    pub fn prepareSubmit(self: *Model, c: *gpu.Commands, generation: u64) (Error || page_pool.PreparationError)!void {
+        if (self.chunk != null or self.pending_verify != 0) return error.InvalidState;
+        const moves = try self.pool.preparedMoves(generation);
+        try c.reset();
+        try c.begin();
+        try c.barrier(.compute, .transfer);
+        try c.barrier(.transfer, .transfer);
+        for (moves) |move| for (0..self.state_layout.kv_buffers) |g| {
+            const bytes = self.pageBytes(@intCast(g));
+            try c.copy(&self.kv[g], @as(u64, move.from) * bytes, &self.swap_kv[g], @as(u64, move.to) * bytes, bytes);
+        };
+        try c.barrier(.transfer, .host);
+        try c.barrier(.transfer, .transfer);
+        try c.barrier(.transfer, .compute);
+        try c.end();
+        try c.submit();
+    }
+
     /// Copy `moves` between pool and host pages (runs merged), synchronously.
     fn copyPages(self: *Model, moves: []const page_pool.Move, way: SwapWay) Error!void {
         const c = &self.swap_commands;

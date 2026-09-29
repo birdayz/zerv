@@ -1,0 +1,122 @@
+INFO: Invocation ID: 166818d3-d588-4a7f-8d22-9899746e4540
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: target //tests:kv_system (0 packages loaded, 0 targets configured)
+Analyzing: target //tests:kv_system (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed target //tests:kv_system (0 packages loaded, 1 target configured).
+[18 / 58] Testing //tests:kv_system (run 4 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[19 / 58] Testing //tests:kv_system (run 5 of 40); 0s linux-sandbox ... (24 actions, 1 running)
+[19 / 58] Testing //tests:kv_system (run 5 of 40); 2s linux-sandbox ... (24 actions, 2 running)
+[20 / 58] Testing //tests:kv_system (run 8 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[20 / 58] Testing //tests:kv_system (run 8 of 40); 2s linux-sandbox ... (24 actions, 2 running)
+[21 / 58] Testing //tests:kv_system (run 13 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[21 / 58] Testing //tests:kv_system (run 13 of 40); 11s linux-sandbox ... (24 actions, 1 running)
+FAIL: //tests:kv_system (run 13 of 40) (Aborted) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kv_system/run_13_of_40/test.log)
+INFO: From Testing //tests:kv_system (run 13 of 40):
+==================== Test output for //tests:kv_system (run 13 of 40):
+1/6 kv_system.test.kv system: no cache, roomy pool...OK
+2/6 kv_system.test.kv system: flat and radix, roomy pool: restores, exact...OK
+3/6 kv_system.test.kv system: tight pool, swaps and time slice, every policy, several seeds...kv system null: swaps 62 restores 0 demoted 0 promoted 0
+kv system .flat: swaps 50 restores 45 demoted 0 promoted 0
+kv system .radix: swaps 21 restores 52 demoted 92 promoted 33
+OK
+4/6 kv_system.test.kv system: radix without the host tier, tight pool...OK
+5/6 kv_system.test.kv system: distinct long conversations fill the pool with checkpoints, every policy and tier...STALL kind=.radix tier=true seed=302 epoch=28933 blocked=null swapped=2 pack=null
+slot 0: used=true closing=false op=.prefill running=true decoding=false admitted=false base=42 done=0 tokens=6 failed=18446744073709551615 swapped=true swap_epoch=18446744073709551615 order=47 wait=92296370246308
+slot 1: used=true closing=false op=.prefill running=false decoding=false admitted=false base=49 done=0 tokens=1 failed=18446744073709551615 swapped=false swap_epoch=20 order=45 wait=92296369978151
+slot 2: used=true closing=false op=.prefill running=false decoding=false admitted=false base=49 done=0 tokens=3 failed=18446744073709551615 swapped=false swap_epoch=18446744073709551615 order=49 wait=92296370283228
+slot 3: used=true closing=false op=.step running=false decoding=true admitted=true base=46 done=0 tokens=0 failed=18446744073709551615 swapped=true swap_epoch=28933 order=31 wait=92296363653586
+thread 91 panic: KV system progress deadline exceeded
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/tests/kv_system.zig:408:5: 0x12ce99d in watchStall (kv_system.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Io.zig:2376:13: 0x12ce396 in start (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Io/Threaded.zig:741:20: 0x11e3e11 in start (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Io/Threaded.zig:1797:29: 0x11df9e4 in worker (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Thread.zig:422:13: 0x11df6c5 in callFn__anon_27788 (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Thread.zig:1431:30: 0x11df480 in entryFn (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/os/linux/x86_64.zig:105:5: 0x11df5e5 in clone (std.zig)
+================================================================================
+[22 / 58] Testing //tests:kv_system (run 6 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[23 / 58] Testing //tests:kv_system (run 2 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[24 / 58] Testing //tests:kv_system (run 1 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[25 / 58] Testing //tests:kv_system (run 12 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[26 / 58] Testing //tests:kv_system (run 10 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[27 / 58] Testing //tests:kv_system (run 15 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[28 / 58] Testing //tests:kv_system (run 9 of 40); 0s linux-sandbox ... (24 actions, 1 running)
+[28 / 58] Testing //tests:kv_system (run 9 of 40); 2s linux-sandbox ... (24 actions, 2 running)
+[29 / 58] Testing //tests:kv_system (run 20 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[30 / 58] Testing //tests:kv_system (run 16 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[31 / 58] Testing //tests:kv_system (run 7 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[32 / 58] Testing //tests:kv_system (run 3 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[33 / 58] Testing //tests:kv_system (run 11 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[34 / 58] Testing //tests:kv_system (run 18 of 40); 1s linux-sandbox ... (24 actions, 1 running)
+[35 / 58] Testing //tests:kv_system (run 19 of 40); 1s linux-sandbox ... (23 actions, 1 running)
+[36 / 58] Testing //tests:kv_system (run 14 of 40); 1s linux-sandbox ... (22 actions, 1 running)
+[37 / 58] Testing //tests:kv_system (run 17 of 40); 1s linux-sandbox ... (21 actions, 1 running)
+[38 / 58] Testing //tests:kv_system (run 23 of 40); 1s linux-sandbox ... (20 actions, 1 running)
+[38 / 58] Testing //tests:kv_system (run 23 of 40); 2s linux-sandbox ... (20 actions, 2 running)
+[39 / 58] Testing //tests:kv_system (run 22 of 40); 1s linux-sandbox ... (19 actions, 1 running)
+[40 / 58] Testing //tests:kv_system (run 24 of 40); 1s linux-sandbox ... (18 actions, 1 running)
+[41 / 58] Testing //tests:kv_system (run 21 of 40); 1s linux-sandbox ... (17 actions, 1 running)
+[42 / 58] Testing //tests:kv_system (run 25 of 40); 1s linux-sandbox ... (16 actions, 1 running)
+[43 / 58] Testing //tests:kv_system (run 26 of 40); 1s linux-sandbox ... (15 actions, 1 running)
+[44 / 58] Testing //tests:kv_system (run 27 of 40); 1s linux-sandbox ... (14 actions, 1 running)
+[45 / 58] Testing //tests:kv_system (run 28 of 40); 1s linux-sandbox ... (13 actions, 1 running)
+[46 / 58] Testing //tests:kv_system (run 29 of 40); 1s linux-sandbox ... (12 actions, 1 running)
+[47 / 58] Testing //tests:kv_system (run 30 of 40); 1s linux-sandbox ... (11 actions, 1 running)
+[48 / 58] Testing //tests:kv_system (run 31 of 40); 1s linux-sandbox ... (10 actions, 1 running)
+[48 / 58] Testing //tests:kv_system (run 31 of 40); 2s linux-sandbox ... (10 actions, 2 running)
+[49 / 58] Testing //tests:kv_system (run 32 of 40); 1s linux-sandbox ... (9 actions, 1 running)
+[50 / 58] Testing //tests:kv_system (run 33 of 40); 0s linux-sandbox ... (8 actions, 1 running)
+[50 / 58] Testing //tests:kv_system (run 33 of 40); 2s linux-sandbox ... (8 actions, 2 running)
+[51 / 58] Testing //tests:kv_system (run 34 of 40); 1s linux-sandbox ... (7 actions, 1 running)
+[52 / 58] Testing //tests:kv_system (run 35 of 40); 1s linux-sandbox ... (6 actions, 1 running)
+[53 / 58] Testing //tests:kv_system (run 36 of 40); 1s linux-sandbox ... (5 actions, 1 running)
+[54 / 58] Testing //tests:kv_system (run 37 of 40); 1s linux-sandbox ... (4 actions, 1 running)
+[54 / 58] Testing //tests:kv_system (run 37 of 40); 11s linux-sandbox ... (4 actions, 1 running)
+FAIL: //tests:kv_system (run 37 of 40) (Aborted) (see /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kv_system/run_37_of_40/test.log)
+INFO: From Testing //tests:kv_system (run 37 of 40):
+==================== Test output for //tests:kv_system (run 37 of 40):
+1/6 kv_system.test.kv system: no cache, roomy pool...OK
+2/6 kv_system.test.kv system: flat and radix, roomy pool: restores, exact...OK
+3/6 kv_system.test.kv system: tight pool, swaps and time slice, every policy, several seeds...kv system null: swaps 60 restores 0 demoted 0 promoted 0
+kv system .flat: swaps 33 restores 49 demoted 0 promoted 0
+kv system .radix: swaps 22 restores 52 demoted 73 promoted 18
+OK
+4/6 kv_system.test.kv system: radix without the host tier, tight pool...OK
+5/6 kv_system.test.kv system: distinct long conversations fill the pool with checkpoints, every policy and tier...STALL kind=.flat tier=false seed=300 epoch=28972 blocked=null swapped=1 pack=null
+slot 0: used=true closing=false op=.prefill running=false decoding=false admitted=false base=45 done=0 tokens=1 failed=18446744073709551615 swapped=false swap_epoch=18446744073709551615 order=37 wait=92375782570363
+slot 1: used=true closing=false op=.prefill running=false decoding=false admitted=false base=41 done=0 tokens=3 failed=18446744073709551615 swapped=false swap_epoch=18446744073709551615 order=35 wait=92375782289471
+slot 2: used=true closing=false op=.step running=false decoding=true admitted=true base=53 done=0 tokens=0 failed=18446744073709551615 swapped=true swap_epoch=28972 order=13 wait=92375779311476
+slot 3: used=true closing=false op=.prefill running=false decoding=false admitted=false base=45 done=0 tokens=6 failed=18446744073709551615 swapped=false swap_epoch=18446744073709551615 order=33 wait=92375781881129
+thread 90 panic: KV system progress deadline exceeded
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/tests/kv_system.zig:408:5: 0x12ce99d in watchStall (kv_system.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Io.zig:2376:13: 0x12ce396 in start (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Io/Threaded.zig:741:20: 0x11e3e11 in start (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Io/Threaded.zig:1797:29: 0x11df9e4 in worker (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Thread.zig:422:13: 0x11df6c5 in callFn__anon_27788 (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Thread.zig:1431:30: 0x11df480 in entryFn (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/os/linux/x86_64.zig:105:5: 0x11df5e5 in clone (std.zig)
+================================================================================
+[55 / 58] Testing //tests:kv_system (run 38 of 40); 1s linux-sandbox ... (3 actions, 1 running)
+[56 / 58] Testing //tests:kv_system (run 39 of 40); 1s linux-sandbox ... (2 actions, 1 running)
+[57 / 58] Testing //tests:kv_system (run 40 of 40); 0s linux-sandbox
+[57 / 58] Testing //tests:kv_system (run 40 of 40); 2s disk-cache, linux-sandbox
+
+FAILED: //tests:kv_system (Summary)
+      /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kv_system/run_13_of_40/test.log
+      /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kv_system/run_37_of_40/test.log
+INFO: Found 1 test target...
+Target //tests:kv_system up-to-date:
+  bazel-bin/tests/kv_system
+INFO: Elapsed time: 105.404s, Critical Path: 61.45s
+INFO: 43 processes: 4 action cache hit, 2 internal, 81 linux-sandbox.
+INFO: Build completed, 1 test FAILED, 43 total actions
+//tests:kv_system                                                        FAILED in 2 out of 40 in 12.2s
+  Stats over 40 runs: max = 12.2s, min = 2.0s, avg = 2.6s, dev = 2.2s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kv_system/run_13_of_40/test.log
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kv_system/run_37_of_40/test.log
+
+Executed 1 out of 1 test: 1 fails locally.
+There were tests whose specified size is too big. Use the --test_verbose_timeout_warnings command line option to see which ones these are.

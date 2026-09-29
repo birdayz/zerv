@@ -1,0 +1,11 @@
+exec ${PAGER:-/usr/bin/less} "$0" || exit 1
+Executing tests from //tests:kv_system
+-----------------------------------------------------------------------------
+1/6 kv_system.test.kv system: no cache, roomy pool...OK
+2/6 kv_system.test.kv system: flat and radix, roomy pool: restores, exact...OK
+3/6 kv_system.test.kv system: tight pool, swaps and time slice, every policy, several seeds...kv system null: swaps 62 restores 0 demoted 0 promoted 0
+kv system .flat: swaps 37 restores 43 demoted 0 promoted 0
+kv system .radix: swaps 25 restores 50 demoted 86 promoted 21
+OK
+4/6 kv_system.test.kv system: radix without the host tier, tight pool...OK
+5/6 kv_system.test.kv system: distinct long conversations fill the pool with checkpoints, every policy and tier...-- Test timed out at 2026-09-29 00:16:44 UTC --

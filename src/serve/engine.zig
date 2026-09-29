@@ -8,6 +8,7 @@ const model = @import("model");
 const session = @import("session");
 const batcher = @import("batcher.zig");
 const disk = @import("disk.zig");
+const preparation = @import("preparation.zig");
 
 pub const eos = [_][]const u8{ "<|im_end|>", "<|endoftext|>" };
 
@@ -275,6 +276,16 @@ pub const ModelBackend = struct {
     cache: ?session.kvcache.Cache = null,
     disk_archive: ?*disk.Disk = null,
     pressure_reclaim: bool = false,
+    preparation_owner: ?preparation.Preparation = null,
+
+    pub fn initPreparation(self: *ModelBackend, io: std.Io, options: preparation.Options) !void {
+        if (self.preparation_owner != null) return error.InvalidOptions;
+        self.preparation_owner = try preparation.Preparation.init(self.m, self.cache orelse return error.InvalidOptions, io, options);
+    }
+    pub fn deinitPreparation(self: *ModelBackend) !void {
+        if (self.preparation_owner) |*p| try p.deinit();
+        self.preparation_owner = null;
+    }
 
     pub fn initDisk(self: *ModelBackend, allocator: std.mem.Allocator, io: std.Io, options: disk.Options) !void {
         if (self.disk_archive != null) return error.InvalidOptions;
@@ -294,6 +305,10 @@ pub const ModelBackend = struct {
     /// Only an already-owned immutable source may progress between packed prefill units.
     /// No slot selection, cache admission, discard or publication in this lane.
     pub fn pollMaintenanceInChunk(self: *ModelBackend, stopping: bool, reads_pending: bool) !batcher.MaintenancePoll {
+        if (self.preparation_owner) |*owner| if (owner.held != null) {
+            const p = owner.poll(stopping, false) catch |e| return self.check(e);
+            return .{ .pending = p.pending or (p.reclaimed and !stopping), .progressed = p.progressed, .reclaimed = p.reclaimed };
+        };
         const d = self.disk_archive orelse return .{};
         if (d.source) |held| {
             const h = held.view.lease.handle;
@@ -314,6 +329,17 @@ pub const ModelBackend = struct {
 
     /// One optional ownership/selection quantum, independent of request-slot lifetimes.
     pub fn pollMaintenance(self: *ModelBackend, stopping: bool, reads_pending: bool) !batcher.MaintenancePoll {
+        if (self.preparation_owner) |*owner| {
+            if (owner.held != null) {
+                const p = owner.poll(stopping, true) catch |e| return self.check(e);
+                return .{ .pending = p.pending or (p.reclaimed and !stopping), .progressed = p.progressed, .reclaimed = p.reclaimed };
+            }
+            const archive_held = if (self.disk_archive) |d| d.source != null else false;
+            if (!stopping and !reads_pending and !archive_held) {
+                const started = owner.start() catch |e| return self.check(e);
+                if (started) return .{ .pending = true, .progressed = true };
+            }
+        }
         const d = self.disk_archive orelse return .{};
         if (d.source != null) return self.pollMaintenanceInChunk(stopping, reads_pending);
         if (stopping or self.pressure_reclaim or reads_pending) return .{};
@@ -431,6 +457,7 @@ pub const ModelBackend = struct {
     /// swap-out: they were shared or pinned, so checkpoints could not free them either).
     /// False: nothing left to free.
     fn makeRoom(self: *ModelBackend, except: ?u32) bool {
+        if (self.preparation_owner) |*p| if (p.held != null) return false;
         if (self.cache) |c| if (c.evict(self.device())) return true;
         if (self.disk_archive) |d| if (d.source != null) {
             self.pressure_reclaim = true;
@@ -462,7 +489,8 @@ pub const ModelBackend = struct {
     }
     /// After a failed call: a pending command or a lost device makes the engine unusable.
     fn noteFailure(self: *ModelBackend) void {
-        const owned_pending: u32 = if (self.disk_archive) |d| @intFromBool(d.commands.state == .pending) else 0;
+        var owned_pending: u32 = if (self.disk_archive) |d| @intFromBool(d.commands.state == .pending) else 0;
+        if (self.preparation_owner) |*p| owned_pending += @intFromBool(p.commands.state == .pending);
         if (self.m.device.lost or self.m.device.pending != owned_pending) self.fatal.store(true, .release);
     }
     pub fn reset(self: *ModelBackend, slot: u32) !void {
@@ -500,6 +528,7 @@ pub const ModelBackend = struct {
                 // Unused checkpoints go before any sequence is swapped out.
                 if (e == error.PoolExhausted and self.makeRoom(null)) continue;
                 if (e == error.PoolExhausted) {
+                    if (self.preparation_owner) |*p| if (p.held != null) return error.CacheReclaimPending;
                     if (self.disk_archive) |d| if (d.source != null and d.source_cancel_requested) return error.CacheReclaimPending;
                     return false;
                 }

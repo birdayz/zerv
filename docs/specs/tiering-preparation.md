@@ -142,3 +142,132 @@ real interleaved bytes, 257/80k full-vocabulary gates, independent FP64/libllama
 CPU/GPU/spill/host checks and repeated loaded serving versus host-only and tuned
 Vulkan/HIP references. No hardware overlap or full D.1 completion claim follows
 from this pure ownership component.
+
+## D.1.2 integration contract (resolved at `efd667d`, before code)
+
+### Cache boundary and joint oracle
+
+Add a separate radix `preparationCandidate(index)` returning handle, LRU stamp and
+absolute own-segment start for an unleased, tier-enabled GPU-owning segment. Internal
+nodes are eligible; flat/tier-off caches return none. Keep archive candidates
+leaf-only. Acquire the existing immutable source lease before pool planning.
+
+`finishPreparation(lease, commit)` validates the live generation/serial, then
+requires exactly one reference on the selected node (its own lease). Otherwise
+return `Busy` without calling commit. The narrow callback receives the complete
+mutable checkpoint list and its own-segment start; it must be non-yielding,
+non-reentrant and either atomically commit the already-drained pool transaction
+or return an error with no mutation. Snapshot the old own segment in existing
+bounded scratch, invoke the callback, rename aliases/descendants, update demotion
+statistics and release the lease in one non-yielding transition. Success consumes
+the lease; **every error retains it**. Caller aborts drained pool reservations and
+then releases that lease. Neither cache generation nor pool generation alone is
+sufficient. No raw mutable source slice is returned to an asynchronous caller.
+
+Before implementing this API, generate an independent prefix/object-set fixture
+using exact token tuples as full-page identities and per-checkpoint partial tails.
+Recompute parent relationships and segment-owning sets from prefix inclusion, not
+native parent/pin arrays. Cases combine ancestors, descendants, divergent roots,
+partial tails, insertion after planning, late ancestor/sibling/descendant leases,
+GPU hits, cancellation and injected commit failure. Expected own-segment starts,
+move counts, copied/freed counts, commit/refusal, per-node host/GPU residency and
+lease refs must match the real pool/cache driven through `tests/kv_system.zig`.
+Include the cross-root insertion race where own-path refs remain one but a source
+pin becomes two. Simulated byte copies must preserve all live/cache content and
+return all pages at teardown. Existing source/pool goldens remain mandatory.
+
+### Device ownership and scheduler integration
+
+A `serve` preparation owner has a separate `gpu.Commands`, borrowed model/cache,
+bounded qualified source/pool IDs, a cancel latch, monotonic submission timestamp
+and fixed counters. No heap allocation per preparation. Model submission records
+at most four physical page copies across all KV groups, no request selection or
+logits/I/O writes. Require no live packed chunk or verification at start. Use
+compute→transfer and transfer→transfer ordering before copies; transfer→host,
+transfer→transfer and transfer→compute dependencies after. Full physical pages use
+the unchanged f16/f32 host-tier layout: selected pages initially have no slot masks,
+and subsequent partial hits copy their tail privately. Do not freeze recurrent
+state again: its existing cache snapshot remains protected by the source lease.
+
+Submit without waiting. Poll the actual fence with zero timeout. On success only,
+acknowledge the pool transaction. Errors with known drained ownership abort and
+release; pending ownership or a deadline exceeded after one final completion check
+fails stop. Device loss remains fatal. `noteFailure` must include this exact pending
+command owner, not just the archive's owner, so an unrelated invalid request does
+not falsely kill the engine. Unknown pending commands remain fatal.
+
+An in-chunk maintenance call may only poll/acknowledge an existing preparation; it
+must **not commit, select or rename**. Ordinary maintenance finishes or aborts it
+after the chunk. Stop first aborts the pack, then drains before releasing anything.
+Serialize optional archive capture and preparation until both release their sources,
+including acknowledged-but-unpublished preparation. Whole-buffer `swap_kv.mapped`
+guards are never bypassed. Foreground disk reads may proceed over disjoint reserved
+pages; no new optional preparation while reads are pending. An owned transfer always
+drains even when new issue is forbidden. A request's cancellation does not cancel
+an independent cache preparation; stop does. Generation reuse tests remain mandatory.
+
+When preparation owns potential reclaimable pages, urgent allocation returns the
+existing `CacheReclaimPending` protocol rather than prematurely failing decode or
+starting another synchronous eviction on that source. Finish/abort advances the
+scheduler admission epoch even if a live hit prevented actual reclamation; the
+retry can then use normal drop/swap fallbacks. Unrelated runnable rows continue.
+
+### Policy and configuration
+
+Opt-in `--prefix-cache-prepare-pages N` sets desired free GPU pages; zero/default
+preserves current behavior. `--prefix-cache-prepare-window-pages 1|2|4` (default 1)
+and `--prefix-cache-prepare-host-headroom-mib N` are valid only with preparation.
+Resolve before execution: shared KV, parallel >1, tier-enabled radix cache, nonzero
+snapshots and host store, no MTP; N cannot exceed GPU page capacity. Host reserve
+rounds up to physical host pages; default is min(256 MiB, one eighth of host store),
+and cannot exceed host capacity. Explicit invalid combinations reject at startup.
+Report effective page thresholds/window/host reserve; no inert knobs.
+
+Below the GPU free-page target, with host reserve available, try cold unleased
+segments in LRU order, bounded by snapshot capacity. Pool planning is authoritative
+about exclusive pins and live masks. Skip no-move candidates without leasing them
+indefinitely. Start one window only; finish and re-evaluate pressure. Generation-
+qualified suppression after a failed/conflicted optional transaction prevents busy
+retry on that incarnation. No optional host eviction just to create preparation
+room: live swap/read reserve outranks it. Host-only configurations work without disk.
+Archive pressure handles snapshot-slot capacity, which GPU demotion cannot free.
+
+Counters distinguish submitted/copied pages, committed pages, actually freed pages,
+abort/conflict counts and source hold time. They must not present live-hit copies as
+reclamation. Window size is an explicit latency/headroom tradeoff, not a default
+performance claim. No second Vulkan queue or hardware-overlap claim.
+
+### Integration acceptance
+
+Joint oracle and delayed ownership/cancel/stop/lease tests; CPU suite and repeated
+interfaces; GPU Debug/ReleaseFast/spill and host-driver gates. Extend the real model
+checker to submit preparation over a cached source, make another slot hit it while
+pending, run packed/independent computation, acknowledge then commit outside the
+pack, and compare valid bytes, live continuation and restored full vocabulary.
+Exercise host-only and host+disk, abort/retry, wrong-slot error during owned DMA,
+80k mixed ancestry and partial tails, read priority and retained reservations.
+Independent FP64/libllama semantics remain required. Repeat loaded HTTP with fixed
+native streams/token counts, off/on preparation and tuned Vulkan/HIP references;
+report negative results, memory, transfers, TTFT/gaps, throughput and variance.
+Do not close D.1.2 on the CPU oracle or component alone. D.2 is still separate.
+
+### Integration-discovered swap ordering regression (2026-09-29, before fix)
+
+Repeated real-pool scheduler tests stalled without any preparation owner. Watchdog
+snapshots show an old swapped decoder, three newer resident partial prompts and
+~29,000 admission epochs in ten seconds. Observed with flat/tier-off and radix/tier-on.
+The scheduler excludes a swapped slot whose swap-in already failed this epoch when
+selecting the oldest. After one partial prompt is swapped out, the old decoder still
+cannot fit; a newer, smaller swapped prompt is then restored into exactly the space
+just freed. This cycles without accumulating enough space for the oldest decoder.
+
+Required ordering: choose the oldest swapped waiter independent of retry eligibility.
+If it already failed this epoch, time-slice another resident victim instead of letting
+a younger swapped waiter consume the reclaimed pages. Preserve older-prompt priority,
+epoch-gated retries and the existing minimum victim residency interval. No arithmetic,
+precision or GPU layout changes. Deterministic acceptance: a 9-page swapped decoder
+behind resident 4/4/2-page partial prompts in a 10-page pool must complete a row after
+multiple victims leave; a smaller younger swap-in must not bypass it. Run this test
+against the unfixed selection as a negative control, then both modes and repeated
+real-pool tests. Preserve the original timeout/watchdog logs. This is a newly observed
+integration regression, not a reopening of the retired GPU hang investigation.

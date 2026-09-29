@@ -399,6 +399,15 @@ fn makePrompt(buf: []u32, sys: usize, conv: u32, turn: u32) []const u32 {
     return buf[0 .. n + 1];
 }
 
+fn watchStall(b: *Bt, kind: ?kvcache.Kind, tier: bool, seed: u64) void {
+    b.io.sleep(.fromSeconds(10), .awake) catch return;
+    b.mutex.lockUncancelable(b.io);
+    defer b.mutex.unlock(b.io);
+    std.debug.print("STALL kind={any} tier={} seed={d} epoch={d} blocked={any} swapped={d} pack={any}\n", .{ kind, tier, seed, b.admit_epoch, b.blocked, b.swapped_slots, b.pack });
+    for (b.slot[0..S], 0..) |s, i| std.debug.print("slot {d}: used={} closing={} op={any} running={} decoding={} admitted={} base={d} done={d} tokens={d} failed={d} swapped={} swap_epoch={d} order={d} wait={d}\n", .{ i, s.used, s.closing, s.op, s.running, s.decoding, s.admitted, s.base, s.done, s.tokens.len, s.failed_epoch, s.swapped, s.swap_epoch, s.order, s.wait_ns });
+    @panic("KV system progress deadline exceeded");
+}
+
 const Outcome = struct { restores: u32, swaps: u32, demoted: u32 = 0, promoted: u32 = 0, deep_swaps: u32 = 0 };
 fn run(kind: ?kvcache.Kind, pool_pages: u32, slice_ms: ?i64, seed: u64) !Outcome {
     return runDelay(kind, pool_pages, slice_ms, seed, 0);
@@ -423,6 +432,8 @@ fn runShape(kind: ?kvcache.Kind, pool_pages: u32, slice_ms: ?i64, seed: u64, del
     defer if (sys.cache) |c| c.deinit(t.allocator);
     var b = try Bt.init(io, &sys, .{ .slots = S, .vocab = V, .stall = .{ .ns = 0 }, .order = .shortest, .pack = 2, .swap_slice = if (slice_ms) |ms| .fromMilliseconds(ms) else null });
     var task = try io.concurrent(Bt.run, .{&b});
+    var watchdog = try io.concurrent(watchStall, .{ &b, kind, shape.tier, seed });
+    defer watchdog.cancel(io);
     var prng = std.Random.DefaultPrng.init(seed);
     const r = prng.random();
     var bufs: [16][L * P]u32 = undefined;
@@ -495,4 +506,146 @@ test "kv system: distinct long conversations fill the pool with checkpoints, eve
     std.debug.print("kv system distinct: swaps {d} deep swap-outs {d}\n", .{ swaps, deep });
     try t.expect(swaps > 0);
     try t.expect(deep > 0);
+}
+
+const PreparedCommit = struct {
+    sys: *Sys,
+    generation: u64,
+    first: u32,
+    calls: u32 = 0,
+    fail: bool = false,
+    fn callback(self: *@This()) kvcache.PreparationCommit {
+        return .{ .ctx = self, .apply = apply };
+    }
+    fn apply(ctx: *anyopaque, list: []u32, first: u32) !kvcache.PreparedResult {
+        const self: *@This() = @ptrCast(@alignCast(ctx));
+        self.calls += 1;
+        try t.expectEqual(self.first, first);
+        if (self.fail) return error.CommitFault;
+        const result = try self.sys.pool.commitPreparation(self.generation, list);
+        return .{ .copied = result.copied, .freed = result.freed };
+    }
+};
+
+fn insertPreparationFixture(sys: *Sys, tokens: []const u32) !void {
+    try sys.pool.release(0);
+    sys.pos[0] = 0;
+    try t.expect(sys.mapFree(0, @intCast((tokens.len + P - 1) / P)));
+    for (tokens, 0..) |x, i| {
+        sys.hist[0][i] = x;
+        sys.write(0, @intCast(i));
+    }
+    sys.pos[0] = @intCast(tokens.len);
+    try sys.cache.?.checkpoint(sys.device(), 0, tokens);
+    try sys.pool.release(0);
+    sys.checkCache();
+}
+
+test "preparation: independent joint prefix/object oracle through real cache and pool" {
+    const Case = struct {
+        input: struct { nodes: [][]const u32, selected: u32, late: []const u32, protect: i32, window: u32, hit: bool, mode: []const u8, reserve: u32 },
+        first: u32,
+        planned: u32,
+        result: []const u8,
+        callbacks: u32,
+        copied: u32,
+        freed: u32,
+        nodes: []struct { tokens: []const u32, first: u32, host: []bool, pins: []u32, refs: u32, active: bool },
+    };
+    const Oracle = struct { generator_sha256: []const u8, cases: []Case };
+    const oracle = try std.json.parseFromSlice(Oracle, t.allocator, @embedFile("fixtures/preparation-cache.json"), .{ .ignore_unknown_fields = true });
+    defer oracle.deinit();
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(@embedFile("reference/generate_preparation_cache_fixture.py"), &digest, .{});
+    try t.expectEqualStrings(oracle.value.generator_sha256, &std.fmt.bytesToHex(digest, .lower));
+    try t.expectEqual(@as(usize, 3872), oracle.value.cases.len);
+    const pool = try t.allocator.create(pages.Pool);
+    defer t.allocator.destroy(pool);
+    for (oracle.value.cases) |case| {
+        try pool.init(64, S, L);
+        try pool.setHost(32);
+        var dev: [64 * P]u64 = @splat(0);
+        var host: [32 * P]u64 = @splat(0);
+        const r = try kvcache.Radix.create(t.allocator, 16, L * P, L, B);
+        const cache = r.cache();
+        defer cache.deinit(t.allocator);
+        var sys: Sys = .{ .io = t.io, .pool = pool, .cache = cache, .dev = &dev, .host = &host, .radix = true };
+        for (case.input.nodes) |tokens| try insertPreparationFixture(&sys, tokens);
+        const candidate = cache.preparationCandidate(case.input.selected) orelse return error.MissingCandidate;
+        try t.expectEqual(case.first, candidate.first);
+        if (r.children[case.input.selected] != 0) try t.expectEqual(@as(?kvcache.Candidate, null), cache.sourceCandidate(case.input.selected));
+        const source = try cache.acquireSource(candidate.handle);
+        const g = try pool.prepare(source.pages, candidate.first, case.input.window, case.input.reserve);
+        try t.expectEqual(case.planned != 0, g != null);
+        var commit: PreparedCommit = .{ .sys = &sys, .generation = g orelse 0, .first = candidate.first };
+        if (g) |generation| {
+            const moves = try pool.preparedMoves(generation);
+            try t.expectEqual(case.planned, moves.len);
+            try t.expectError(error.PendingPreparation, cache.finishPreparation(source.lease, commit.callback()));
+            try t.expect(r.sources[case.input.selected].active);
+            try t.expectEqual(@as(u32, 1), commit.calls);
+            commit.calls = 0;
+            const count = if (std.mem.eql(u8, case.input.mode, "cancel")) @min(1, moves.len) else moves.len;
+            for (moves[0..count]) |m| @memcpy(host[m.to * P ..][0..P], dev[m.from * P ..][0..P]);
+        } else try cache.releaseSource(source.lease);
+        if (case.input.late.len != 0) try insertPreparationFixture(&sys, case.input.late);
+        var protected: ?kvcache.Lease = null;
+        if (case.input.protect >= 0) {
+            const i: u32 = @intCast(case.input.protect);
+            if (r.store.entries[i].len > 0) protected = (try cache.acquireSource(.{ .index = i, .generation = r.sources[i].generation })).lease;
+        }
+        if (case.input.hit) {
+            const tokens = case.input.nodes[case.input.selected];
+            @memcpy(sys.hist[1][0..tokens.len], tokens);
+            sys.hist[1][tokens.len] = 9999;
+            try t.expectEqual(tokens.len, try cache.restore(sys.device(), 1, sys.hist[1][0 .. tokens.len + 1]));
+        }
+        if (g) |generation| {
+            try pool.ackPreparation(generation);
+            commit.fail = std.mem.eql(u8, case.input.mode, "fault");
+            if (std.mem.eql(u8, case.result, "commit")) {
+                const result = try cache.finishPreparation(source.lease, commit.callback());
+                try t.expectEqual(case.copied, result.copied);
+                try t.expectEqual(case.freed, result.freed);
+                try t.expectError(error.InvalidSource, cache.releaseSource(source.lease));
+            } else if (!std.mem.eql(u8, case.result, "cancel")) {
+                const err: anyerror = if (std.mem.eql(u8, case.result, "Busy")) error.Busy else if (std.mem.eql(u8, case.result, "CommitFault")) error.CommitFault else error.InvalidState;
+                try t.expectError(err, cache.finishPreparation(source.lease, commit.callback()));
+            }
+        }
+        try t.expectEqual(case.callbacks, commit.calls);
+        for (case.nodes, 0..) |node, i| {
+            try t.expectEqualSlices(u32, node.tokens, r.store.entryTokens(i));
+            try t.expectEqual(node.first, r.own[i]);
+            try t.expectEqual(node.refs, r.sources[i].refs);
+            try t.expectEqual(node.active, r.sources[i].active);
+            const list = r.store.entryPages(i);
+            try t.expectEqual(node.host.len, list.len);
+            for (list, node.host, node.pins, 0..) |q, is_host, pins, k| {
+                try t.expectEqual(is_host, q & pages.host_flag != 0);
+                if (!is_host) try t.expectEqual(pins, pool.pins[q]);
+                const bytes = if (is_host) host[(q & ~pages.host_flag) * P ..][0..P] else dev[q * P ..][0..P];
+                for (0..@min(P, node.tokens.len - k * P)) |o| try t.expectEqual(posValue(node.tokens[0 .. k * P + o + 1]), bytes[o]);
+            }
+        }
+        try t.expectEqual(@as(u32, 0), r.store.entries[case.nodes.len].len);
+        if (case.input.hit) {
+            var actual: [V]f32 = undefined;
+            var want: [V]f32 = undefined;
+            sys.readLogits(1, &actual);
+            soloLogits(case.input.nodes[case.input.selected], &want);
+            try t.expectEqualSlices(f32, &want, &actual);
+            try pool.release(1);
+        }
+        sys.checkCache();
+        try t.expectEqual(@as(u32, 0), sys.violations);
+        if (g) |generation| if (pool.preparation.count != 0) {
+            try pool.abortPreparation(generation);
+            try cache.releaseSource(source.lease);
+        };
+        if (protected) |lease| try cache.releaseSource(lease);
+        while (cache.evict(sys.device()) or cache.evictHost(sys.device())) {}
+        try t.expectEqual(@as(u32, 64), pool.freeCount());
+        try t.expectEqual(@as(u32, 32), pool.hostFree());
+    }
 }

@@ -9,14 +9,17 @@ var max_poll_ns: i96 = 0;
 pub fn main(init: std.process.Init) !void {
     const a = init.gpa;
     const args = try init.minimal.args.toSlice(init.arena.allocator());
-    if (args.len != 3 and args.len != 5 and args.len != 6 and args.len != 7) return error.Usage;
-    const chunk_mib = if (args.len == 7) try std.fmt.parseInt(u32, args[6], 10) else 1;
+    if (args.len != 3 and args.len != 5 and args.len != 6 and args.len != 7 and args.len != 8) return error.Usage;
+    const chunk_mib = if (args.len >= 7) try std.fmt.parseInt(u32, args[6], 10) else 1;
+    const prepare_window = if (args.len == 8) try std.fmt.parseInt(u32, args[7], 10) else 1;
     const window = try zerv.serve.disk.Window.init(chunk_mib, 8 << 20);
-    const disk_mode = args.len >= 5;
+    const prepare_mode = args.len >= 6 and std.mem.eql(u8, args[5], "prepare");
+    const disk_mode = args.len >= 5 and !(prepare_mode and std.mem.eql(u8, args[3], "-"));
+    const cache_mode = disk_mode or prepare_mode;
     const prefill_deferred = args.len >= 6 and std.mem.eql(u8, args[5], "prefill-chunk");
     const prefill_mode = prefill_deferred or (args.len >= 6 and std.mem.eql(u8, args[5], "prefill"));
     const pressure_mode = prefill_mode or (args.len >= 6 and std.mem.eql(u8, args[5], "pressure"));
-    const source_mode = pressure_mode or (args.len >= 6 and std.mem.eql(u8, args[5], "source"));
+    const source_mode = prepare_mode or pressure_mode or (args.len >= 6 and std.mem.eql(u8, args[5], "source"));
     if (args.len >= 6 and !source_mode and !std.mem.eql(u8, args[5], "disk")) return error.Usage;
     const n = try std.fmt.parseInt(u32, args[2], 10);
     if (n == 0 or n > 80000) return error.Usage;
@@ -28,13 +31,14 @@ pub fn main(init: std.process.Init) !void {
     defer device.deinit() catch @panic("live device");
     const m = try a.create(model.Model);
     defer a.destroy(m);
-    try m.init(&device, &container, .{ .context = std.mem.alignForward(u32, n + 128, 128), .prefill_rows = 512, .prefill_precision = .f16, .embedding_memory = .host, .snapshots = if (disk_mode) 2 else 0, .snapshot_memory = .host, .kv_type = .f16, .slots = 2, .batch_rows = 2, .swap_bytes = if (source_mode) 2 << 30 else 0, .kv_share = true, .kv_pages = (n + 255) / 128 + 1 });
+    try m.init(&device, &container, .{ .context = std.mem.alignForward(u32, n + 128, 128), .prefill_rows = 512, .prefill_precision = .f16, .embedding_memory = .host, .snapshots = if (cache_mode) 2 else 0, .snapshot_memory = .host, .kv_type = .f16, .slots = 2, .batch_rows = 2, .swap_bytes = if (source_mode) 2 << 30 else 0, .kv_share = true, .kv_pages = (n + 255) / 128 + 1 });
     defer m.deinit();
     var backend: zerv.serve.ModelBackend = .{ .m = m };
     defer backend.deinitDisk();
     defer backend.deinitCache(a);
+    defer backend.deinitPreparation() catch @panic("preparation still owned");
+    if (cache_mode) try backend.initCache(a, .radix, 128, source_mode);
     if (disk_mode) {
-        try backend.initCache(a, .radix, 128, source_mode);
         const alignment = try std.fmt.parseInt(u32, args[4], 10);
         try backend.initDisk(a, init.io, .{ .directory = args[3], .bytes = std.mem.alignForward(u64, try m.archiveBytes(n), window.chunk_bytes) * 2, .records = 4, .chunk_mib = chunk_mib, .alignment = if (alignment == 0) null else .{ .memory = alignment, .offset = alignment } });
     }
@@ -68,7 +72,7 @@ pub fn main(init: std.process.Init) !void {
     const pack_gold = try a.alloc(f32, 2 * model.config.vocab);
     defer a.free(pack_gold);
     var prefill_source_quanta: u64 = 0;
-    if (prefill_mode) {
+    if (prefill_mode or prepare_mode) {
         for (&pack_tokens, 0..) |*prompt, slot| {
             for (prompt, 0..) |*token, i| token.* = @intCast(31 + slot * 1000 + i * 7);
             try backend.reset(@intCast(slot));
@@ -89,7 +93,12 @@ pub fn main(init: std.process.Init) !void {
             try std.testing.expect(!idle.pending and !idle.progressed);
             try std.testing.expectEqual(@as(u64, 0), backend.disk_archive.?.catalog.stats.writes);
         }
-        _ = try m.prefill(tokens[128..]);
+        if (prepare_mode and disk_mode) {
+            try std.testing.expect(try backend.disk_archive.?.startWrite(0, tokens[0..128]));
+            _ = try drain(&backend, init.io, 0, false);
+            @memcpy(other_logits[0..model.config.vocab], try m.step(tokens[128]));
+            if (n > 129) _ = try m.prefill(tokens[129..]);
+        } else _ = try m.prefill(tokens[128..]);
     } else _ = try m.prefill(tokens);
     const bytes = try m.archiveBytes(n);
     const gold = try a.alloc(u8, @intCast(bytes));
@@ -111,6 +120,149 @@ pub fn main(init: std.process.Init) !void {
     const continuation = [_]u32{ 11, 220, 42, 1000 };
     const logits = try a.alloc(f32, continuation.len * model.config.vocab);
     defer a.free(logits);
+    if (prepare_mode) {
+        const cache = backend.cache.?;
+        try cache.checkpoint(backend.device(), 0, tokens);
+        for (continuation, 0..) |t, i| {
+            try std.testing.expect(try backend.grow(0));
+            @memcpy(logits[i * model.config.vocab ..][0..model.config.vocab], try m.step(t));
+        }
+        try backend.reset(0);
+        try std.testing.expectError(error.InvalidOptions, backend.initPreparation(init.io, .{ .target = m.pool.pages + 1 }));
+        try std.testing.expectError(error.InvalidOptions, backend.initPreparation(init.io, .{ .target = 1, .host_headroom = m.swap_pages + 1 }));
+        try std.testing.expect(backend.preparation_owner == null);
+        try backend.initPreparation(init.io, .{ .target = m.pool.pages, .window = prepare_window, .host_headroom = m.swap_pages });
+        const owner = &backend.preparation_owner.?;
+        try std.testing.expect(!try owner.start()); // reserve is never evicted for preparation
+        owner.options.host_headroom = 0;
+        try std.testing.expect(!(try backend.pollMaintenance(false, true)).pending);
+        try std.testing.expect(owner.held == null); // foreground read priority
+        // Suppress the one-page ancestor to exercise multi-page suffix windows.
+        const ancestor = cache.preparationCandidate(0) orelse return error.MissingCandidate;
+        owner.failed_generation[ancestor.handle.index] = ancestor.handle.generation;
+        try std.testing.expect(try owner.start());
+        // Stop drains, never publishes, and retains the incarnation suppression.
+        while (owner.held != null) {
+            _ = try owner.poll(true, true);
+            try std.Io.sleep(init.io, .fromMicroseconds(100), .awake);
+        }
+        try std.testing.expectEqual(@as(u64, 1), owner.counters.aborted);
+        owner.failed_generation = @splat(0); // explicit diagnostic retry, not production policy
+        owner.failed_generation[ancestor.handle.index] = ancestor.handle.generation;
+        try std.testing.expect(try owner.start());
+        const first_pages = owner.held.?.pages;
+        try std.testing.expectEqual(@min(prepare_window, map.len - 1), first_pages);
+        const first_moves = try m.pool.preparedMoves(owner.held.?.generation);
+        const tail_freed: u64 = @intFromBool(n % 128 != 0 and first_moves[first_moves.len - 1].index == map.len - 1);
+        try std.testing.expectError(error.InvalidSlot, backend.reset(m.state_layout.slots));
+        try std.testing.expect(!backend.fatal.load(.acquire));
+        if (backend.disk_archive) |d| {
+            // A real foreground upload uses private target pages while preparation owns
+            // a disjoint source/reservation. Neither optional issue nor publication occurs.
+            try backend.reset(1);
+            try m.ensurePages(1, 129);
+            const record = d.catalog.lookup(tokens) orelse return error.MissingRecord;
+            try d.startRead(1, record);
+            while (true) {
+                const read = try backend.pollCache(1, false);
+                _ = try backend.pollMaintenanceInChunk(false, true);
+                try std.testing.expect(owner.held != null);
+                try std.testing.expectEqual(@as(u64, 0), owner.counters.committed);
+                if (read.done) break;
+                try std.Io.sleep(init.io, .fromMicroseconds(100), .awake);
+            }
+            try std.testing.expectEqual(@as(u32, 128), m.slotPosition(1));
+            try m.select(1);
+            const got = try m.step(tokens[128]);
+            if (!std.mem.eql(u8, std.mem.sliceAsBytes(got), std.mem.sliceAsBytes(other_logits[0..model.config.vocab]))) return error.WrongConcurrentReadLogits;
+            try backend.reset(1);
+        }
+        const prompt = try a.alloc(u32, n + 1);
+        defer a.free(prompt);
+        @memcpy(prompt[0..n], tokens);
+        prompt[n] = continuation[0];
+        try backend.reset(0);
+        try std.testing.expectEqual(n, try cache.restore(backend.device(), 0, prompt));
+        while (!owner.ready) {
+            _ = try backend.pollMaintenanceInChunk(false, false);
+            try std.Io.sleep(init.io, .fromMicroseconds(100), .awake);
+        }
+        try std.testing.expect(owner.held != null);
+        try std.testing.expectEqual(@as(u64, 0), owner.counters.committed);
+        _ = try backend.pollMaintenance(false, false);
+        try std.testing.expectEqual(@as(u64, first_pages), owner.counters.committed);
+        try std.testing.expectEqual(tail_freed, owner.counters.freed); // full GPU pages retain masks; partial hit copied privately
+        for (continuation, 0..) |t, i| {
+            try std.testing.expect(try backend.grow(0));
+            const got = try m.step(t);
+            if (!std.mem.eql(u8, std.mem.sliceAsBytes(got), std.mem.sliceAsBytes(logits[i * model.config.vocab ..][0..model.config.vocab]))) return error.WrongLivePreparationLogits;
+        }
+        try backend.reset(0);
+        try std.testing.expectEqual(n, try cache.restore(backend.device(), 0, prompt));
+        try m.archiveMap(0, n, map, false);
+        at = 0;
+        while (at < gold.len) {
+            const count = @min(quantum, gold.len - at);
+            try m.archiveCopy(&c, &imported, 0, 0, n, map, at, count, false);
+            try m.state_layout.clearArchiveTail(m.snapshotBytes(), n, at, mem[0..count]);
+            if (!std.mem.eql(u8, gold[at..][0..count], mem[0..count])) return error.WrongPreparationState;
+            at += count;
+        }
+        for (continuation, 0..) |t, i| {
+            try std.testing.expect(try backend.grow(0));
+            const got = try m.step(t);
+            if (!std.mem.eql(u8, std.mem.sliceAsBytes(got), std.mem.sliceAsBytes(logits[i * model.config.vocab ..][0..model.config.vocab]))) return error.WrongRestoredPreparationLogits;
+        }
+        try backend.reset(0);
+        try std.testing.expect(try owner.start());
+        const packed_pages = owner.held.?.pages;
+        for (0..2) |slot| {
+            try backend.reset(@intCast(slot));
+            try m.ensurePages(@intCast(slot), pack_tokens[slot].len);
+        }
+        const items = [_]model.PackItem{ .{ .slot = 0, .tokens = &pack_tokens[0] }, .{ .slot = 1, .tokens = &pack_tokens[1] } };
+        var pack_result = try m.prefillPackedSegment(&items);
+        while (!pack_result.done) {
+            _ = try backend.pollMaintenanceInChunk(false, false);
+            try std.testing.expect(owner.held != null);
+            try std.testing.expectEqual(@as(u64, first_pages), owner.counters.committed);
+            pack_result = try m.prefillPackedSegment(&.{});
+        }
+        if (!std.mem.eql(u8, std.mem.sliceAsBytes(pack_gold), std.mem.sliceAsBytes(pack_result.logits.?))) return error.WrongPreparationPackedLogits;
+        while (owner.held != null) {
+            _ = try owner.poll(false, true);
+            try std.Io.sleep(init.io, .fromMicroseconds(100), .awake);
+        }
+        try std.testing.expectEqual(@as(u64, first_pages) + packed_pages, owner.counters.committed);
+        try std.testing.expectEqual(tail_freed + packed_pages, owner.counters.freed);
+        try backend.reset(0);
+        try backend.reset(1);
+        // The ancestor is still GPU-resident. A late descendant lease must make its
+        // completed transaction abort atomically, without renaming or losing pages.
+        owner.failed_generation = @splat(0);
+        const suffix = cache.preparationCandidate(1);
+        if (suffix) |candidate| owner.failed_generation[candidate.handle.index] = candidate.handle.generation;
+        const before_host = m.hostFreePages();
+        const before_gpu = m.freePages();
+        try std.testing.expect(try owner.start());
+        try std.testing.expectEqual(ancestor.handle.index, owner.held.?.source.lease.handle.index);
+        const descendant = cache.sourceCandidate(1) orelse return error.MissingCandidate;
+        const protection = try cache.acquireSource(descendant.handle);
+        const stale_lease = owner.held.?.source.lease;
+        const committed_before = owner.counters.committed;
+        while (owner.held != null) {
+            _ = try owner.poll(false, true);
+            try std.Io.sleep(init.io, .fromMicroseconds(100), .awake);
+        }
+        try std.testing.expectEqual(committed_before, owner.counters.committed);
+        try std.testing.expectEqual(@as(u64, 2), owner.counters.aborted);
+        try std.testing.expectEqual(before_host, m.hostFreePages());
+        try std.testing.expectEqual(before_gpu, m.freePages());
+        try std.testing.expectError(error.InvalidSource, cache.releaseSource(stale_lease));
+        try cache.releaseSource(protection.lease);
+        std.debug.print("{{\"preparation\":true,\"tokens\":{d},\"disk\":{},\"exact_state\":true,\"exact_vocab_rows\":8,\"concurrent_read_rows\":{d},\"aborts\":2,\"committed\":{d},\"freed\":{d},\"window\":{d},\"first_pages\":{d},\"packed_pages\":{d},\"exact_packed_rows\":2}}\n", .{ n, disk_mode, @as(u32, @intFromBool(disk_mode)), owner.counters.committed, owner.counters.freed, prepare_window, first_pages, packed_pages });
+        return;
+    }
     if (source_mode) {
         const d = backend.disk_archive.?;
         const cache = backend.cache.?;

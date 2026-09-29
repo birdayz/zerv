@@ -1,0 +1,23 @@
+exec ${PAGER:-/usr/bin/less} "$0" || exit 1
+Executing tests from //tests:kv_system
+-----------------------------------------------------------------------------
+1/6 kv_system.test.kv system: no cache, roomy pool...OK
+2/6 kv_system.test.kv system: flat and radix, roomy pool: restores, exact...OK
+3/6 kv_system.test.kv system: tight pool, swaps and time slice, every policy, several seeds...kv system null: swaps 62 restores 0 demoted 0 promoted 0
+kv system .flat: swaps 50 restores 45 demoted 0 promoted 0
+kv system .radix: swaps 21 restores 52 demoted 92 promoted 33
+OK
+4/6 kv_system.test.kv system: radix without the host tier, tight pool...OK
+5/6 kv_system.test.kv system: distinct long conversations fill the pool with checkpoints, every policy and tier...STALL kind=.radix tier=true seed=302 epoch=28933 blocked=null swapped=2 pack=null
+slot 0: used=true closing=false op=.prefill running=true decoding=false admitted=false base=42 done=0 tokens=6 failed=18446744073709551615 swapped=true swap_epoch=18446744073709551615 order=47 wait=92296370246308
+slot 1: used=true closing=false op=.prefill running=false decoding=false admitted=false base=49 done=0 tokens=1 failed=18446744073709551615 swapped=false swap_epoch=20 order=45 wait=92296369978151
+slot 2: used=true closing=false op=.prefill running=false decoding=false admitted=false base=49 done=0 tokens=3 failed=18446744073709551615 swapped=false swap_epoch=18446744073709551615 order=49 wait=92296370283228
+slot 3: used=true closing=false op=.step running=false decoding=true admitted=true base=46 done=0 tokens=0 failed=18446744073709551615 swapped=true swap_epoch=28933 order=31 wait=92296363653586
+thread 91 panic: KV system progress deadline exceeded
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/tests/kv_system.zig:408:5: 0x12ce99d in watchStall (kv_system.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Io.zig:2376:13: 0x12ce396 in start (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Io/Threaded.zig:741:20: 0x11e3e11 in start (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Io/Threaded.zig:1797:29: 0x11df9e4 in worker (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Thread.zig:422:13: 0x11df6c5 in callFn__anon_27788 (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/Thread.zig:1431:30: 0x11df480 in entryFn (std.zig)
+/home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/sandbox/linux-sandbox/8754/execroot/_main/external/rules_zig++zig+zig_0.16.0_x86_64-linux/lib/std/os/linux/x86_64.zig:105:5: 0x11df5e5 in clone (std.zig)

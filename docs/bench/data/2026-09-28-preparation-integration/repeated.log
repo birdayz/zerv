@@ -1,0 +1,43 @@
+INFO: Invocation ID: 6d421c45-278a-4164-a15a-0b4dde9b53e8
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+WARNING: Build option --compilation_mode has changed, discarding analysis cache (this can be expensive, see https://bazel.build/advanced/performance/iteration-speed).
+Analyzing: 4 targets (0 packages loaded, 0 targets configured)
+Analyzing: 4 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 4 targets (2 packages loaded, 2992 targets configured).
+[71 / 97] 1 / 4 tests; Testing //tests:kv_system (run 8 of 10); 1s linux-sandbox ... (24 actions running)
+[77 / 97] 2 / 4 tests; Testing //tests:kv_system (run 8 of 10); 2s linux-sandbox ... (20 actions running)
+[96 / 97] 3 / 4 tests; Testing //tests:kv_system (run 7 of 10); 3s linux-sandbox
+[96 / 97] 3 / 4 tests; Testing //tests:kv_system (run 7 of 10); 13s linux-sandbox
+[96 / 97] 3 / 4 tests; Testing //tests:kv_system (run 7 of 10); 43s linux-sandbox
+[96 / 97] 3 / 4 tests; Testing //tests:kv_system (run 7 of 10); 103s linux-sandbox
+[96 / 97] 3 / 4 tests; Testing //tests:kv_system (run 7 of 10); 163s linux-sandbox
+[96 / 97] 3 / 4 tests; Testing //tests:kv_system (run 7 of 10); 223s linux-sandbox
+[96 / 97] 3 / 4 tests; Testing //tests:kv_system (run 7 of 10); 283s linux-sandbox
+[96 / 97] 3 / 4 tests; Testing //tests:kv_system (run 7 of 10); 300s disk-cache, linux-sandbox
+
+TIMEOUT: //tests:kv_system (Summary)
+      /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kv_system/run_7_of_10/test.log
+INFO: From Testing //tests:kv_system (run 7 of 10):
+==================== Test output for //tests:kv_system (run 7 of 10):
+1/6 kv_system.test.kv system: no cache, roomy pool...OK
+2/6 kv_system.test.kv system: flat and radix, roomy pool: restores, exact...OK
+3/6 kv_system.test.kv system: tight pool, swaps and time slice, every policy, several seeds...kv system null: swaps 62 restores 0 demoted 0 promoted 0
+kv system .flat: swaps 37 restores 43 demoted 0 promoted 0
+kv system .radix: swaps 25 restores 50 demoted 86 promoted 21
+OK
+4/6 kv_system.test.kv system: radix without the host tier, tight pool...OK
+5/6 kv_system.test.kv system: distinct long conversations fill the pool with checkpoints, every policy and tier...-- Test timed out at 2026-09-29 00:16:44 UTC --
+================================================================================
+INFO: Found 4 test targets...
+INFO: Elapsed time: 300.304s, Critical Path: 300.10s
+INFO: 41 processes: 56 action cache hit, 1 internal, 80 linux-sandbox.
+INFO: Build completed, 1 test FAILED, 41 total actions
+//tests:kv_system                                                       TIMEOUT in 1 out of 10 in 300.0s
+  Stats over 10 runs: max = 300.0s, min = 2.5s, avg = 32.5s, dev = 89.2s
+  /home/USER/.cache/bazel/_bazel_USER/100872e8ae7632816cc29185b66cbaf5/execroot/_main/bazel-out/k8-fastbuild/testlogs/tests/kv_system/run_7_of_10/test.log
+
+Executed 4 out of 4 tests: 3 tests pass and 1 fails locally.
+There were tests whose specified size is too big. Use the --test_verbose_timeout_warnings command line option to see which ones these are.

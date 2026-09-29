@@ -145,8 +145,14 @@ window's 257/80k exactness gates pass. [Serving evaluation](../bench/2026-09-28-
 51.282 ± 1.534 s versus host-only 47.476 ± 0.229 s / tuned HIP 48.691 ± 0.985 s.
 Window sizing alone does not meet the target. D.1.1's [pure preparation ownership](../bench/2026-09-28-preparation-ownership.md)
 now passes its independent 1,362-case oracle, CPU/repeated/negative gates and two
-metadata benchmark runs. D.1.2 cache/GPU integration research/specification is active;
-asynchronous preparation and D.2 prefetch remain unimplemented.
+metadata benchmark runs. D.1.2 cache/GPU preparation, scheduler ownership and opt-in
+configuration are implemented; correctness and comparative-evaluation gates are
+closed with mixed/negative performance. Twelve window/host/disk model cases pass,
+including concurrent restores and late-lease rejection; clean serving has 96 exact
+native responses but no quality-matched competitor parity proof. Repeated tests
+exposed a swap-order livelock, reproduced deterministically and fixed
+([integration report](../bench/2026-09-29-preparation-integration.md)).
+D.2 queued-demand protection/prefetch research is active; implementation is absent.
 
 C is complete as a functionality/verification increment, not as the performance goal. C.1 source leases are implemented with full ancestor protection and
 independent prefix-set oracle ([report](../bench/2026-09-28-cache-sources.md)).
