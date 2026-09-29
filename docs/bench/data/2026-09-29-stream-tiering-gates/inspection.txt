@@ -1,0 +1,157 @@
+Passed matrix, raw/result hashes, collector equality, response/count/resource and role=first-text gates: 192 measured; 120 warmups
+Output signatures 1024 1 all six trials equal: True
+  paired round 0 matching 8 /8
+  paired round 1 matching 8 /8
+  paired round 2 matching 8 /8
+Output signatures 1024 4 all six trials equal: True
+  paired round 0 matching 8 /8
+  paired round 1 matching 8 /8
+  paired round 2 matching 8 /8
+Output signatures 8192 1 all six trials equal: True
+  paired round 0 matching 8 /8
+  paired round 1 matching 8 /8
+  paired round 2 matching 8 /8
+Output signatures 8192 4 all six trials equal: True
+  paired round 0 matching 8 /8
+  paired round 1 matching 8 /8
+  paired round 2 matching 8 /8
+
+ output_tput_per_gpu (three emitted trials; arithmetic mean ± sample SD of those trial values)
+1024 1 38.492 / 37.078 / 38.168 (37.913 ± 0.741) | 41.119 / 41.119 / 39.628 (40.622 ± 0.860)
+1024 4 59.451 / 58.353 / 58.600 (58.801 ± 0.576) | 65.868 / 66.447 / 62.659 (64.991 ± 2.040)
+8192 1 21.426 / 21.579 / 20.726 (21.244 ± 0.455) | 22.606 / 22.497 / 22.179 (22.427 ± 0.222)
+8192 4 25.725 / 25.207 / 25.118 (25.350 ± 0.328) | 24.888 / 24.821 / 24.722 (24.810 ± 0.084)
+
+ median_intvty (three emitted trials; arithmetic mean ± sample SD of those trial values)
+1024 1 46.672 / 44.348 / 45.504 (45.508 ± 1.162) | 48.434 / 48.436 / 46.871 (47.914 ± 0.903)
+1024 4 35.898 / 35.676 / 37.200 (36.258 ± 0.823) | 38.509 / 40.186 / 36.362 (38.353 ± 1.917)
+8192 1 45.540 / 45.336 / 43.331 (44.736 ± 1.221) | 47.439 / 47.407 / 46.743 (47.196 ± 0.393)
+8192 4 20.046 / 19.623 / 20.190 (19.953 ± 0.294) | 20.760 / 20.616 / 20.500 (20.625 ± 0.130)
+
+ p90_intvty (three emitted trials; arithmetic mean ± sample SD of those trial values)
+1024 1 44.188 / 43.680 / 45.098 (44.322 ± 0.719) | 48.405 / 48.411 / 46.098 (47.638 ± 1.334)
+1024 4 33.836 / 33.371 / 34.220 (33.809 ± 0.425) | 38.027 / 39.232 / 35.979 (37.746 ± 1.644)
+8192 1 41.696 / 41.978 / 40.762 (41.479 ± 0.636) | 47.392 / 45.777 / 45.028 (46.066 ± 1.208)
+8192 4 18.626 / 18.255 / 18.211 (18.364 ± 0.228) | 20.340 / 20.224 / 20.197 (20.253 ± 0.076)
+
+ mean_ttft (three emitted trials; arithmetic mean ± sample SD of those trial values)
+1024 1 1.105 / 1.163 / 1.119 (1.129 ± 0.030) | 0.962 / 0.962 / 0.993 (0.972 ± 0.018)
+1024 4 7.921 / 8.005 / 8.314 (8.080 ± 0.207) | 7.190 / 7.190 / 7.532 (7.304 ± 0.198)
+8192 1 6.182 / 6.116 / 6.330 (6.209 ± 0.109) | 5.951 / 5.956 / 6.020 (5.976 ± 0.039)
+8192 4 23.927 / 24.396 / 24.476 (24.266 ± 0.296) | 24.984 / 25.046 / 25.179 (25.070 ± 0.099)
+
+ mean_e2el (three emitted trials; arithmetic mean ± sample SD of those trial values)
+1024 1 6.650 / 6.904 / 6.707 (6.754 ± 0.133) | 6.226 / 6.225 / 6.460 (6.304 ± 0.135)
+1024 4 15.016 / 15.225 / 15.161 (15.134 ± 0.107) | 13.582 / 13.488 / 14.284 (13.785 ± 0.435)
+8192 1 11.948 / 11.863 / 12.351 (12.054 ± 0.261) | 11.324 / 11.379 / 11.542 (11.415 ± 0.113)
+8192 4 34.607 / 35.317 / 35.430 (35.118 ± 0.446) | 36.506 / 36.622 / 36.788 (36.639 ± 0.142)
+
+Server counters (whole lifetime, includes length gate/warmups):
+zerv-tiered-r0-i1024-c1 VRAM bytes 18654683136 host {'VmHWM': '15543008 kB', 'VmRSS': '171624 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: disk prefix archive: 4 writes, 0 restores, 872415232 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 0 cancellations
+zerv: staging prefetch: 0 jobs, 0 handoffs, 0 cancellations; 0 bytes submitted, 0 completed while speculative, 0 completed bytes discarded
+zerv: prefix checkpoints: 10 taken, 12 of 14 lookups restored (2475 prompt tokens reused), 0 dropped for new ones, 4 for memory, 0 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-tiered-r0-i1024-c4 VRAM bytes 18654732288 host {'VmHWM': '15525216 kB', 'VmRSS': '154008 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: disk prefix archive: 4 writes, 0 restores, 872415232 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 0 cancellations
+zerv: staging prefetch: 0 jobs, 0 handoffs, 0 cancellations; 0 bytes submitted, 0 completed while speculative, 0 completed bytes discarded
+zerv: prefix checkpoints: 10 taken, 17 of 20 lookups restored (7830 prompt tokens reused), 0 dropped for new ones, 4 for memory, 8 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-tiered-r0-i8192-c1 VRAM bytes 18651545600 host {'VmHWM': '15542588 kB', 'VmRSS': '170460 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: disk prefix archive: 4 writes, 0 restores, 2239758336 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 0 cancellations
+zerv: staging prefetch: 0 jobs, 0 handoffs, 0 cancellations; 0 bytes submitted, 0 completed while speculative, 0 completed bytes discarded
+zerv: prefix checkpoints: 10 taken, 12 of 14 lookups restored (16811 prompt tokens reused), 0 dropped for new ones, 4 for memory, 0 pages deduplicated, 6 demoted to host (320 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-tiered-r0-i8192-c4 VRAM bytes 18650652672 host {'VmHWM': '15544600 kB', 'VmRSS': '173284 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: disk prefix archive: 4 writes, 0 restores, 2239758336 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 0 cancellations
+zerv: staging prefetch: 0 jobs, 0 handoffs, 0 cancellations; 0 bytes submitted, 0 completed while speculative, 0 completed bytes discarded
+zerv: prefix checkpoints: 10 taken, 17 of 20 lookups restored (58006 prompt tokens reused), 0 dropped for new ones, 4 for memory, 64 pages deduplicated, 8 demoted to host (449 pages), 1 promoted (64 pages), 0 dropped from the host
+zerv-untiered-r0-i1024-c1 VRAM bytes 18636779520 host {'VmHWM': '15478816 kB', 'VmRSS': '86320 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: prefix checkpoints: 10 taken, 12 of 14 lookups restored (2475 prompt tokens reused), 2 dropped for new ones, 0 for memory, 0 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-untiered-r0-i1024-c4 VRAM bytes 18636779520 host {'VmHWM': '15478460 kB', 'VmRSS': '97180 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: prefix checkpoints: 10 taken, 17 of 20 lookups restored (7830 prompt tokens reused), 2 dropped for new ones, 0 for memory, 8 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-untiered-r0-i8192-c1 VRAM bytes 18636779520 host {'VmHWM': '15478572 kB', 'VmRSS': '105244 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: prefix checkpoints: 10 taken, 12 of 14 lookups restored (16811 prompt tokens reused), 0 dropped for new ones, 6 for memory, 0 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-untiered-r0-i8192-c4 VRAM bytes 18636779520 host {'VmHWM': '15479312 kB', 'VmRSS': '120356 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: prefix checkpoints: 11 taken, 17 of 20 lookups restored (49809 prompt tokens reused), 0 dropped for new ones, 8 for memory, 64 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-untiered-r1-i1024-c1 VRAM bytes 18636779520 host {'VmHWM': '15478184 kB', 'VmRSS': '86312 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: prefix checkpoints: 10 taken, 12 of 14 lookups restored (2475 prompt tokens reused), 2 dropped for new ones, 0 for memory, 0 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-untiered-r1-i1024-c4 VRAM bytes 18636779520 host {'VmHWM': '15478692 kB', 'VmRSS': '97604 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: prefix checkpoints: 10 taken, 17 of 20 lookups restored (7830 prompt tokens reused), 2 dropped for new ones, 0 for memory, 8 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-untiered-r1-i8192-c1 VRAM bytes 18636779520 host {'VmHWM': '15478956 kB', 'VmRSS': '105268 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: prefix checkpoints: 10 taken, 12 of 14 lookups restored (16811 prompt tokens reused), 0 dropped for new ones, 6 for memory, 0 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-untiered-r1-i8192-c4 VRAM bytes 18638028800 host {'VmHWM': '15477756 kB', 'VmRSS': '113136 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: prefix checkpoints: 11 taken, 17 of 20 lookups restored (49809 prompt tokens reused), 0 dropped for new ones, 8 for memory, 64 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-tiered-r1-i1024-c1 VRAM bytes 18651004928 host {'VmHWM': '15542288 kB', 'VmRSS': '154176 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: disk prefix archive: 4 writes, 0 restores, 872415232 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 0 cancellations
+zerv: staging prefetch: 0 jobs, 0 handoffs, 0 cancellations; 0 bytes submitted, 0 completed while speculative, 0 completed bytes discarded
+zerv: prefix checkpoints: 10 taken, 12 of 14 lookups restored (2475 prompt tokens reused), 0 dropped for new ones, 4 for memory, 0 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-tiered-r1-i1024-c4 VRAM bytes 18650791936 host {'VmHWM': '15541204 kB', 'VmRSS': '197296 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: disk prefix archive: 4 writes, 0 restores, 872415232 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 0 cancellations
+zerv: staging prefetch: 0 jobs, 0 handoffs, 0 cancellations; 0 bytes submitted, 0 completed while speculative, 0 completed bytes discarded
+zerv: prefix checkpoints: 10 taken, 17 of 20 lookups restored (7830 prompt tokens reused), 0 dropped for new ones, 4 for memory, 8 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-tiered-r1-i8192-c1 VRAM bytes 18654846976 host {'VmHWM': '15542800 kB', 'VmRSS': '188212 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: disk prefix archive: 4 writes, 0 restores, 2239758336 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 0 cancellations
+zerv: staging prefetch: 0 jobs, 0 handoffs, 0 cancellations; 0 bytes submitted, 0 completed while speculative, 0 completed bytes discarded
+zerv: prefix checkpoints: 10 taken, 12 of 14 lookups restored (16811 prompt tokens reused), 0 dropped for new ones, 4 for memory, 0 pages deduplicated, 6 demoted to host (320 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-tiered-r1-i8192-c4 VRAM bytes 18655502336 host {'VmHWM': '15537092 kB', 'VmRSS': '281492 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: disk prefix archive: 4 writes, 0 restores, 2239758336 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 0 cancellations
+zerv: staging prefetch: 0 jobs, 0 handoffs, 0 cancellations; 0 bytes submitted, 0 completed while speculative, 0 completed bytes discarded
+zerv: prefix checkpoints: 10 taken, 17 of 20 lookups restored (58006 prompt tokens reused), 0 dropped for new ones, 4 for memory, 64 pages deduplicated, 8 demoted to host (449 pages), 1 promoted (64 pages), 0 dropped from the host
+zerv-tiered-r2-i1024-c1 VRAM bytes 18653908992 host {'VmHWM': '15540188 kB', 'VmRSS': '156464 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: disk prefix archive: 4 writes, 0 restores, 872415232 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 0 cancellations
+zerv: staging prefetch: 0 jobs, 0 handoffs, 0 cancellations; 0 bytes submitted, 0 completed while speculative, 0 completed bytes discarded
+zerv: prefix checkpoints: 10 taken, 12 of 14 lookups restored (2475 prompt tokens reused), 0 dropped for new ones, 4 for memory, 0 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-tiered-r2-i1024-c4 VRAM bytes 18653384704 host {'VmHWM': '15537940 kB', 'VmRSS': '159724 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: disk prefix archive: 4 writes, 0 restores, 872415232 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 0 cancellations
+zerv: staging prefetch: 0 jobs, 0 handoffs, 0 cancellations; 0 bytes submitted, 0 completed while speculative, 0 completed bytes discarded
+zerv: prefix checkpoints: 10 taken, 17 of 20 lookups restored (7830 prompt tokens reused), 0 dropped for new ones, 4 for memory, 8 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-tiered-r2-i8192-c1 VRAM bytes 18653814784 host {'VmHWM': '15543828 kB', 'VmRSS': '171812 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: disk prefix archive: 4 writes, 0 restores, 2239758336 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 0 cancellations
+zerv: staging prefetch: 0 jobs, 0 handoffs, 0 cancellations; 0 bytes submitted, 0 completed while speculative, 0 completed bytes discarded
+zerv: prefix checkpoints: 10 taken, 12 of 14 lookups restored (16811 prompt tokens reused), 0 dropped for new ones, 4 for memory, 0 pages deduplicated, 6 demoted to host (320 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-tiered-r2-i8192-c4 VRAM bytes 18650165248 host {'VmHWM': '15544572 kB', 'VmRSS': '178284 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: disk prefix archive: 4 writes, 0 restores, 2239758336 bytes written, 0 read, 0 evictions, 0 skips, 0 failures, 0 cancellations
+zerv: staging prefetch: 0 jobs, 0 handoffs, 0 cancellations; 0 bytes submitted, 0 completed while speculative, 0 completed bytes discarded
+zerv: prefix checkpoints: 10 taken, 17 of 20 lookups restored (58006 prompt tokens reused), 0 dropped for new ones, 4 for memory, 64 pages deduplicated, 8 demoted to host (449 pages), 1 promoted (64 pages), 0 dropped from the host
+zerv-untiered-r2-i1024-c1 VRAM bytes 18636779520 host {'VmHWM': '15477272 kB', 'VmRSS': '100124 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: prefix checkpoints: 10 taken, 12 of 14 lookups restored (2475 prompt tokens reused), 2 dropped for new ones, 0 for memory, 0 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-untiered-r2-i1024-c4 VRAM bytes 18636779520 host {'VmHWM': '15478760 kB', 'VmRSS': '93108 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: prefix checkpoints: 10 taken, 17 of 20 lookups restored (7830 prompt tokens reused), 2 dropped for new ones, 0 for memory, 8 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-untiered-r2-i8192-c1 VRAM bytes 18636779520 host {'VmHWM': '15478748 kB', 'VmRSS': '123520 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: prefix checkpoints: 10 taken, 12 of 14 lookups restored (16811 prompt tokens reused), 0 dropped for new ones, 6 for memory, 0 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+zerv-untiered-r2-i8192-c4 VRAM bytes 18636779520 host {'VmHWM': '15478256 kB', 'VmRSS': '112500 kB'}
+zerv: prefix checkpoints: 8 (host memory, radix policy)
+zerv: prefix checkpoints: 11 taken, 17 of 20 lookups restored (49809 prompt tokens reused), 0 dropped for new ones, 8 for memory, 64 pages deduplicated, 0 demoted to host (0 pages), 0 promoted (0 pages), 0 dropped from the host
+Dates 2026-09-29T12:25:38.428996+00:00 2026-09-29T13:18:12.973766+00:00
+Model SHA ede16c7b36e578ca87a8c70e011e4b4633a32c831c0ce76d0f474582384e671d binary SHA d045c7399e679c821719747418da72e4470ccf360e5fedc32afa1468e91400ae
+
+Memory ranges GiB (sampled device-wide VRAM peak; server-process host high-water includes loading):
+zerv-tiered VRAM 17.369319915771484 17.374290466308594 host 14.805999755859375 14.824485778808594
+zerv-untiered VRAM 17.356853485107422 17.358016967773438 host 14.760276794433594 14.762222290039062
+
+Tiered throughput change relative to untiered (ratio of three-trial means):
+1024 1 -6.669787679266714
+1024 4 -9.52449292660108
+8192 1 -5.2778831164147055
+8192 4 2.1762441257183074

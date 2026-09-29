@@ -1,11 +1,13 @@
 # Controlled work queue
 
-Active block: **authorized native-only InferenceX rerun, tiered versus untiered**.
-User requested commit/push, then re-benchmark only zerv and compare tiering on/off.
-[Predeclared matrix](docs/specs/inferencex-local.md#authorized-rerun-native-tiered-versus-untiered):
-24points, same workload/GPU capacity, corrected opening SSE, unchanged upstream
-processor. No fresh llama execution or dashboard submission. This explicit approval
-supersedes the prior no-git-push restriction for the requested current work.
+Latest block: **authorized native-only InferenceX rerun, tiered versus untiered — completed**.
+[Results](docs/bench/2026-09-29-stream-tiering.md): 24/24 points,192 measured and120
+warmup requests pass; outputs match across treatments/rounds and role accompanies
+first text throughout. Unchanged upstream processor/collector results retained.
+Untiered wins throughput in three workloads; tiered gains2.18% at8192/C4 but loses
+interactivity everywhere. Zero disk restores; no NVMe benefit claim. No fresh llama
+execution or dashboard submission. Explicit approval supersedes the prior no-git-push
+restriction for this work. No next block started; D.2 remains paused.
 
 Latest block: **remove standalone opening role SSE event — completed** (user request).
 Role accompanies actual generated payload, not an artificial TTFT event. Exact encoding,

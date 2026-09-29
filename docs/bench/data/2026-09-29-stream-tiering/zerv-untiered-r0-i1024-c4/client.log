@@ -1,0 +1,49 @@
+PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+Namespace(backend='openai-chat', base_url='http://127.0.0.1:45077', host='127.0.0.1', port=8000, endpoint='/v1/chat/completions', dataset_name='random', dataset_path=None, max_concurrency=4, model='/home/USER/projects/zerv/third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0', tokenizer='/home/USER/projects/zerv/third_party/Qwen/Qwen3.8-27B/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0', best_of=1, use_beam_search=False, num_prompts=8, logprobs=None, request_rate=inf, burstiness=1.0, seed=42, trust_remote_code=False, disable_tqdm=False, profile=False, save_result=True, save_detailed=True, metadata=None, result_dir='/home/USER/projects/zerv/docs/bench/data/2026-09-29-stream-tiering/zerv-untiered-r0-i1024-c4', result_filename='upstream.json', ignore_eos=True, percentile_metrics='ttft,tpot,itl,e2el', metric_percentiles='90,99,99.9', goodput=None, sonnet_input_len=550, sonnet_output_len=150, sonnet_prefix_len=200, sharegpt_output_len=None, random_input_len=1024, random_output_len=256, random_range_ratio=1.0, random_prefix_len=0, use_chat_template=False, random_num_workers=1, dsv4=False, hf_subset=None, hf_split=None, hf_output_len=None, tokenizer_mode='auto', served_model_name='qwen3.8-27b', lora_modules=None, num_warmups=8)
+-------------------  Input/Output Length Statistics  -------------------
+ input_lens : min=1024  max=1024  mean=1024.00  avg_token_mismatch=0.00  
+ output_lens: min=256   max=256   mean=256.00  
+------------------------------------------------------------------------ 
+
+Starting initial single prompt test run...
+Warming up with 8 requests...
+  0%|          | 0/8 [00:00<?, ?it/s] 12%|█▎        | 1/8 [00:08<00:56,  8.05s/it] 25%|██▌       | 2/8 [00:08<00:21,  3.52s/it] 38%|███▊      | 3/8 [00:14<00:22,  4.51s/it] 50%|█████     | 4/8 [00:14<00:11,  2.87s/it] 62%|██████▎   | 5/8 [00:20<00:11,  3.88s/it] 75%|███████▌  | 6/8 [00:20<00:05,  2.68s/it] 88%|████████▊ | 7/8 [00:26<00:03,  3.67s/it]100%|██████████| 8/8 [00:26<00:00,  2.55s/it]100%|██████████| 8/8 [00:26<00:00,  3.29s/it]
+Warmup completed.
+Traffic request rate: inf
+Burstiness factor: 1.0 (Poisson process)
+Maximum request concurrency: 4
+  0%|          | 0/8 [00:00<?, ?it/s] 12%|█▎        | 1/8 [00:07<00:54,  7.81s/it] 25%|██▌       | 2/8 [00:08<00:20,  3.43s/it] 38%|███▊      | 3/8 [00:14<00:24,  4.86s/it] 50%|█████     | 4/8 [00:16<00:14,  3.53s/it] 62%|██████▎   | 5/8 [00:22<00:13,  4.62s/it] 75%|███████▌  | 6/8 [00:24<00:07,  3.50s/it] 88%|████████▊ | 7/8 [00:30<00:04,  4.50s/it]100%|██████████| 8/8 [00:31<00:00,  3.20s/it]100%|██████████| 8/8 [00:31<00:00,  3.89s/it]
+Starting main benchmark run...
+============ Serving Benchmark Result ============
+Successful requests:                     8         
+Benchmark duration (s):                  31.09     
+Total input tokens:                      8192      
+Total generated tokens:                  2048      
+Request throughput (req/s):              0.26      
+Output token throughput (tok/s):         65.87     
+Total Token throughput (tok/s):          329.34    
+---------------Time to First Token----------------
+Mean TTFT (ms):                          7189.69   
+Median TTFT (ms):                        8741.24   
+P90 TTFT (ms):                           9434.41   
+P99 TTFT (ms):                           9512.13   
+P99.9 TTFT (ms):                         9519.91   
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          25.07     
+Median TPOT (ms):                        25.97     
+P90 TPOT (ms):                           26.30     
+P99 TPOT (ms):                           26.33     
+P99.9 TPOT (ms):                         26.34     
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           25.14     
+Median ITL (ms):                         22.05     
+P90 ITL (ms):                            22.30     
+P99 ITL (ms):                            134.34    
+P99.9 ITL (ms):                          138.06    
+----------------End-to-end Latency----------------
+Mean E2EL (ms):                          13581.91  
+Median E2EL (ms):                        14927.79  
+P90 E2EL (ms):                           16025.73  
+P99 E2EL (ms):                           16201.93  
+P99.9 E2EL (ms):                         16219.55  
+==================================================

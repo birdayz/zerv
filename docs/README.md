@@ -422,3 +422,5 @@ finish independent tests and benchmark gates before advancing.
 - [Local InferenceX results](bench/2026-09-29-inferencex-local.md) — actual upstream client; 36/36 points, three trials, matched prompt/output/resource gates; zerv vs Vulkan/HIP, role-chunk TTFT caveat, interrupted-run provenance. Local only, no publication authorized.
 - [Interactivity metric source trace](research/2026-09-29-interactivity.md) — raw-client TPOT → result-processor intvty; fixed-sequence median axis versus AgentX P90/full-response ITL, correcting the earlier dashboard-equivalence ambiguity.
 - [Streaming opening-event correction](bench/2026-09-29-stream-opening.md) — standalone role-only SSE removed; role accompanies generated payload. Real-socket/empty/error/tool tests, negative control and CPU83/83 pass. No benchmark rerun or new performance claim.
+
+- [Native InferenceX tiered versus untiered](bench/2026-09-29-stream-tiering.md) — corrected opening stream, unchanged upstream processing; 24 points and identical native outputs. Untiered wins three throughput workloads; tiered gains2.18% at8192/C4 but loses interactivity. Zero disk restores; no NVMe benefit claim.
