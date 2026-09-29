@@ -180,3 +180,9 @@ plan is **not complete**.
 The user's active session goal also requires rigorously verified faster-or-on-par
 serving against tuned compatible competitors; A/B/C.1 component gates do not close
 that goal or erase the observed long-restore regression.
+
+D.2's current [native/paper audit](queued-demand-audit.md) and
+[pre-implementation contract draft](../specs/queued-demand.md) explicitly distinguish
+staging-window read-ahead from whole-image RAM materialization. The independent
+queued-generation/ticket event fixture is the next prerequisite; no D.2 code is
+claimed from these documents.

@@ -403,3 +403,9 @@ finish independent tests and benchmark gates before advancing.
      recorded. Twelve final ownership/window/host/disk cases pass, including real
      concurrent reads. Clean serving: 96 exact native responses, disk still slower
      than references, no matched-quality parity. D.2 research active, not implemented.
+116. [Queued-demand audit](design/queued-demand-audit.md) and
+     [D.2 contract draft](specs/queued-demand.md): current active research. Separates
+     evictable demand preference from immutable source leases; specifies bounded
+     staging-window prefetch, not whole-image fetching. Token callback lifetime,
+     request generation, record pin and foreground ticket reserve must be verified
+     by an independent event fixture before native implementation. Not implemented.

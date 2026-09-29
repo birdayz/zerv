@@ -1,6 +1,8 @@
 # D.1.2 integration — implementation and verification in progress
 
-Status: **active, not closed; no faster-or-on-par claim**. Pre-code contract:
+Status: **D.1.2 functionality/evaluation closed; no faster-or-on-par claim**.
+The sections below preserve the chronological investigation; the final section
+supersedes earlier open D.1.2 gates. Pre-code contract:
 [preparation specification](../specs/tiering-preparation.md). Paper-derived order:
 [async tiering plan](../design/async-tiering.md). Raw evidence uses the start-date
 prefix `data/2026-09-28-preparation-*` (work crossed UTC midnight).
