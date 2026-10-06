@@ -4,6 +4,7 @@ This directory is the source of truth for **what zerv must do**. Research, desig
 alternatives, and measurements live elsewhere under `docs/` and are linked here.
 
 - [Requirements](requirements.md): user requirements and project boundaries.
+- [Repository privacy](repository-privacy.md): publishable evidence, identity redaction, secret scans and authorized history cleanup.
 - [Serving and configuration](serving.md): proposed first usable behavior contract.
 - [Verification](verification.md): mandatory research readiness, reference fixtures,
   differential testing, and acceptance behavior.

@@ -21,6 +21,11 @@ llama-server's default Q8_1 prompt path (and faster than its fully FP32 path).
 
 ## Start here
 
+[Repository privacy policy](specs/repository-privacy.md) and
+[2026-10-06 audit](research/2026-10-06-repository-privacy.md): publication scope,
+reviewed redactions, history cleanup and limitations. Historical evidence may have
+sanitized paths/identifiers; recorded original hashes are not hashes of redacted bytes.
+
 [Controlled work queue](../TODO.md): one active building block/package at a time;
 finish independent tests and benchmark gates before advancing.
 
